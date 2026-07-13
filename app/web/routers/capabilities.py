@@ -126,6 +126,21 @@ _TOOLS: list[dict] = [
         "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"media_url\":\"https://media.example/video.m3u8\",\"number\":\"SONE-205\",\"rights_confirmed\":true}}' {base}/api/downloads",
     },
     {
+        "name": "download_settings",
+        "description": "设置同时下载任务数量和每个 HLS 视频的并行分片线程数",
+        "side_effect": True,
+        "method": "PUT",
+        "path": "/api/downloads/settings",
+        "input_schema": {
+            "max_concurrent_downloads": "integer 1-8",
+            "fragment_threads": "integer 1-64",
+        },
+        "output_schema": {"settings": "当前下载调度设置"},
+        "local_only": True,
+        "retry_safe": True,
+        "_example_template": "curl -X PUT -H 'Content-Type: application/json' -d '{{\"max_concurrent_downloads\":4,\"fragment_threads\":16}}' {base}/api/downloads/settings",
+    },
+    {
         "name": "scrape_single",
         "description": "新片整理：搜尋 metadata → 下載封面 → 生成 NFO → 重命名搬移",
         "method": "POST",

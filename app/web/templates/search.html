@@ -1016,6 +1016,21 @@
                 </label>
             </div>
 
+            <div class="download-tuning">
+                <label class="download-tuning-field">
+                    <span>{{ t('search.download.concurrent_downloads') }}</span>
+                    <input class="input input-bordered input-sm" type="number" min="1" max="8"
+                           x-model.number="downloadSettings.maxConcurrentDownloads"
+                           @change="saveDownloadSettings()" :disabled="downloadSettingsSaving">
+                </label>
+                <label class="download-tuning-field">
+                    <span>{{ t('search.download.fragment_threads') }}</span>
+                    <input class="input input-bordered input-sm" type="number" min="1" max="64"
+                           x-model.number="downloadSettings.fragmentThreads"
+                           @change="saveDownloadSettings()" :disabled="downloadSettingsSaving">
+                </label>
+            </div>
+
             <label class="download-rights-confirm">
                 <input type="checkbox" class="checkbox checkbox-sm" x-model="downloadForm.rightsConfirmed">
                 <span>{{ t('search.download.rights_confirm') }}</span>
@@ -1045,7 +1060,7 @@
                             <div class="download-task-meta">
                                 <span x-text="`${Number(task.progress || 0).toFixed(1)}%`"></span>
                                 <span x-text="downloadProgressText(task)"></span>
-                                <span class="download-task-message" x-text="task.message"></span>
+                                <span class="download-task-message" x-text="downloadTaskMessage(task)" :title="task.message"></span>
                             </div>
                         </div>
                         <div class="download-task-actions">
@@ -1060,6 +1075,10 @@
                             <button class="btn-icon text-error" x-show="!['completed','cancelled','failed'].includes(task.status)"
                                     @click="controlDownload(task, 'cancel')" title="{{ t('search.download.cancel') }}">
                                 <i class="bi bi-stop-fill"></i>
+                            </button>
+                            <button class="btn-icon" x-show="task.status === 'failed'"
+                                    @click="controlDownload(task, 'retry')" title="{{ t('search.download.retry') }}">
+                                <i class="bi bi-arrow-clockwise"></i>
                             </button>
                             <button class="btn-icon" x-show="['completed','cancelled','failed'].includes(task.status)"
                                     @click="removeDownload(task)" title="{{ t('search.download.remove') }}">

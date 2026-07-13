@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import deque
+from contextlib import contextmanager
 from datetime import datetime
 import ipaddress
 import json
@@ -18,7 +20,7 @@ import uuid
 
 import httpx
 
-from core.config import load_config
+from core.config import load_config, mutate_config
 from core.database import Video, VideoRepository, get_db_path
 from core.gallery_scanner import VideoScanner
 from core.logger import get_logger
@@ -27,6 +29,11 @@ from core.organizer import download_image, generate_nfo, sanitize_filename
 
 logger = get_logger(__name__)
 DOWNLOADS_PATH = get_db_path().parent / "download_tasks.json"
+INSTALL_ROOT = Path(__file__).resolve().parents[2]
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+)
 TERMINAL_STATES = {"completed", "cancelled", "failed"}
 ACTIVE_STATES = {"queued", "probing", "running", "paused", "cancelling"}
 
@@ -67,7 +74,7 @@ def _validate_network_target(url: str, allow_private: bool = False) -> None:
 def validate_direct_media_url(url: str, allow_private: bool = False) -> dict:
     """Reject HTML pages and accept only HLS manifests or direct video responses."""
     _validate_network_target(url, allow_private=allow_private)
-    headers = {"Range": "bytes=0-65535", "User-Agent": "OpenAver authorized-media-import/1.0"}
+    headers = {"Range": "bytes=0-65535", "User-Agent": BROWSER_USER_AGENT}
     try:
         with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(20.0, connect=10.0)) as client:
             with client.stream("GET", url, headers=headers) as response:
@@ -106,9 +113,17 @@ def _ffmpeg_path() -> str:
     return path
 
 
+def _yt_dlp_path() -> str:
+    candidates = [INSTALL_ROOT / "tools" / "yt-dlp.exe", INSTALL_ROOT / "tools" / "yt-dlp"]
+    path = next((str(item) for item in candidates if item.is_file()), None) or shutil.which("yt-dlp")
+    if not path:
+        raise RuntimeError("The multi-thread download engine is not installed")
+    return path
+
+
 def _parse_duration(url: str) -> float | None:
     command = [
-        _ffmpeg_path(), "-hide_banner", "-nostdin", "-protocol_whitelist",
+        _ffmpeg_path(), "-hide_banner", "-nostdin", "-user_agent", BROWSER_USER_AGENT, "-protocol_whitelist",
         "http,https,tcp,tls,crypto", "-i", url, "-t", "0", "-f", "null", "NUL" if os.name == "nt" else "/dev/null",
     ]
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -127,10 +142,10 @@ def _suspend_process(process: subprocess.Popen) -> None:
         import ctypes
         handle = ctypes.windll.kernel32.OpenProcess(0x0800, False, process.pid)
         if not handle:
-            raise OSError("Unable to open FFmpeg process for pause")
+            raise OSError("Unable to open download process for pause")
         try:
             if ctypes.windll.ntdll.NtSuspendProcess(handle) != 0:
-                raise OSError("Unable to pause FFmpeg")
+                raise OSError("Unable to pause download")
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
     else:
@@ -143,10 +158,10 @@ def _resume_process(process: subprocess.Popen) -> None:
         import ctypes
         handle = ctypes.windll.kernel32.OpenProcess(0x0800, False, process.pid)
         if not handle:
-            raise OSError("Unable to open FFmpeg process for resume")
+            raise OSError("Unable to open download process for resume")
         try:
             if ctypes.windll.ntdll.NtResumeProcess(handle) != 0:
-                raise OSError("Unable to resume FFmpeg")
+                raise OSError("Unable to resume download")
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
     else:
@@ -154,12 +169,60 @@ def _resume_process(process: subprocess.Popen) -> None:
         os.kill(process.pid, signal.SIGCONT)
 
 
+class ResizableLimiter:
+    def __init__(self, limit: int) -> None:
+        self._limit = max(1, int(limit))
+        self._active = 0
+        self._condition = threading.Condition()
+
+    @contextmanager
+    def slot(self):
+        with self._condition:
+            while self._active >= self._limit:
+                self._condition.wait(timeout=0.5)
+            self._active += 1
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._active -= 1
+                self._condition.notify_all()
+
+    def resize(self, limit: int) -> None:
+        with self._condition:
+            self._limit = max(1, int(limit))
+            self._condition.notify_all()
+
+    @property
+    def active(self) -> int:
+        with self._condition:
+            return self._active
+
+
+def _error_code(message: str) -> str:
+    lowered = (message or "").lower()
+    if "403 forbidden" in lowered or "http error 403" in lowered:
+        return "http_403"
+    if "multi-thread download engine is not installed" in lowered:
+        return "engine_missing"
+    if "target folder already contains files" in lowered:
+        return "target_exists"
+    return "download_failed"
+
+
 class MediaDownloadManager:
     def __init__(self, state_path: Path = DOWNLOADS_PATH, *, allow_private_urls: bool = False) -> None:
         self.state_path = Path(state_path)
         self.allow_private_urls = allow_private_urls
         self._lock = threading.RLock()
-        self._slots = threading.BoundedSemaphore(1)
+        configured = load_config().get("download", {})
+        self._settings = {
+            "max_concurrent_downloads": int(configured.get("max_concurrent_downloads", 4)),
+            "fragment_threads": int(configured.get("fragment_threads", 16)),
+            "retry_count": int(configured.get("retry_count", 5)),
+            "request_timeout_seconds": int(configured.get("request_timeout_seconds", 30)),
+        }
+        self._limiter = ResizableLimiter(self._settings["max_concurrent_downloads"])
         self._tasks = self._load()
         self._threads: dict[str, threading.Thread] = {}
         self._processes: dict[str, subprocess.Popen] = {}
@@ -186,7 +249,38 @@ class MediaDownloadManager:
         payload = dict(result.get("payload", {}))
         payload["media_url"] = _safe_url_for_display(payload.get("media_url", ""))
         result["payload"] = payload
+        if result.get("status") == "failed" and not result.get("error_code"):
+            result["error_code"] = _error_code(result.get("message", ""))
         return result
+
+    def settings(self) -> dict:
+        try:
+            engine_path = _yt_dlp_path()
+        except RuntimeError:
+            engine_path = ""
+        with self._lock:
+            return {
+                **self._settings,
+                "active_downloads": self._limiter.active,
+                "engine": "yt-dlp",
+                "engine_available": bool(engine_path),
+            }
+
+    def configure(self, *, max_concurrent_downloads: int, fragment_threads: int) -> dict:
+        max_concurrent_downloads = max(1, min(8, int(max_concurrent_downloads)))
+        fragment_threads = max(1, min(64, int(fragment_threads)))
+        with self._lock:
+            self._settings["max_concurrent_downloads"] = max_concurrent_downloads
+            self._settings["fragment_threads"] = fragment_threads
+            self._limiter.resize(max_concurrent_downloads)
+
+        def update(config: dict) -> None:
+            section = config.setdefault("download", {})
+            section["max_concurrent_downloads"] = max_concurrent_downloads
+            section["fragment_threads"] = fragment_threads
+
+        mutate_config(update)
+        return self.settings()
 
     def list(self) -> list[dict]:
         with self._lock:
@@ -263,6 +357,22 @@ class MediaDownloadManager:
                     except OSError:
                         pass
                     process.terminate()
+            elif action == "retry" and status == "failed":
+                number = task.get("payload", {}).get("number")
+                duplicate = any(
+                    item is not task
+                    and item.get("status") in ACTIVE_STATES
+                    and item.get("payload", {}).get("number") == number
+                    for item in self._tasks.values()
+                )
+                if duplicate:
+                    raise ValueError(f"An active download already exists for {number}")
+                task.update({
+                    "status": "queued", "progress": 0.0, "elapsed_seconds": 0.0,
+                    "duration_seconds": None, "bytes_written": 0, "speed": "",
+                    "message": "Queued to retry", "error_code": None, "result": None,
+                })
+                launch = True
             else:
                 raise ValueError(f"Cannot {action} a download in state {status}")
             task["updated_at"] = datetime.now().isoformat(timespec="seconds")
@@ -276,10 +386,24 @@ class MediaDownloadManager:
         with self._lock:
             thread = self._threads.get(task_id)
             if thread and thread.is_alive():
+                waiter = threading.Thread(
+                    target=self._launch_after,
+                    args=(task_id, thread),
+                    daemon=True,
+                    name=f"media-download-retry-{task_id}",
+                )
+                waiter.start()
                 return
             thread = threading.Thread(target=self._run, args=(task_id,), daemon=True, name=f"media-download-{task_id}")
             self._threads[task_id] = thread
             thread.start()
+
+    def _launch_after(self, task_id: str, prior: threading.Thread) -> None:
+        prior.join()
+        with self._lock:
+            if self._tasks.get(task_id, {}).get("status") != "queued":
+                return
+        self._launch(task_id)
 
     def _update(self, task_id: str, **changes) -> None:
         with self._lock:
@@ -320,15 +444,15 @@ class MediaDownloadManager:
         VideoRepository().upsert(Video.from_video_info(info))
 
     def _run(self, task_id: str) -> None:
-        part_path: Path | None = None
         process: subprocess.Popen | None = None
         try:
-            with self._slots:
+            with self._limiter.slot():
                 if not self._wait_until_runnable(task_id):
                     self._update(task_id, status="cancelled", message="Cancelled")
                     return
                 with self._lock:
                     payload = dict(self._tasks[task_id]["payload"])
+                    settings = dict(self._settings)
                 self._update(task_id, status="probing", message="Validating direct media URL")
                 media_info = validate_direct_media_url(payload["media_url"], allow_private=self.allow_private_urls)
                 duration = _parse_duration(payload["media_url"])
@@ -342,66 +466,101 @@ class MediaDownloadManager:
                 base_name = sanitize_filename(f"{payload['number']} {display_title}".strip())[:120].rstrip(" .")
                 folder = destination / base_name
                 output_path = folder / f"{base_name}.mp4"
-                part_path = folder / f".{base_name}.part.mp4"
+                work_prefix = f".{base_name}.download."
                 if folder.exists():
-                    unexpected = [item for item in folder.iterdir() if item.name != part_path.name]
+                    unexpected = [item for item in folder.iterdir() if not item.name.startswith(work_prefix)]
                     if unexpected:
                         raise DownloadValidationError(f"Target folder already contains files: {folder.name}")
                 else:
                     folder.mkdir(parents=True, exist_ok=False)
-                part_path.unlink(missing_ok=True)
 
                 command = [
-                    _ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                    "-protocol_whitelist", "http,https,tcp,tls,crypto",
-                    "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-                    "-i", payload["media_url"], "-map", "0:v:0", "-map", "0:a?", "-c", "copy",
-                    "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(part_path),
+                    _yt_dlp_path(), "--ignore-config", "--no-playlist", "--no-simulate", "--newline", "--progress",
+                    "--color", "no_color", "--encoding", "utf-8", "--progress-delta", "0.5",
+                    "--progress-template",
+                    "download:OPENAVER_PROGRESS=%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s|%(progress._speed_str)s|%(progress.eta)s",
+                    "--print", "before_dl:OPENAVER_DURATION=%(duration)s",
+                    "--print", "after_move:OPENAVER_FILEPATH=%(filepath)s",
+                    "--user-agent", BROWSER_USER_AGENT,
+                    "--downloader", "m3u8:native",
+                    "--concurrent-fragments", str(settings["fragment_threads"]),
+                    "--retries", str(settings["retry_count"]),
+                    "--fragment-retries", str(settings["retry_count"]),
+                    "--socket-timeout", str(settings["request_timeout_seconds"]),
+                    "--abort-on-unavailable-fragments",
+                    "--ffmpeg-location", _ffmpeg_path(), "--remux-video", "mp4",
+                    "--output", str(folder / f"{work_prefix}%(ext)s"),
+                    payload["media_url"],
                 ]
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 process = subprocess.Popen(
-                    command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                    command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                     encoding="utf-8", errors="replace", creationflags=flags,
                 )
                 with self._lock:
                     self._processes[task_id] = process
-                self._update(task_id, status="running", message="Downloading", media_kind=media_info["kind"])
+                self._update(
+                    task_id, status="running", message="Downloading", media_kind=media_info["kind"],
+                    engine="yt-dlp", fragment_threads=settings["fragment_threads"],
+                )
 
                 last_save = 0.0
-                progress_block: dict[str, str] = {}
+                output_lines: deque[str] = deque(maxlen=24)
+                downloaded_path: Path | None = None
                 assert process.stdout is not None
                 for raw_line in process.stdout:
                     line = raw_line.strip()
-                    if "=" not in line:
+                    if not line:
                         continue
-                    key, value = line.split("=", 1)
-                    progress_block[key] = value
-                    if key != "progress":
+                    output_lines.append(line)
+                    if line.startswith("OPENAVER_DURATION="):
+                        value = line.split("=", 1)[1]
+                        try:
+                            duration = float(value)
+                            self._update(task_id, duration_seconds=duration)
+                        except (TypeError, ValueError):
+                            pass
                         continue
-                    elapsed = float(progress_block.get("out_time_us", "0") or 0) / 1_000_000
-                    percent = min(99.9, elapsed / duration * 100) if duration else 0.0
+                    if line.startswith("OPENAVER_FILEPATH="):
+                        downloaded_path = Path(line.split("=", 1)[1])
+                        continue
+                    if not line.startswith("OPENAVER_PROGRESS="):
+                        continue
+                    values = line.split("=", 1)[1].split("|", 4)
+                    percent_match = re.search(r"\d+(?:\.\d+)?", values[0] if values else "")
+                    percent = min(99.9, float(percent_match.group(0))) if percent_match else 0.0
+                    try:
+                        bytes_written = int(values[1])
+                    except (IndexError, TypeError, ValueError):
+                        bytes_written = 0
+                    elapsed = duration * percent / 100 if duration else 0.0
+                    speed = values[3].strip() if len(values) > 3 and values[3] != "NA" else ""
                     now = time.monotonic()
-                    if now - last_save >= 0.5 or value == "end":
+                    if now - last_save >= 0.45:
                         self._update(
                             task_id, progress=round(percent, 1), elapsed_seconds=round(elapsed, 1),
-                            bytes_written=int(progress_block.get("total_size", "0") or 0),
-                            speed=progress_block.get("speed", ""),
+                            bytes_written=bytes_written, speed=speed,
                         )
                         last_save = now
-                    progress_block.clear()
 
-                stderr = process.stderr.read() if process.stderr else ""
                 return_code = process.wait()
                 with self._lock:
                     status = self._tasks[task_id]["status"]
                 if status == "cancelling":
-                    part_path.unlink(missing_ok=True)
                     self._update(task_id, status="cancelled", message="Cancelled")
                     return
                 if return_code != 0:
-                    raise RuntimeError((stderr or "FFmpeg download failed").strip()[-800:])
+                    raise RuntimeError("\n".join(output_lines)[-1200:] or "Download engine failed")
 
-                os.replace(part_path, output_path)
+                if not downloaded_path or not downloaded_path.is_file():
+                    candidates = [
+                        item for item in folder.glob(f"{work_prefix}*")
+                        if item.is_file() and ".part" not in item.name and not item.name.endswith(".ytdl")
+                    ]
+                    downloaded_path = max(candidates, key=lambda item: item.stat().st_size) if candidates else None
+                if not downloaded_path or not downloaded_path.is_file():
+                    raise RuntimeError("Download completed but the output file was not found")
+                os.replace(downloaded_path, output_path)
                 import_error = ""
                 try:
                     self._write_assets_and_import(payload, output_path, duration)
@@ -410,6 +569,8 @@ class MediaDownloadManager:
                     import_error = _redact_urls(str(exc))
                 self._update(
                     task_id, status="completed", progress=100.0,
+                    elapsed_seconds=round(duration, 1) if duration else 0.0,
+                    bytes_written=output_path.stat().st_size, speed="",
                     message="Completed" if not import_error else "Downloaded; library import needs attention",
                     result={
                         "output_path": str(output_path), "folder": str(folder),
@@ -418,9 +579,8 @@ class MediaDownloadManager:
                 )
         except Exception as exc:
             logger.exception("Authorized media download task %s failed", task_id)
-            if part_path:
-                part_path.unlink(missing_ok=True)
-            self._update(task_id, status="failed", message=_redact_urls(str(exc)))
+            message = _redact_urls(str(exc))
+            self._update(task_id, status="failed", message=message, error_code=_error_code(message))
         finally:
             with self._lock:
                 self._processes.pop(task_id, None)

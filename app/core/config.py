@@ -186,6 +186,13 @@ class AutomationConfig(BaseModel):
     settle_seconds: int = 30
 
 
+class DownloadConfig(BaseModel):
+    max_concurrent_downloads: int = Field(default=4, ge=1, le=8)
+    fragment_threads: int = Field(default=16, ge=1, le=64)
+    retry_count: int = Field(default=5, ge=0, le=20)
+    request_timeout_seconds: int = Field(default=30, ge=5, le=120)
+
+
 class AppConfig(BaseModel):
     scraper: ScraperConfig = ScraperConfig()
     search: SearchConfig = SearchConfig()
@@ -196,6 +203,7 @@ class AppConfig(BaseModel):
     general: GeneralConfig = GeneralConfig()
     security: SecurityConfig = SecurityConfig()
     automation: AutomationConfig = AutomationConfig()
+    download: DownloadConfig = DownloadConfig()
     sources: list[SourceConfig] = Field(default_factory=get_builtin_sources)
     thumbnail_cache_enabled: bool = False  # 縮圖快取開關（feature/71 T2）；預設關閉；top-level additive migration 補缺漏
     metatube: MetatubeConfig = MetatubeConfig()  # CD-63b-3；Pydantic default 自動補缺漏（no migration needed）
@@ -505,6 +513,17 @@ def _load_config_unlocked() -> dict:
                 'settle_seconds': 30,
             }
             need_save = True
+
+        download_defaults = DownloadConfig().model_dump()
+        download = raw_config.get('download')
+        if not isinstance(download, dict):
+            raw_config['download'] = download_defaults
+            need_save = True
+        else:
+            for key, value in download_defaults.items():
+                if key not in download:
+                    download[key] = value
+                    need_save = True
 
         # Save migrated config（已持鎖 → 用 unlocked 版避免自我死鎖）
         if need_save:

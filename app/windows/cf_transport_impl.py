@@ -25,6 +25,7 @@ import json
 import queue
 import time
 from typing import Any, TYPE_CHECKING
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     import webview
@@ -153,7 +154,9 @@ class PyWebViewCfTransport:
     def __init__(self, jl_window: webview.Window) -> None:
         self._win = jl_window
         self._dead = False
-        self._cf_url = None  # 0.9.9g: the exact URL that triggered CF, so begin_solve shows the real challenge
+        self._cf_url = None  # Backward-compatible pointer to the latest challenge URL.
+        self._cf_urls: dict[str, str] = {}
+        self._active_cache_key = "javlibrary"
         # Backstop: if the window is genuinely destroyed (crash / OS-forced / app
         # teardown) despite the closing-intercept in standalone.py, mark dead so
         # subsequent calls fail-fast instead of raising opaque errors on a dead window.
@@ -222,6 +225,16 @@ class PyWebViewCfTransport:
             logger.info("[CF-DIAG] fetch → _dead=True, raising unavailable (url=%s)", url)
             raise CfTransportUnavailable("JavLibrary CF window was unexpectedly destroyed (crash / forced close); restart OpenAver to use JavLibrary again")
 
+        # A WebView fetch is same-origin. Route a different site through the
+        # visible solve/navigation flow before attempting JavaScript fetch(),
+        # otherwise Chromium returns an opaque CORS error.
+        if cache_key != self._active_cache_key:
+            self._cf_urls[cache_key] = url
+            self._cf_url = url
+            raise CfChallengeRequired(
+                f"CF transport must navigate from {self._active_cache_key} to {urlsplit(url).netloc}"
+            )
+
         logger.debug("[CF-DIAG] fetch start %s (url=%s)", self._event_states(), url)
 
         # Bridge gate (0.9.9c): if pywebview's JS bridge is not ready, evaluate_js
@@ -231,6 +244,7 @@ class PyWebViewCfTransport:
         if not self._bridge_ready():
             logger.info("[CF-DIAG] fetch → bridge not ready (_pywebviewready unset) → route to solve (url=%s)", url)
             self._cf_url = url
+            self._cf_urls[cache_key] = url
             raise CfChallengeRequired(f'bridge not ready (CF likely) for {url}')
 
         # Set over18 cookie before fetching so the 18+ age gate is never served
@@ -261,6 +275,7 @@ class PyWebViewCfTransport:
         if _is_cf_challenge(title, html):
             logger.info("[CF-DIAG] fetch → CF challenge detected (title=%r, url=%s)", (title or "")[:80], url)
             self._cf_url = url
+            self._cf_urls[cache_key] = url
             raise CfChallengeRequired(f'CF challenge detected for {url}')
 
         # Fallback: if the age gate still shows despite the cookie (race / unexpected
@@ -287,7 +302,9 @@ class PyWebViewCfTransport:
         if self._dead:
             logger.info("[CF-DIAG] begin_solve → _dead=True, raising unavailable")
             raise CfTransportUnavailable("JavLibrary CF window was unexpectedly destroyed (crash / forced close); restart OpenAver to use JavLibrary again")
-        target = self._cf_url or origin_url
+        target = self._cf_urls.get(cache_key) or origin_url
+        self._active_cache_key = cache_key
+        self._cf_url = target
         logger.info("[CF-DIAG] begin_solve → show + load_url (target=%s) %s", target, self._event_states())
         self._win.show()
         self._win.load_url(target)
@@ -317,6 +334,9 @@ class PyWebViewCfTransport:
         if self._dead:
             logger.info("[CF-DIAG] is_ready → _dead=True, raising unavailable")
             raise CfTransportUnavailable("JavLibrary CF window was unexpectedly destroyed (crash / forced close); restart OpenAver to use JavLibrary again")
+
+        if cache_key != self._active_cache_key:
+            return False
 
         # Bridge gate (0.9.9c): if pywebview's bridge is not ready the page is still
         # on CF / loading. evaluate_js would block ~20s and throw → report not-ready

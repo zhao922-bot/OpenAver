@@ -1320,6 +1320,27 @@
     line-height: 1.45;
 }
 
+.download-tuning {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 180px));
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--stroke-subtle);
+}
+
+.download-tuning-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.download-tuning-field .input {
+    width: 100%;
+}
+
 .download-start-row {
     justify-content: flex-end;
     margin-top: 14px;
@@ -1381,4 +1402,5 @@
     .download-field-wide { grid-column: auto; }
     .download-task-row { grid-template-columns: minmax(0, 1fr); }
     .download-task-actions { justify-content: flex-end; }
+    .download-tuning { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

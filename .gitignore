@@ -9,4 +9,4 @@ window_state.json
 __pycache__/
 *.pyc
 *.log
-
+/tools/

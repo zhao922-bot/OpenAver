@@ -12,10 +12,12 @@ from pydantic import BaseModel, Field, HttpUrl
 from core.cf_transport import CfChallengeRequired, CfTransportUnavailable, get_cf_transport
 from core.config import load_config
 from core.jable_metadata import JABLE_ORIGIN, lookup_jable_titles
+from core.logger import get_logger
 from core.media_downloader import DownloadValidationError, media_download_manager
 
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
+logger = get_logger(__name__)
 
 
 class DownloadRequest(BaseModel):
@@ -34,6 +36,11 @@ class DownloadRequest(BaseModel):
     cover: str = Field(default="", max_length=2000)
     source_page_url: str = Field(default="", max_length=2000)
     rights_confirmed: bool = False
+
+
+class DownloadSettingsRequest(BaseModel):
+    max_concurrent_downloads: int = Field(ge=1, le=8)
+    fragment_threads: int = Field(ge=1, le=64)
 
 
 def _local_only(request: Request) -> None:
@@ -64,6 +71,21 @@ def download_destinations() -> dict:
     return {"success": True, "items": _destinations()}
 
 
+@router.get("/settings")
+def download_settings() -> dict:
+    return {"success": True, "settings": media_download_manager.settings()}
+
+
+@router.put("/settings")
+def update_download_settings(payload: DownloadSettingsRequest, request: Request) -> dict:
+    _local_only(request)
+    settings = media_download_manager.configure(
+        max_concurrent_downloads=payload.max_concurrent_downloads,
+        fragment_threads=payload.fragment_threads,
+    )
+    return {"success": True, "settings": settings}
+
+
 @router.get("/jable-titles")
 def jable_titles(request: Request, number: str = Query(min_length=2, max_length=64)) -> dict:
     _local_only(request)
@@ -83,6 +105,9 @@ def jable_titles(request: Request, number: str = Query(min_length=2, max_length=
         raise HTTPException(status_code=409, detail={"reason": "cf_challenge"})
     except CfTransportUnavailable as exc:
         raise HTTPException(status_code=503, detail={"reason": "cf_unavailable"}) from exc
+    except Exception as exc:
+        logger.exception("Jable public-title lookup failed for %s", normalized)
+        raise HTTPException(status_code=502, detail={"reason": "title_lookup_failed"}) from exc
 
 
 @router.post("")
@@ -109,7 +134,7 @@ def create_download(payload: DownloadRequest, request: Request) -> dict:
 @router.post("/{task_id}/{action}")
 def control_download(task_id: str, action: str, request: Request) -> dict:
     _local_only(request)
-    if action not in {"pause", "resume", "cancel"}:
+    if action not in {"pause", "resume", "cancel", "retry"}:
         raise HTTPException(status_code=404, detail="Unknown action")
     try:
         return {"success": True, "task": media_download_manager.control(task_id, action)}

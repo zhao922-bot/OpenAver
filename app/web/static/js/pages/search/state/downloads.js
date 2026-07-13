@@ -4,8 +4,10 @@ export function searchStateDownloads() {
         downloadModalOpen: false,
         downloadLookupLoading: false,
         downloadStarting: false,
+        downloadSettingsSaving: false,
         downloadTasks: [],
         downloadDestinations: [],
+        downloadSettings: { maxConcurrentDownloads: 4, fragmentThreads: 16, engineAvailable: true },
         _downloadPollTimer: null,
         _downloadLookupGeneration: 0,
         downloadForm: {
@@ -41,7 +43,7 @@ export function searchStateDownloads() {
                 sourcePageUrl: current.url || '',
             };
             this.downloadModalOpen = true;
-            await Promise.all([this.loadDownloadDestinations(), this.loadDownloadTasks()]);
+            await Promise.all([this.loadDownloadDestinations(), this.loadDownloadTasks(), this.loadDownloadSettings()]);
             if (!this.downloadForm.destination && this.downloadDestinations.length) {
                 this.downloadForm.destination = this.downloadDestinations[0];
             }
@@ -88,6 +90,44 @@ export function searchStateDownloads() {
             }
         },
 
+        async loadDownloadSettings() {
+            try {
+                const data = await this._downloadJson('/api/downloads/settings');
+                const settings = data.settings || {};
+                this.downloadSettings = {
+                    maxConcurrentDownloads: settings.max_concurrent_downloads || 4,
+                    fragmentThreads: settings.fragment_threads || 16,
+                    engineAvailable: settings.engine_available !== false,
+                };
+            } catch (error) {
+                this.showToast(error.message, 'error');
+            }
+        },
+
+        async saveDownloadSettings() {
+            if (this.downloadSettingsSaving) return;
+            this.downloadSettingsSaving = true;
+            try {
+                const data = await this._downloadJson('/api/downloads/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        max_concurrent_downloads: Number(this.downloadSettings.maxConcurrentDownloads),
+                        fragment_threads: Number(this.downloadSettings.fragmentThreads),
+                    }),
+                });
+                const settings = data.settings || {};
+                this.downloadSettings.maxConcurrentDownloads = settings.max_concurrent_downloads;
+                this.downloadSettings.fragmentThreads = settings.fragment_threads;
+                this.showToast(window.t('search.download.settings_saved'), 'success');
+            } catch (error) {
+                await this.loadDownloadSettings();
+                this.showToast(error.message, 'error');
+            } finally {
+                this.downloadSettingsSaving = false;
+            }
+        },
+
         async lookupJableTitles() {
             if (this.downloadLookupLoading || !this.downloadForm.number) return;
             const generation = ++this._downloadLookupGeneration;
@@ -116,9 +156,11 @@ export function searchStateDownloads() {
                 if (!result.title_ja && !result.title_zh) throw new Error(window.t('search.download.no_titles'));
                 this.showToast(window.t('search.download.titles_loaded'), 'success');
             } catch (error) {
-                const message = error.message === 'cf_unavailable'
-                    ? window.t('search.download.desktop_required')
-                    : error.message;
+                const messages = {
+                    cf_unavailable: window.t('search.download.desktop_required'),
+                    title_lookup_failed: window.t('search.download.title_lookup_failed'),
+                };
+                const message = messages[error.message] || error.message;
                 this.showToast(message, 'error');
             } finally {
                 if (generation === this._downloadLookupGeneration) this.downloadLookupLoading = false;
@@ -194,6 +236,18 @@ export function searchStateDownloads() {
         downloadStatusText(status) {
             const known = ['queued', 'probing', 'running', 'paused', 'cancelling', 'cancelled', 'completed', 'failed'];
             return known.includes(status) ? window.t(`search.download.status_${status}`) : status;
+        },
+
+        downloadTaskMessage(task) {
+            const keys = {
+                http_403: 'error_http_403',
+                engine_missing: 'error_engine_missing',
+                target_exists: 'error_target_exists',
+                download_failed: 'error_download_failed',
+            };
+            return keys[task.error_code]
+                ? window.t(`search.download.${keys[task.error_code]}`)
+                : (task.message || '');
         },
 
         _formatDownloadTime(seconds) {
