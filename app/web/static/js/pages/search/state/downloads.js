@@ -134,18 +134,25 @@ export function searchStateDownloads() {
             this.downloadLookupLoading = true;
             try {
                 let data;
+                let waitingForReady = false;
                 for (let attempt = 0; attempt < 121; attempt++) {
                     if (generation !== this._downloadLookupGeneration) return;
+                    if (waitingForReady) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        if (generation !== this._downloadLookupGeneration) return;
+                        const status = await this._downloadJson('/api/cf/status?key=jable');
+                        if (status.unavailable) throw new Error('cf_unavailable');
+                        // Do not navigate again while the WebView is loading: that
+                        // resets Cloudflare's background check on every retry.
+                        if (!status.ready) continue;
+                    }
                     try {
                         data = await this._downloadJson(`/api/downloads/jable-titles?number=${encodeURIComponent(this.downloadForm.number)}`);
                         break;
                     } catch (error) {
                         if (error.status !== 409 || error.detail?.reason !== 'cf_challenge') throw error;
                         if (attempt === 0) this.showToast(window.t('search.download.complete_browser_check'), 'info');
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        if (generation !== this._downloadLookupGeneration) return;
-                        const status = await this._downloadJson('/api/cf/status?key=jable');
-                        if (!status.ready) continue;
+                        waitingForReady = true;
                     }
                 }
                 if (!data) throw new Error(window.t('search.download.lookup_timeout'));

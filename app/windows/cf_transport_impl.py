@@ -42,6 +42,26 @@ from core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _same_document_url(left: str, right: str) -> bool:
+    """Compare navigation URLs while tolerating a trailing slash and fragment."""
+    try:
+        a = urlsplit(left)
+        b = urlsplit(right)
+    except ValueError:
+        return False
+    return (
+        a.scheme.lower(),
+        a.netloc.lower(),
+        a.path.rstrip("/") or "/",
+        a.query,
+    ) == (
+        b.scheme.lower(),
+        b.netloc.lower(),
+        b.path.rstrip("/") or "/",
+        b.query,
+    )
+
+
 # ──────────────────────────────────────────────────────────────
 # Module-level helper (column 0)
 # ──────────────────────────────────────────────────────────────
@@ -146,9 +166,9 @@ class PyWebViewCfTransport:
     """
     CfTransport implementation backed by a dedicated hidden PyWebView window.
 
-    The window stays hidden at rest.  begin_solve() shows it so the user can
-    complete the CF challenge + age gate.  is_ready() polls state without
-    blocking; when ready it auto-hides the window.
+    The window stays hidden for background-capable sites such as Jable.
+    JavLibrary challenges remain visible when user interaction may be needed.
+    is_ready() polls state without blocking and hides the window when ready.
     """
 
     def __init__(self, jl_window: webview.Window) -> None:
@@ -158,7 +178,7 @@ class PyWebViewCfTransport:
         self._cf_urls: dict[str, str] = {}
         self._active_cache_key = "javlibrary"
         self._last_navigation_target = ""
-        self._last_navigation_at = 0.0
+        self._visible_position = (100, 100)
         # Backstop: if the window is genuinely destroyed (crash / OS-forced / app
         # teardown) despite the closing-intercept in standalone.py, mark dead so
         # subsequent calls fail-fast instead of raising opaque errors on a dead window.
@@ -255,18 +275,27 @@ class PyWebViewCfTransport:
             "document.cookie='over18=18; path=/';"
         )
 
-        t0 = time.monotonic()
-        try:
-            final_url, status, html = _wv_fetch(self._win, url)  # C1: unpack correctly
-        except Exception as e:
-            # [CF-DIAG] zero behavior change: surface the failure TYPE + elapsed so
-            # the 40-min repro distinguishes dead-window (WebViewException, ~20s)
-            # from silent death (TimeoutError, 12s×3). Re-raise unchanged.
-            logger.info(
-                "[CF-DIAG] fetch raised %s after %.1fs (url=%s)",
-                type(e).__name__, time.monotonic() - t0, url,
-            )
-            raise
+        current_url = self._win.get_current_url() or ""
+        if _same_document_url(current_url, url):
+            # The solve/navigation flow has already loaded the exact page. Reading
+            # its DOM avoids a second same-origin request that Cloudflare may treat
+            # as a new challenge even though the visible page is valid.
+            final_url = current_url
+            status = 200
+            html = self._win.evaluate_js("document.documentElement.outerHTML") or ""
+            logger.debug("[CF-DIAG] fetch reused current document (len=%d, url=%s)", len(html), url)
+        else:
+            t0 = time.monotonic()
+            try:
+                final_url, status, html = _wv_fetch(self._win, url)  # C1: unpack correctly
+            except Exception as e:
+                # [CF-DIAG] surface the failure type and elapsed time without
+                # changing the exception contract.
+                logger.info(
+                    "[CF-DIAG] fetch raised %s after %.1fs (url=%s)",
+                    type(e).__name__, time.monotonic() - t0, url,
+                )
+                raise
 
         # Detect CF challenge via title
         soup = BeautifulSoup(html, 'html.parser')
@@ -288,13 +317,15 @@ class PyWebViewCfTransport:
             raise CfChallengeRequired(f'age gate detected (cookie did not suppress) for {url}')
 
         logger.debug("[CF-DIAG] fetch ok (status=%s, len=%d, url=%s)", status, len(html), url)
+        if cache_key == "jable":
+            self._win.hide()
         return html
 
     def begin_solve(self, origin_url: str, cache_key: str = 'javlibrary') -> None:
         """
-        Non-blocking: show the window, navigate to the CF-challenged URL (or origin
-        as fallback), so the user sees the actual Cloudflare Turnstile challenge
-        immediately.  Returns immediately — does NOT wait for the user to solve.
+        Non-blocking: navigate to the CF-challenged URL (or origin as fallback).
+        Jable navigation stays hidden; sites which may require interaction remain
+        visible. Returns immediately and does not wait for completion.
 
         0.9.9g: navigates to self._cf_url (the exact URL that triggered CF) when
         available, rather than origin_url.  JavLibrary's homepage (/ja/) is NOT
@@ -305,16 +336,30 @@ class PyWebViewCfTransport:
             logger.info("[CF-DIAG] begin_solve → _dead=True, raising unavailable")
             raise CfTransportUnavailable("JavLibrary CF window was unexpectedly destroyed (crash / forced close); restart OpenAver to use JavLibrary again")
         target = self._cf_urls.get(cache_key) or origin_url
-        now = time.monotonic()
+        previous_cache_key = self._active_cache_key
         is_duplicate_navigation = (
             cache_key == self._active_cache_key
             and target == self._last_navigation_target
             and not self._bridge_ready()
-            and now - self._last_navigation_at < 5.0
         )
         self._active_cache_key = cache_key
         self._cf_url = target
-        self._win.show()
+        background = cache_key == "jable"
+        if background:
+            if cache_key != previous_cache_key:
+                try:
+                    position = (self._win.x, self._win.y)
+                    if position[0] > -10000 and position[1] > -10000:
+                        self._visible_position = position
+                except Exception:
+                    pass
+            # WebView2 throttles challenge scripts when a window is truly hidden.
+            # Keep it active but outside the virtual desktop so no popup is shown.
+            self._win.move(-32000, -32000)
+            self._win.show()
+        else:
+            self._win.move(*self._visible_position)
+            self._win.show()
         if is_duplicate_navigation:
             logger.debug(
                 "[CF-DIAG] begin_solve: navigation already in progress "
@@ -324,8 +369,12 @@ class PyWebViewCfTransport:
             )
             return
         self._last_navigation_target = target
-        self._last_navigation_at = now
-        logger.info("[CF-DIAG] begin_solve → show + load_url (target=%s) %s", target, self._event_states())
+        logger.info(
+            "[CF-DIAG] begin_solve → %s + load_url (target=%s) %s",
+            "offscreen" if background else "show",
+            target,
+            self._event_states(),
+        )
         self._win.load_url(target)
         # ROOT-CAUSE FIX (0.9.9c): deliberately NO evaluate_js here. Setting the
         # over18 cookie via evaluate_js right after navigating to a (CF-challenged)
@@ -402,8 +451,9 @@ class PyWebViewCfTransport:
         _lvl = logger.info if (ready or cf) else logger.debug
         _lvl("[CF-DIAG] is_ready=%s (cf=%s, age_gate=%s, title=%r) %s", ready, cf, ag, (title or "")[:80], self._event_states())
 
-        # 5. Auto-hide when first ready
-        if ready:
+        # 5. Interactive windows hide when ready. Jable stays active offscreen
+        # until fetch() completes so WebView2 does not throttle the final request.
+        if ready and cache_key != "jable":
             self._win.hide()
 
         return ready

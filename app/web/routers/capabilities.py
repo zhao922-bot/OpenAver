@@ -91,7 +91,7 @@ _TOOLS: list[dict] = [
             "required": ["number"],
         },
         "output_schema": {
-            "title_zh": "string — 公開頁面的中文標題",
+            "title_zh": "string — 公開頁面的簡體中文標題",
             "title_ja": "string — 公開頁面的日文標題",
             "candidates": "array — 標題、語言及公開作品頁連結",
         },

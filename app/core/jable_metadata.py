@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 from bs4 import BeautifulSoup
 
+from core.chinese_converter import traditional_to_simplified
 from core.cf_transport import CfChallengeRequired, CfTransportUnavailable, get_cf_transport
 
 
@@ -15,8 +16,22 @@ JABLE_ORIGIN = "https://jable.tv/"
 
 def _clean_title(value: str, number: str) -> str:
     text = " ".join((value or "").split())
-    text = re.sub(rf"(?i)^\s*{re.escape(number)}\s*[-_:/|\u2013\u2014]*\s*", "", text)
+    parts = re.findall(r"[A-Z]+|\d+", number.upper())
+    number_pattern = r"[\s._-]*".join(re.escape(part) for part in parts)
+    if number_pattern:
+        text = re.sub(
+            rf"(?i)^\s*{number_pattern}\s*[-_:/|\u2013\u2014]*\s*",
+            "",
+            text,
+        )
+    text = re.sub(r"(?i)\s*[-|]\s*Jable\.TV.*$", "", text)
     return text.strip()
+
+
+def _contains_number(value: str, number: str) -> bool:
+    compact_value = re.sub(r"[^A-Z0-9]", "", (value or "").upper())
+    compact_number = re.sub(r"[^A-Z0-9]", "", number.upper())
+    return bool(compact_number and compact_number in compact_value)
 
 
 def _language(value: str) -> str:
@@ -44,21 +59,23 @@ def parse_jable_titles(html: str, number: str, search_url: str) -> dict:
         card = anchor.find_parent(["article", "div", "li"])
         title_node = card.select_one(".title, h4, h5, h6") if card else None
         raw = (title_node or anchor).get_text(" ", strip=True)
-        if number_upper not in raw.upper():
+        if not _contains_number(raw, number_upper):
             title_attr = anchor.get("title", "")
-            if number_upper not in title_attr.upper():
+            if not _contains_number(title_attr, number_upper):
                 continue
             raw = title_attr
         title = _clean_title(raw, number)
         if not title:
             continue
-        if href.startswith("/"):
-            href = JABLE_ORIGIN.rstrip("/") + href
+        language = _language(title)
+        if language == "zh":
+            title = traditional_to_simplified(title)
+        href = urljoin(JABLE_ORIGIN, href)
         key = (title.casefold(), href)
         if key in seen:
             continue
         seen.add(key)
-        candidates.append({"title": title, "language": _language(title), "url": href})
+        candidates.append({"title": title, "language": language, "url": href})
 
     if not candidates:
         raw = ""
@@ -66,11 +83,15 @@ def parse_jable_titles(html: str, number: str, search_url: str) -> dict:
             node = soup.select_one(selector)
             if node:
                 raw = node.get("content", "") if node.name == "meta" else node.get_text(" ", strip=True)
-                if number_upper in raw.upper():
+                if _contains_number(raw, number_upper):
                     break
-        title = _clean_title(raw, number)
-        if title:
-            candidates.append({"title": title, "language": _language(title), "url": search_url})
+        if _contains_number(raw, number_upper):
+            title = _clean_title(raw, number)
+            language = _language(title)
+            if language == "zh":
+                title = traditional_to_simplified(title)
+            if title:
+                candidates.append({"title": title, "language": language, "url": search_url})
 
     chinese = next((item["title"] for item in candidates if item["language"] == "zh"), "")
     japanese = next((item["title"] for item in candidates if item["language"] == "ja"), "")
@@ -84,7 +105,7 @@ def parse_jable_titles(html: str, number: str, search_url: str) -> dict:
 
 
 def lookup_jable_titles(number: str) -> dict:
-    """Fetch a public search page through the app's user-visible CF transport."""
+    """Fetch a public search page through the app's background CF transport."""
     transport = get_cf_transport()
     if transport is None:
         raise CfTransportUnavailable("Jable metadata lookup requires the desktop application")
