@@ -1261,3 +1261,124 @@
         var(--fluent-shadow-2),
         0 0 0 4px var(--glow-primary);
 }
+
+/* Authorized media download modal */
+.download-modal-box {
+    width: min(760px, calc(100vw - 32px));
+    max-width: 760px;
+    max-height: min(88vh, 900px);
+    overflow-y: auto;
+}
+
+.download-modal-header,
+.download-start-row,
+.download-task-heading,
+.download-task-meta {
+    display: flex;
+    align-items: center;
+}
+
+.download-modal-header {
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.download-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.download-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.download-field-wide {
+    grid-column: 1 / -1;
+}
+
+.download-number-field {
+    align-self: end;
+}
+
+.download-title-lookup {
+    align-self: end;
+    justify-self: start;
+}
+
+.download-rights-confirm {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 16px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.download-start-row {
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+.download-task-list {
+    margin-top: 18px;
+    border-top: 1px solid var(--stroke-subtle);
+}
+
+.download-task-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--stroke-subtle);
+}
+
+.download-task-heading,
+.download-task-meta {
+    gap: 10px;
+    min-width: 0;
+    font-size: 0.78rem;
+}
+
+.download-task-heading span,
+.download-task-meta {
+    color: var(--text-muted);
+}
+
+.download-progress-track {
+    height: 6px;
+    margin: 8px 0 6px;
+    overflow: hidden;
+    background: var(--surface-3);
+    border-radius: 3px;
+}
+
+.download-progress-fill {
+    height: 100%;
+    background: var(--color-primary);
+    transition: width 300ms ease;
+}
+
+.download-task-message {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.download-task-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+@media (max-width: 640px) {
+    .download-fields { grid-template-columns: minmax(0, 1fr); }
+    .download-field-wide { grid-column: auto; }
+    .download-task-row { grid-template-columns: minmax(0, 1fr); }
+    .download-task-actions { justify-content: flex-end; }
+}

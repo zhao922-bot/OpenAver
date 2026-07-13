@@ -39,6 +39,7 @@
       "exit": "OpenAver を終了（バックグラウンドサービスも停止します）",
       "confirm": "決定",
       "cancel": "キャンセル",
+      "remove": "履歴を削除",
       "do_not_show_again": "今後この確認を表示しない",
       "fallback_message": "「はい」で OpenAver を終了、「いいえ」で通知領域に最小化、「キャンセル」で戻ります。"
     }
@@ -74,6 +75,35 @@
       "open_source_url": "ソースページを開く",
       "open_folder": "フォルダを開く",
       "back_to_detail": "詳細に戻る"
+    },
+    "download": {
+      "open": "許可済みダウンロード",
+      "title": "許可済みメディアのダウンロード",
+      "number": "品番",
+      "lookup_titles": "Jable の公開タイトルを取得",
+      "japanese_title": "日本語原題",
+      "chinese_title": "中国語タイトル",
+      "media_url": "メディア直リンク",
+      "destination": "スキャンフォルダ",
+      "rights_confirm": "このメディアをダウンロードして保存する権利があることを確認します",
+      "start": "ダウンロードキューに追加",
+      "pause": "一時停止",
+      "resume": "再開",
+      "cancel": "キャンセル",
+      "complete_browser_check": "表示されたページでサイト確認を完了してください",
+      "lookup_timeout": "タイトル取得がタイムアウトしました",
+      "no_titles": "利用できるタイトルが見つかりません",
+      "titles_loaded": "公開タイトルを読み込みました",
+      "desktop_required": "OpenAver デスクトップアプリで公開タイトルを取得してください",
+      "queued": "ダウンロードキューに追加しました",
+      "status_queued": "待機中",
+      "status_probing": "確認中",
+      "status_running": "ダウンロード中",
+      "status_paused": "一時停止",
+      "status_cancelling": "キャンセル中",
+      "status_cancelled": "キャンセル済み",
+      "status_completed": "完了",
+      "status_failed": "失敗"
     },
     "empty": {
       "hint": "番号を入力して検索、またはファイルを追加",

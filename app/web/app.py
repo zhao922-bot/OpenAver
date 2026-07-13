@@ -120,6 +120,7 @@ from web.routers import security as security_router
 from web.routers import automation as automation_router
 from web.routers import tasks as tasks_router
 from web.routers import operations as operations_router
+from web.routers import downloads as downloads_router
 # Module-level imports for startup_reconnect / _fire_probe so that
 # patch("web.app.startup_reconnect") / patch("web.app._fire_probe") target the
 # correct use-site binding (TASK-63e-1; function-local import would defeat patch).
@@ -154,6 +155,7 @@ app.include_router(security_router.router)
 app.include_router(automation_router.router)
 app.include_router(tasks_router.router)
 app.include_router(operations_router.router)
+app.include_router(downloads_router.router)
 
 
 @app.exception_handler(RequestValidationError)
