@@ -1,0 +1,12 @@
+python/
+logs/
+backups/
+app/output/
+app/web/config.json
+current_port.json
+current_port.txt
+window_state.json
+__pycache__/
+*.pyc
+*.log
+

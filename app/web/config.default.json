@@ -1,0 +1,201 @@
+{
+  "scraper": {
+    "create_folder": true,
+    "folder_layers": ["{actor}"],
+    "folder_format": "{actor}",
+    "filename_format": "[{num}][{maker}] {title}{suffix}",
+    "download_cover": true,
+    "cover_filename": "poster.jpg",
+    "create_nfo": true,
+    "max_title_length": 50,
+    "max_filename_length": 60,
+    "suffix_keywords": ["-cd1", "-cd2", "-4k", "-uc"],
+    "video_extensions": [
+      ".mp4",
+      ".avi",
+      ".mkv",
+      ".wmv",
+      ".rmvb",
+      ".flv",
+      ".mov",
+      ".m4v",
+      ".ts"
+    ],
+    "jellyfin_mode": false,
+    "external_manager": "off",
+    "download_sample_images": false
+  },
+  "search": {
+    "search_filter": "",
+    "uncensored_mode_enabled": false,
+    "favorite_folder": "",
+    "proxy_url": ""
+  },
+  "source_links": {
+    "dmm": true,
+    "d2pass": true,
+    "heyzo": true,
+    "fc2": true,
+    "javbus": false,
+    "jav321": false,
+    "javdb": false,
+    "avsox": false
+  },
+  "translate": {
+    "enabled": false,
+    "provider": "ollama",
+    "batch_size": 10,
+    "ollama": {
+      "url": "http://localhost:11434",
+      "model": "qwen3:8b"
+    },
+    "gemini": {
+      "api_key": "",
+      "model": "gemini-flash-lite-latest"
+    }
+  },
+  "gallery": {
+    "directories": [],
+    "output_dir": "output",
+    "output_filename": "gallery_output.html",
+    "path_mappings": {},
+    "min_size_mb": 0,
+    "default_mode": "image",
+    "default_sort": "date",
+    "default_order": "descending",
+    "items_per_page": 90
+  },
+  "showcase": {
+    "player": ""
+  },
+  "general": {
+    "default_page": "scanner",
+    "theme": "light",
+    "sidebar_collapsed": false,
+    "tutorial_completed": false,
+    "font_size": "md",
+    "locale": "zh-TW",
+    "close_action": "ask"
+  },
+  "sources": [
+    {
+      "id": "dmm",
+      "type": "builtin",
+      "display_name_key": "DMM",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 0,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": true,
+      "is_censored": true
+    },
+    {
+      "id": "javbus",
+      "type": "builtin",
+      "display_name_key": "JavBus",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 1,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": false,
+      "is_censored": true
+    },
+    {
+      "id": "jav321",
+      "type": "builtin",
+      "display_name_key": "Jav321",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 2,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": false,
+      "is_censored": true
+    },
+    {
+      "id": "javdb",
+      "type": "builtin",
+      "display_name_key": "JavDB",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 3,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": false,
+      "is_censored": true
+    },
+    {
+      "id": "d2pass",
+      "type": "builtin",
+      "display_name_key": "D2Pass",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 4,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": false,
+      "is_censored": false
+    },
+    {
+      "id": "heyzo",
+      "type": "builtin",
+      "display_name_key": "HEYZO",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 5,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": false,
+      "is_censored": false
+    },
+    {
+      "id": "fc2",
+      "type": "builtin",
+      "display_name_key": "FC2",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 6,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": false,
+      "is_censored": false
+    },
+    {
+      "id": "avsox",
+      "type": "builtin",
+      "display_name_key": "AVSOX",
+      "display_name_raw": "",
+      "enabled": true,
+      "order": 7,
+      "config": {},
+      "is_beta": false,
+      "manual_only": false,
+      "requires_proxy": false,
+      "is_censored": false
+    }
+  ],
+  "thumbnail_cache_enabled": true,
+  "security": {
+    "lan_token": "",
+    "require_lan_auth": true
+  },
+  "automation": {
+    "watch_enabled": false,
+    "scan_interval_seconds": 60,
+    "settle_seconds": 30
+  },
+  "metatube": {
+    "enabled": false,
+    "url": "",
+    "token": ""
+  }
+}

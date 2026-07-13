@@ -1,0 +1,1263 @@
+/* ==================== 進度條共用變數 ==================== */
+/* 已移除 - 改用 DaisyUI 變數 */
+
+/* 主要容器 */
+.search-container {
+    min-height: calc(100vh - 56px);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 搜尋框區域 - 緊湊 */
+.search-bar {
+    flex-shrink: 0;
+    padding: 0.5rem 1rem;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border-light);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--fluent-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--fluent-saturate));
+    z-index: 100;
+}
+
+/* 74a-T2: search 右側 worst case 4 元素（toggle + clear + auto pill + submit，compose 態）；8.5rem 會撐出 ~8px 蓋住輸入文字，加寬到 10.5rem 容納（含 EN "Auto" 最寬語系 pill） */
+.search-bar .spotlight-search {
+    --spotlight-right-slot: 10.5rem;
+}
+
+/* T5: compose 態 icon 互斥 — btn-icon 不縮（三個 icon 共存時不擠壓彼此） */
+.spotlight-search .btn-icon {
+    flex-shrink: 0;
+}
+
+/* 結果區域（外層容器，包含所有狀態頁 + 結果卡片） */
+.result-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    padding: 0.5rem;
+    gap: 0.5rem;
+    min-height: 0;
+}
+
+/* 結果卡片 wrapper（卡片 + 檔案列表垂直排列） */
+#resultCard {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-height: 100%;
+    gap: 0.5rem;
+    overflow: hidden;
+}
+
+/* === AV Card Full: Search 專用擴充 === */
+
+/* 封面內層 wrapper（支援導航按鈕絕對定位） */
+.av-card-full-cover-wrapper {
+    position: relative;
+    width: 100%;
+    min-height: 400px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: var(--overlay-letterbox);
+}
+
+/* Fix 3: 封面錯誤/無封面 placeholder 置中 */
+.cover-error-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+/* U8d: Cover loading shimmer placeholder */
+.cover-loading-placeholder {
+    position: absolute;
+    inset: 0;
+    background: var(--color-base-300);
+    z-index: 1;
+}
+
+.cover-loading-placeholder .shimmer {
+    position: absolute;
+    inset: 0;
+}
+
+.av-card-full-cover-img {
+    width: 100%;
+    height: 100%;
+    max-height: calc(100vh - 200px);
+    object-fit: contain !important;  /* Search 不裁切；!important 覆蓋 theme.css (0,1,1) specificity */
+    /* §2 例外：drop-shadow 跟封面去背形狀走（非矩形 box-shadow），無法用 --fluent-shadow-* token（後者是完整 box-shadow 字串）；alpha 0.3 對齊 dim theme fluent-shadow key 0.28 ±0.02 */
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+}
+
+/* 停用 hover 放大（Search 有導航按鈕，放大會干擾） */
+.av-card-full:hover .av-card-full-cover img {
+    transform: none;
+}
+
+/* Search 專用：info 固定寬度，封面自適應 */
+.search-container .av-card-full-cover {
+    flex: 1;
+    min-width: 0;
+    /* 83a2-T4 (Bug B)：清 theme.css L495 的 min-height:200px 地板。
+       與 wrapper min-height:0 + img height:auto 合力消除封面下方 letterbox 留白，
+       並讓 block flow 自然包含 sample-strip（Bug A 桌面連帶修，overflow:hidden 不再截）。 */
+    min-height: 0;
+}
+
+/* 83a2-T4 (Bug B)：清 search.css L50 wrapper 的 min-height:400px 主地板（scope 覆寫，不動全域 L50）。 */
+.search-container .av-card-full-cover-wrapper {
+    min-height: 0;
+}
+
+/* 83a2-T4 (Bug B)：封面圖高由 width:100% + AR 自然推導，不依賴父容器死高（原 L84 height:100% 靠 wrapper 400px）。
+   max-height:calc(100vh-200px) 由 L84-91 既有規則保留。specificity (0,2,0) > 原 (0,1,0)。 */
+.search-container .av-card-full-cover-img {
+    height: auto;
+}
+
+/* 83a2-T4 邊界：min-height:0 後，下列兩條無圖內容路徑會讓 wrapper 高=0
+   （子元素皆 position:absolute;inset:0，不佔 flow；img height:auto 在無 intrinsic size 時也是 0）：
+     1. 無圖 / 封面 404 → .cover-error-placeholder（含無封面 fallback）
+     2. 封面載入中（_coverLoaded=false，慢速/未快取）→ .cover-loading-placeholder（shimmer）
+   塌 0 會讓 placeholder/shimmer + nav-indicator 一起消失/閃動。只在對應元素顯示時（Alpine x-show
+   未寫 display:none）才撐高；圖片載入完成後兩條 :has 皆不命中 → min-height 回 0，無 Bug B letterbox 復發。 */
+.search-container .av-card-full-cover-wrapper:has(.cover-error-placeholder:not([style*="display: none"])),
+.search-container .av-card-full-cover-wrapper:has(.cover-loading-placeholder:not([style*="display: none"])) {
+    min-height: 120px;
+}
+
+.search-container .av-card-full-info {
+    flex: 0 0 390px;    /* US1-75b：320px → 390px（spec NC#2，CD-75b-1） */
+    overflow-y: auto;
+}
+
+/* US1-75b：取消 search 右欄 body 撐高（top-pack）。不刪全域 theme.css flex:1
+   （design-system 也用 + 被 tailwind.css:4430 編譯副本架空，刪 theme.css 那條不生效）；
+   search.css 載入在 tailwind.css 之後、(0,2,0) > 全域 (0,1,0)，scope override 確實生效（CD-75b-4）。 */
+.search-container .av-card-full-body {
+    flex: none;
+}
+
+/* US1-75b：搜尋詳情右欄 inline label-value（覆寫 theme.css 全域 .info-label{display:block}，
+   只在 search 右欄 scope 覆寫，不動全域，避免影響 showcase 燈箱 .lightbox-metadata；CD-75b-3） */
+.search-container .av-card-full-body .info-row,
+.search-container .av-card-full-body .info-cell {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.search-container .av-card-full-body .info-label {
+    flex-shrink: 0;      /* label 不被壓縮 */
+    white-space: nowrap;
+}
+
+.search-container .av-card-full-body .info-value {
+    flex: 1;
+    min-width: 0;        /* 必要：flex min-width:auto 不觸發 text-overflow（CD-75b-10） */
+}
+
+/* US1-75b：雙欄 metadata grid（CD-75b-2） */
+.search-container .av-card-full-body .info-grid-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem 1rem;    /* 縱 0.5rem（8px）、橫 1rem（16px，Fluent 8pt × 2） */
+    margin-bottom: 0.5rem;
+}
+
+/* CD-75b-10：grid cell 內 label/value 截斷 */
+.search-container .av-card-full-body .info-grid-pair .info-label {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.search-container .av-card-full-body .info-grid-pair .info-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 導航按鈕（絕對定位在封面上） */
+.av-card-full-cover-wrapper .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 64px;
+    background: var(--overlay-modal);
+    border: none;
+    color: var(--text-inverse);
+    font-size: 1.4rem;
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+    z-index: 10;
+    border-radius: var(--fluent-radius-md);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+.av-card-full-cover-wrapper .nav-btn:hover {
+    background: var(--overlay-gallery);
+    transform: translateY(-50%) scale(1.05);
+}
+
+.av-card-full-cover-wrapper .nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: translateY(-50%);
+}
+
+.av-card-full-cover-wrapper .nav-btn.prev { left: 10px; }
+.av-card-full-cover-wrapper .nav-btn.next { right: 10px; }
+
+/* 索引指示器 */
+.av-card-full-cover-wrapper .nav-indicator {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--overlay-modal);
+    color: var(--text-inverse);
+    padding: 2px 8px;
+    border-radius: var(--fluent-radius-xl);
+    font-size: 0.8rem;
+}
+
+/* AV Card Full 在 wrapper 內可壓縮（檔案列表出現時） */
+#resultCard > .av-card-full {
+    flex-shrink: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* 檔案列表區（卡片下方獨立區塊） */
+.file-list-section {
+    background: color-mix(in oklch, var(--color-base-200) 80%, transparent);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--fluent-radius-lg);
+    padding: 0.5rem 1rem;
+    width: 100%;
+    flex-shrink: 0;
+    overflow-y: auto;
+    max-height: 200px;
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-4);
+}
+
+.file-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.file-list-header .file-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+
+
+.file-item {
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    border-radius: var(--fluent-radius-sm);
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard);
+    color: var(--text-primary);
+    /* Force text color */
+}
+
+.file-item:hover {
+    background: var(--border-light);
+    /* Better hover for dark mode */
+}
+
+.file-item.active {
+    background: var(--border-light);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.file-item .file-icon {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.file-item .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-item .file-status {
+    font-size: 0.75rem;
+    color: var(--color-success);
+    flex-shrink: 0;
+}
+
+.file-item .btn-scrape-single {
+    flex-shrink: 0;
+    /* row inline btn optical 6px (btn-sm 12px padding 對 row inline 太寬，row 高度有限需獨立微調) */
+    padding: 0 6px;
+    font-size: 0.7rem;
+    line-height: 1.4;
+}
+
+/* === 保留：Search 專用 ID 樣式 === */
+
+#switchSourceBtn {
+    font-size: 1.25rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard), transform var(--fluent-duration-fast) var(--fluent-ease-decel);
+}
+
+#switchSourceBtn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+#switchSourceBtn:disabled {
+    opacity: 0.3;
+}
+
+/* 標籤 */
+/* REMOVED: .tag-badge moved to theme.css (global) */
+
+/* T8.3: state-page Canvas 上的 surface 層 */
+.search-container .state-page {
+    background: color-mix(in oklch, var(--color-base-200) 60%, transparent);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: var(--radius-md);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-2);
+}
+
+/* T8.3: av-card-full 補 inner highlight */
+.search-container .av-card-full {
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-8);
+}
+
+/* .hidden 保護：search 頁內所有後代元素。
+ * 自定義 CSS（.search-progress / .info-icon-btn / .error-nav 等）
+ * 的 display 規則會覆蓋 Tailwind .hidden，需 !important。
+ * 僅限 .search-container 範圍，不影響全站 Tailwind responsive 語義。 */
+.search-container .hidden {
+    display: none !important;
+}
+
+/* === 空狀態：查資料 vs 動檔案 說明區塊 === */
+.empty-explainer {
+    max-width: 34em;
+    margin: 0.75rem auto 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--stroke-subtle);
+    text-align: center;
+}
+
+.empty-explainer-line {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    opacity: 0.75;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+}
+
+.empty-explainer-line + .empty-explainer-line {
+    margin-top: 0.3em;
+}
+
+@media (max-width: 480px) {
+    .empty-explainer {
+        max-width: 100%;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+/* 搜尋提示 */
+.search-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    text-align: center;
+}
+
+/* === 搜尋進度指示器 === */
+.search-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+}
+
+.progress-container {
+    background: var(--color-base-200);
+    border-radius: var(--fluent-radius-xl);
+    padding: 1.5rem 2rem;
+    min-width: 320px;
+    max-width: 420px;
+    box-shadow: var(--shadow-md);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    transition: background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+[data-theme="dim"] .progress-container {
+    background: var(--color-base-300);
+}
+
+.progress-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid color-mix(in oklch, var(--color-base-content) 10%, transparent);
+}
+
+.progress-query {
+    color: var(--color-secondary);
+    font-weight: 600;
+    font-size: 1.1rem;
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+/* 單行日誌 */
+.progress-log {
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 0.5rem;
+    min-height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.progress-log::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border: 2px solid color-mix(in oklch, var(--color-primary) 30%, transparent);
+    border-top-color: var(--color-primary);
+    border-radius: var(--fluent-radius-circle);
+    animation: spin 0.8s linear infinite;
+}
+
+
+/* 詳情進度條 */
+.detail-progress {
+    margin-top: 1rem;
+    position: relative;
+    height: 22px;
+    background: color-mix(in oklch, var(--color-base-100) 50%, transparent);
+    border-radius: var(--fluent-radius-xl);
+    overflow: hidden;
+    display: none;
+    transition: background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.detail-progress.show {
+    display: block;
+}
+
+.detail-bar {
+    height: 100%;
+    background: var(--color-primary);
+    border-radius: var(--fluent-radius-xl);
+    transition: width var(--fluent-duration-slow) var(--fluent-ease-standard), background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+    min-width: 2%;
+}
+
+.detail-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--color-primary-content);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-shadow: 0 1px 2px color-mix(in oklch, var(--color-base-100) 30%, transparent);
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+/* === 拖拽覆蓋層 === */
+/* === 拖拽覆蓋層 === */
+.drag-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: color-mix(in oklch, var(--color-base-100) 60%, transparent);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--fluent-duration-slow) var(--fluent-ease-standard), visibility var(--fluent-duration-slow) var(--fluent-ease-standard), background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+    pointer-events: none;
+}
+
+.drag-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.drag-overlay-content {
+    background: transparent;
+    padding: 2rem;
+    text-align: center;
+    color: var(--color-base-content);
+    transform: scale(0.95);
+    transition: transform var(--fluent-duration-slow) var(--fluent-ease-decel);
+}
+
+.drag-overlay.active .drag-overlay-content {
+    transform: scale(1);
+}
+
+.drag-overlay-content i {
+    font-size: 4rem;
+    color: var(--color-base-content);
+    margin-bottom: 1rem;
+    display: block;
+    text-shadow: 0 4px 12px color-mix(in oklch, var(--color-base-100) 20%, transparent);
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.drag-overlay-content p {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--color-base-content);
+    margin: 0;
+    text-shadow: 0 2px 8px color-mix(in oklch, var(--color-base-100) 30%, transparent);
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+/* === RWD 響應式 === */
+
+/* Tablet & Mobile: 調整容器高度 */
+@media (max-width: 991.98px) {
+    .search-container {
+        height: calc(100vh - 56px);
+        /* 扣除頂部導航列 */
+    }
+}
+
+/* === RWD: Search Card 響應式 === */
+
+/* <= 1024px：垂直排列（封面上方 + info 下方） */
+@media (max-width: 1024px) {
+    .search-container .av-card-full {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .search-container .av-card-full-cover {
+        flex: none;
+        width: 100%;
+        max-height: 50vh;
+        /* 83a2-T4 (Bug A mobile)：max-height:50vh + overflow:hidden 確定截 sample-strip
+           （img 留 60px 但 strip ≈ clamp(48,0.18×50vh,120)≈81px > 60px）。獨立必要 override，
+           非桌面備援。外層 #resultCard>.av-card-full 已 overflow:visible、本 media 內 .av-card-full
+           已 overflow-y:auto 負責捲動，cover 改 visible 不破壞捲動模型。 */
+        overflow: visible;
+    }
+
+    .av-card-full-cover-img {
+        max-height: calc(50vh - 60px);
+    }
+
+    .search-container .av-card-full-info {
+        flex: none;
+        width: 100%;
+        min-width: auto;
+    }
+
+    /* 75a-US3a: mobile scroll trap 解鎖 —
+     * 桌面 .av-card-full-info 已有 overflow-y:auto，不動。
+     * column-stacked layout 下四層 overflow:hidden + height 鎖定形成 scroll trap。 */
+    .result-area        { overflow: visible; }
+    #resultCard         { overflow: visible; max-height: none; }
+    #resultCard > .av-card-full { overflow: visible; }
+    .search-container   { height: auto; overflow-y: auto; }
+
+    /* US1-75b：≤1024px 全寬單欄時，雙欄 metadata 回單欄（spec §US1 L97/L113 驗收強制，CD-75b-2） */
+    .search-container .av-card-full-body .info-grid-pair {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Mobile 額外調整 */
+@media (max-width: 767.98px) {
+    .av-card-full-cover-wrapper .nav-btn {
+        width: 36px;
+        height: 52px;
+        font-size: 1.1rem;
+    }
+
+    .av-card-full-cover-wrapper .nav-btn.prev { left: 5px; }
+    .av-card-full-cover-wrapper .nav-btn.next { right: 5px; }
+
+    .search-bar {
+        padding: 0.5rem;
+    }
+
+    .search-hint {
+        display: none;
+    }
+}
+
+/* 批次進度條（與 .detail-progress 風格統一，使用藍色系） */
+.batch-progress {
+    margin-bottom: 8px;
+    padding: 4px 0;
+}
+
+.batch-progress-bar {
+    height: 6px;
+    background: var(--color-base-200);
+    border-radius: var(--fluent-radius-sm);
+    overflow: hidden;
+    margin-bottom: 4px;
+    position: relative;
+    transition: background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.batch-progress-fill {
+    height: 100%;
+    background: var(--color-primary);
+    width: 0%;
+    transition: width var(--fluent-duration-slow) var(--fluent-ease-standard), background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+#scrapeProgressBar {
+    transition: none;  /* T2b: GSAP 接管 width 動畫 */
+}
+
+.batch-progress-text {
+    display: block;
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    font-size: 0.75rem;
+    text-align: center;
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+/* ==================== 本地標記樣式 ==================== */
+/* REMOVED: .local-badge moved to theme.css (global) */
+
+.file-item .local-indicator {
+    font-size: 0.8rem;
+    margin-left: 4px;
+}
+
+/* ==================== 用戶標籤樣式 ==================== */
+.tag-badge.user-tag {
+    background: var(--accent);
+    color: var(--color-primary-content);
+    cursor: default;
+}
+
+.tag-badge .tag-remove {
+    cursor: pointer;
+    margin-left: 4px;
+    opacity: 0.7;
+}
+
+.tag-badge .tag-remove:hover {
+    opacity: 1;
+}
+
+.tag-add-btn {
+    /* chip optical 6px (charter §4 micro chip 級例外保留，對齊 showcase .lb-tag-add-btn) */
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    line-height: 1;
+    background: transparent;
+    border: 1px dashed var(--text-muted);
+    color: var(--text-muted);
+    border-radius: var(--fluent-radius-sm);
+    margin-left: 2px;
+    vertical-align: middle;
+}
+
+.tag-add-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.tag-input-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    vertical-align: middle;
+}
+
+.tag-input {
+    width: 80px;
+    padding: 1px 4px;
+    font-size: 0.7rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--fluent-radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+.tag-confirm, .tag-cancel {
+    padding: 0 4px;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    border: none;
+    background: transparent;
+}
+
+.tag-confirm {
+    color: var(--color-success);
+}
+
+.tag-cancel {
+    color: var(--color-error);
+}
+
+/* ==================== T2a: Grid Mode ==================== */
+.search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem;
+    padding-bottom: 2.5rem; /* 底部安全距：容納 hover glow（20px shadow + 4px translateY） */
+
+    /* 防止卡片過寬（對齊 showcase-grid） */
+    max-width: 100%;
+}
+
+/* 響應式斷點 - 對齊 showcase.css */
+@media (min-width: 1500px) {
+    .search-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+@media (min-width: 1100px) and (max-width: 1499px) {
+    .search-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (min-width: 900px) and (max-width: 1099px) {
+    .search-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* 481-899px → 4 columns 直式右裁 poster 格（US-10 / CD-11） */
+@media (min-width: 481px) and (max-width: 899px) {
+    .search-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .search-grid {
+        grid-template-columns: repeat(3, 1fr);  /* T9-port：search 影片格對齊 showcase 3-col */
+        gap: 0.5rem;
+        padding: 0.75rem;
+    }
+}
+
+/* T9-port：≤480px search 影片格 poster-crop + caption（對齊 showcase T4/T5，Option P 平行）。
+   ★ Codex P2 修正：search grid 是 `<div class="search-grid ds-gallery-composition">`——scope class 在
+   grid 元素「本身」，非祖先（showcase 是 `.showcase-container.ds-gallery-composition` 祖先，故用後代）。
+   故此處用**複合選擇器** `:is(…).search-grid`（無空格，同元素），而非後代 `:is(…) .search-grid`——
+   後者要求 scope 在 .search-grid 的祖先 → search 無此祖先 → 永不命中（poster-crop/caption silent no-op）。
+   :is(#id,…) 仍必要：帶 (1,0,0) 使複合 (1,4,0) 勝基準 :is(…) .av-card-preview-img (1,1,0)；
+   去掉 #id 的純 class 複合僅 (0,4,0) 會輸基準。:not(.hero-card) 排除女優入口 hero 卡。
+   US-10 / T10：poster-crop 樣式從 ≤480 擴到 ≤899（481–899 4 欄直式右裁與 ≤480 一致）；
+   欄數靠各自 @media（≤480 = 3 欄 / 481–899 = 4 欄），複合 selector 形式（無空格）不變。 */
+@media (max-width: 899px) {
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview:not(.hero-card) .av-card-preview-img {
+        aspect-ratio: var(--poster-crop-ratio, 0.71);
+        height: auto;
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview:not(.hero-card) .av-card-preview-img img {
+        object-position: right center;
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview:not(.hero-card) .av-card-preview-footer .footer-default .av-num {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.7rem;
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview:not(.hero-card) .av-card-preview-footer .footer-default .av-actress {
+        display: none;
+    }
+
+    /* T11：search 頁平行修正（同 showcase）。
+       ★ Codex P2：search grid 的 ds-gallery-composition 在 .search-grid 本身（非祖先）→ 用複合
+       :is(…).search-grid（無空格、同元素）。後代 :is(…) .search-grid 在 search 永不命中（silent no-op）。
+       :is(#id,…) 帶 (1,0,0) 使複合 (1,4,0) 勝 theme.css 基準 :is(…) .av-card-preview-img (1,0,1)。 */
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview.hero-card .av-card-preview-img {
+        aspect-ratio: var(--poster-crop-ratio, 0.71);
+        height: auto;
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview.hero-card .av-card-preview-img img {
+        object-fit: cover;
+        transform-origin: center center;
+    }
+}
+
+/* T9-port：≤480px ∩ touch 裝置 — search 影片格還原 .footer-default（番號可讀層）。
+   showcase.css 的 @media(pointer:coarse) US3c 把全局 .av-card-preview .footer-default opacity:0，
+   而 showcase 的 ≤480∩coarse 修正只 scope 在 .showcase-grid（L894–902），不涵蓋 .search-grid。
+   故補平行規則：≤480px ∩ coarse ∩ .search-grid 非 hero → 還原 footer-default 番號層。
+   specificity :is(…) ID 帶 (1,0,0) 使 (1,4,0) 勝 US3c .av-card-preview .footer-* (0,2,0)。
+   selector 同用複合 `:is(…).search-grid`（scope 在 grid 本身，見上 Codex P2 註）。
+   US-10 / T10：擴 ≤480 → ≤899 與 poster-crop 樣式同步（481–899 平板 poster 格 footer 行為一致）。 */
+@media (max-width: 899px) and (pointer: coarse) {
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview:not(.hero-card) .footer-default {
+        opacity: 1;
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition).search-grid .av-card-preview:not(.hero-card) .footer-hover {
+        opacity: 0;
+    }
+}
+
+/* 83a-T3: search 頁燈箱封面 modal-hug（aspect-box 模型，對齊 showcase T1/T1fix1）。
+   search 無 similar-open → selector 不需 :not(.similar-open)；
+   scope 靠 .search-container（不波及 showcase 頁）。 */
+.search-container .lightbox-cover.has-cover {
+    flex-shrink: 0;
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: var(--lb-cover-ar, 1.5);
+    width: min(90vw, calc((90vh - 15rem) * var(--lb-cover-ar, 1.5)));
+    width: min(90vw, calc((90dvh - 15rem) * var(--lb-cover-ar, 1.5)));
+    height: auto;
+}
+
+.search-container .lightbox-cover.has-cover img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* 83a-T3-fix P1: search 燈箱 metadata 可變高 → modal 捲動修正。
+   search 無 similar-open → 直接加 overflow-y:hidden，不需 :not(.similar-open) scope。
+   .lightbox-metadata flex 分配：吃剩餘高度並自行捲動（同 showcase）。 */
+.search-container .lightbox-content {
+    overflow-y: hidden;
+}
+.search-container .lightbox-metadata {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* T9-port：≤480px search 影片燈箱封面貼合原圖比例（消 letterbox 死白）。
+   判別子 .search-container 精準限 search 頁——showcase 頁根為 .showcase-container，零波及。
+   容器 + img 皆 gate .has-cover（決策 ①）：search 無 similar-open、無「保低 specificity」顧慮；
+     gate has-cover 後女優模式（has-cover=false）/無封面/404 皆不命中 → 乾淨排除女優燈箱、不塌。
+   specificity（皆自勝、不靠源序）：容器 .search-container .lightbox-cover.has-cover (0,3,0) 勝基準 (0,1,0)；
+     img .search-container .lightbox-cover.has-cover img (0,3,1) 勝基準 .lightbox-cover img (0,1,1)。 */
+@media (max-width: 899px) {
+    /* (b) 容器：有封面才塌到圖盒 */
+    .search-container .lightbox-cover.has-cover {
+        min-height: 0;
+        min-width: 0;
+    }
+    /* (a) img：寬填滿、高隨原圖比例（覆寫 60vh letterbox 源）；同 gate has-cover 排除女優燈箱 */
+    .search-container .lightbox-cover.has-cover img {
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+    }
+}
+
+/* Footer 雙層切換（對齊 showcase.css .showcase-grid 的 footer 設定） */
+.search-grid .av-card-preview-footer {
+    position: relative;
+    overflow: hidden;
+    height: 2.5rem;
+}
+
+/* ==================== T2d: Actress Profile ==================== */
+
+/* T5: Detail Mode Actress Banner 已移除（HTML + CSS），僅保留 Grid Mode Hero Card */
+
+/* Grid Mode - Hero Card */
+.hero-card {
+    cursor: pointer;
+}
+
+/* ==================== T4: Skeleton + Shimmer ==================== */
+.skeleton-cover {
+    aspect-ratio: 3/2;
+    background: var(--color-base-300);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--color-base-300) 25%,
+        var(--color-base-200) 50%,
+        var(--color-base-300) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ==================== U3: Staging Card (Overlay) ==================== */
+/* grid + staging overlay 的定位容器 */
+.grid-staging-wrapper {
+    position: relative;
+}
+
+/* Staging Anchor — overlay layer，浮在 grid 上方，不佔 flow 空間 */
+.staging-anchor {
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    isolation: isolate;  /* 建立 stacking context，讓 ::before plate 在 grid 之上 */
+}
+
+/* 不透明遮罩 plate — 實色底板蓋住下面的 grid card，避免重疊眼花 */
+.staging-anchor::before {
+    content: '';
+    position: absolute;
+    inset: -0.5rem -1rem;
+    background: var(--color-base-100);
+    border-radius: var(--radius-lg);
+    z-index: -1;
+}
+
+[data-theme="dim"] .staging-anchor::before {
+    background: var(--color-base-200);
+}
+
+/* staging card 樣式由 theme.css .ds-gallery-composition 接管（圓角/shadow/footer/av-num 全一致）
+   寬度由 JS 動態同步 grid card */
+/* 禁用 staging card 的 hover 效果（不是互動元素，且 hover transform 會讓 burst 起點 rect 漂掉） */
+.staging-anchor .av-card-preview,
+.staging-anchor .av-card-preview:hover {
+    transform: none;
+    pointer-events: none;
+}
+.staging-anchor .av-card-preview:hover .av-card-preview-img img {
+    transform: none;
+}
+
+/* Progress log（staging anchor 內）— 實色，不半透明 */
+.staging-progress-log {
+    font-size: 0.75rem;
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    text-align: center;
+    padding: 0.25rem 0.75rem;
+    background: var(--color-base-200);
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+}
+
+[data-theme="dim"] .staging-progress-log {
+    background: var(--color-base-300);
+}
+
+/* 計數 badge（參考 motion_lab.html L297-303 的 .staging-counter-badge） */
+.staging-counter-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--fluent-radius-md);
+    white-space: nowrap;
+}
+
+/* Hero Card 圖片覆寫：容器保持 3/2，圖片 contain 完整顯示 */
+/* 需匹配 theme.css :is(#ds-gallery-components, .ds-gallery-composition) 的 specificity */
+:is(#ds-gallery-components, .ds-gallery-composition) .hero-card .av-card-preview-img {
+    background: var(--bg-card, rgba(0, 0, 0, 0.05));  /* letterbox 留白背景 */
+}
+
+:is(#ds-gallery-components, .ds-gallery-composition) .hero-card .av-card-preview-img img {
+    object-fit: contain;  /* 完整顯示，不裁切 */
+    transform-origin: center center;  /* 置中（覆蓋 65% center 的 AV 封面偏移） */
+}
+
+/* T5: Hero Card 愛心 overlay 常駐（已收藏時不需 hover） */
+.hero-card .av-card-preview-overlay.always-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* T5: 已收藏愛心按鈕 — 紅色，可點擊（浮動愛心粒子效果） */
+.hero-card .btn-glass-circle.is-favorite {
+    color: var(--color-favorite);
+    cursor: pointer;
+}
+
+/* ==================== T6b: 統一 Toast 容器 ==================== */
+.search-toast-container {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 9999;  /* 高於所有其他元素（包括 lightbox z-index: 1000） */
+    max-width: 420px;
+    pointer-events: none;  /* 不阻擋底下元素的點擊 */
+}
+
+.search-toast-container .alert {
+    pointer-events: auto;  /* alert 本身可點擊（未來可能加關閉按鈕） */
+    box-shadow: var(--fluent-shadow-16);  /* 大陰影，提升視覺層級 */
+}
+
+/* Mobile 適配：toast 左右邊距 */
+@media (max-width: 767.98px) {
+    .search-toast-container {
+        left: 1rem;
+        right: 1rem;
+        bottom: 1rem;
+        max-width: none;
+    }
+}
+
+/* ==================== Fix-1: Suffix Badge ==================== */
+.tag-badge.suffix-badge {
+    background: var(--color-warning);
+    color: var(--color-warning-content);
+}
+
+/* ==================== T7: Sample Images 縮圖列 ==================== */
+.sample-strip {
+    display: flex;
+    flex-direction: row;
+    gap: 0.35rem;
+    overflow-x: auto;
+    padding: 0.5rem 0.25rem;
+    scrollbar-width: thin;
+    /* 不佔滿封面欄高度，自然 shrink */
+    /* Fix D：分隔線 */
+    border-top: 1px solid var(--stroke-subtle);
+}
+
+.sample-thumb-btn {
+    flex-shrink: 0;
+    padding: 0;
+    background: none;
+    cursor: pointer;
+    overflow: hidden;
+    /* Fix D：border + 圓角修正（--fluent-radius-sm 未定義，改用 --radius-xs = 4px） */
+    border: 1px solid var(--stroke-subtle);
+    border-radius: var(--radius-xs);
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard),
+                transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.sample-thumb-btn:hover {
+    opacity: 0.85;
+    transform: scale(1.05);
+}
+
+/* Fix C：active 高亮（outline 不影響 box model，不觸發 layout shift） */
+.sample-thumb-active {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+/* Fix B：比例縮放（覆蓋 theme.css `.av-card-full-cover img` specificity 0-1-1）
+   --cover-height: 由 JS (_updateCoverHeight) 在封面載入 / 導航 / resize 後動態設定，
+                   預設 400px（對應 .av-card-full-cover-wrapper 的 min-height）
+   --sample-thumb-ratio: 縮圖高度佔封面高度的比例（小數），預設 0.18 ≈ 18%
+   例：封面高 500px → 縮圖高 90px（clamp 上限 120px 保護超大視窗） */
+.sample-strip .sample-thumb-img {
+    height: clamp(48px, calc(var(--cover-height, 400px) * var(--sample-thumb-ratio, 0.18)), 120px);
+    width: auto;
+    display: block;
+    object-fit: cover;
+    transition: none;   /* 覆蓋 theme.css 的 transform transition */
+}
+
+/* ==================== T8: Sample Gallery ==================== */
+/* Note: base rules (.sample-gallery, .sg-open-btn, etc.) are defined in showcase.css
+   which is also loaded on /search. Only search-specific overrides needed here. */
+
+/* z-index: 1500 — 高於 Grid Lightbox (1000) 和舊 sample-lightbox (1050) */
+.sample-gallery {
+    z-index: 1500;
+}
+
+/* C21 guard：GSAP 動畫期間禁用 sg-main-img 的 CSS transition */
+.sample-gallery .sg-main-img.gsap-animating {
+    transition: none !important;
+}
+
+/* ==================== Phase 43 T6: Actress Lightbox ==================== */
+.actress-lightbox-meta .lb-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.actress-lightbox-meta .lb-name-en { font-size: 0.9em; opacity: 0.7; }
+.actress-lightbox-meta .lb-actress-core { font-size: 0.95em; margin: 8px 0; opacity: 0.85; }
+.actress-lightbox-meta .lb-chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.actress-lightbox-meta .lb-chips-more {
+    cursor: pointer; font-size: 0.85em; padding: 2px 8px;
+    border-radius: var(--radius-md); border: 1px solid currentColor; opacity: 0.6;
+}
+.actress-lightbox-meta .lb-chips-more:hover { opacity: 1; }
+.actress-lightbox-meta .lb-actress-urls { margin-top: 8px; }
+.actress-lightbox-meta .lb-actress-urls a { display: block; font-size: 0.8em; word-break: break-all; opacity: 0.7; }
+.actress-lightbox-meta .lb-actress-urls a:hover { opacity: 1; text-decoration: underline; }
+
+/* Actress Lightbox Row 1 愛心（inline，使用 .btn-glass-circle） */
+.actress-lb-header .btn-glass-circle { width: 32px; height: 32px; font-size: 1rem; margin-left: auto; }
+.actress-lb-header .btn-glass-circle.is-favorite { color: var(--color-favorite); cursor: default; }
+
+/* ==================== Phase 51 T2.4 §6 5 檢查點 — Search DaisyUI Component Override ==================== */
+/* Fluent 覆寫 .search-container 內 DaisyUI .btn / .textarea（charter §6 5 檢查點：radius/surface/stroke/shadow/hover-focus）*/
+/* CD-4 限制：scoped 在 .search-container 內，不影響其他頁面 / 不動 .spotlight-search（pill 白名單第 1 類 + theme.css CD-4 觀察項，Phase 52 處理）*/
+/* 沿 Phase 50 T5 完整實作規格 verbatim：Stroke (border-width/style only — 不固定 color)；Surface (var(--surface-1) for .textarea)；Shadow + dual-layer inset 0 1px 0；Focus 2px outline + 4px glow */
+
+.search-container .btn {
+    border-radius: var(--fluent-radius-md);
+    border-width: 1px;
+    border-style: solid;
+    /* 不固定 border-color — 保留 DaisyUI variant (.btn-outline.btn-primary 等) */
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-2);
+    transition:
+        background var(--fluent-duration-fast) var(--fluent-ease-standard),
+        border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+        box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard),
+        transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.search-container .btn:hover:not(:disabled) {
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 12%, transparent),
+        var(--fluent-shadow-4);
+    transform: translateY(-1px);
+}
+
+.search-container .btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-2),
+        0 0 0 4px var(--glow-primary);
+}
+
+.search-container .btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-2);
+}
+
+/* 個案豁免：dashed transparent btn / link btn / tag inline icon-only btn 自有設計語言，不套 dual-layer shadow（視覺衝突）*/
+/* tag-add-btn 自有 dashed border + transparent；tag-confirm / tag-cancel 自有 border:none + transparent + 純文字 ✓/✕ */
+/* btn-link 自有 link 樣式（無 box），dual-layer shadow 打破 link 語義 */
+.search-container .btn.tag-add-btn,
+.search-container .btn.tag-confirm,
+.search-container .btn.tag-cancel,
+.search-container .btn-link {
+    box-shadow: none;
+    background: transparent;
+    transform: none;
+    /* radius 對齊保留 */
+}
+/* tag-add-btn restore base dashed border（被 .search-container .btn 的 border-style: solid override 蓋掉）*/
+.search-container .btn.tag-add-btn {
+    border-style: dashed;
+    border-color: var(--text-muted);
+}
+/* tag-confirm / tag-cancel restore base border:none */
+.search-container .btn.tag-confirm,
+.search-container .btn.tag-cancel {
+    border: none;
+}
+.search-container .btn.tag-add-btn:hover:not(:disabled),
+.search-container .btn.tag-confirm:hover:not(:disabled),
+.search-container .btn.tag-cancel:hover:not(:disabled),
+.search-container .btn-link:hover:not(:disabled) {
+    box-shadow: none;
+    transform: none;
+}
+/* tag-add-btn hover 保留原 border-color: accent + color: accent */
+.search-container .btn.tag-add-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.search-container .btn.tag-add-btn:focus-visible,
+.search-container .btn.tag-confirm:focus-visible,
+.search-container .btn.tag-cancel:focus-visible,
+.search-container .btn-link:focus-visible {
+    /* 保留 focus glow（a11y 必需）但移除 dual-layer shadow */
+    box-shadow: 0 0 0 4px var(--glow-primary);
+}
+
+.search-container .textarea {
+    border-radius: var(--fluent-radius-md);
+    background: var(--surface-1);
+    border-width: 1px;
+    border-style: solid;
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-2);
+    transition:
+        border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+        box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.search-container .textarea:focus,
+.search-container .textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-color: var(--accent);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-2),
+        0 0 0 4px var(--glow-primary);
+}

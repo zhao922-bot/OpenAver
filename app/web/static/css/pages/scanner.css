@@ -1,0 +1,274 @@
+/* Scanner - 影片列表生成頁面 CSS */
+/* Gallery components (.avlist-card, .folder-*, .stats-card, .actress-alias-*, etc.)
+   are provided by theme.css via the .ds-gallery-composition scope. */
+
+.readonly-toggle-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    color: color-mix(in oklch, var(--color-base-content) 75%, transparent);
+}
+
+.folder-item-output {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem 0.75rem 2.75rem;
+    border-bottom: 1px solid color-mix(in oklch, var(--color-base-content) 8%, transparent);
+}
+
+.folder-item-output label {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+}
+
+.folder-item-output input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+@media (max-width: 640px) {
+    :is(#ds-gallery-components, .ds-gallery-composition) .folder-item {
+        flex-wrap: wrap;
+    }
+
+    .folder-item-output {
+        align-items: stretch;
+        flex-direction: column;
+        padding-left: 0.75rem;
+    }
+}
+
+/* Main Container */
+.avlist-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+/* Page Title */
+.avlist-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /* T8.2: Acrylic 材質 */
+    background: var(--bg-header);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(120%);
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(120%);
+    border-bottom: 1px solid var(--stroke-subtle);
+    padding-bottom: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.avlist-header h4 {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.avlist-header .stats {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+/* Mini Terminal - Compact Log */
+.mini-terminal {
+    background: color-mix(in oklch, var(--color-base-200) 80%, transparent);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--fluent-radius-xl);
+    margin: 1rem;
+    overflow: hidden;
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-4);
+    transition: background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+[data-theme="dim"] .mini-terminal {
+    background: color-mix(in oklch, var(--color-base-200) 55%, transparent);
+}
+
+.mini-terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: color-mix(in oklch, var(--color-base-content) 5%, transparent);
+    transition: background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.mini-terminal-header .title {
+    font-size: 0.8rem;
+    color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+    flex-shrink: 0;
+}
+
+/* Log Filter Group */
+.log-filter-group {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.log-filter-btn {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.7rem;
+    border-radius: var(--fluent-radius-md);
+    background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    border: none;
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.log-filter-btn:hover {
+    background: color-mix(in oklch, var(--color-base-content) 12%, transparent);
+    color: var(--color-base-content);
+}
+
+.log-filter-btn.active {
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+}
+
+/* Log Actions */
+.log-actions {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.log-action-btn {
+    width: 1.5rem;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--fluent-radius-sm);
+    background: transparent;
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    border: none;
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.log-action-btn:hover {
+    background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+    color: var(--color-base-content);
+}
+
+.log-action-btn i {
+    font-size: 0.75rem;
+}
+
+.mini-terminal-body {
+    max-height: 120px;
+    overflow-y: auto;
+    padding: 0.75rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: color-mix(in oklch, var(--color-base-content) 80%, transparent);
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.mini-terminal-body .log-info {
+    color: var(--color-secondary);
+}
+
+.mini-terminal-body .log-warn {
+    color: var(--color-accent);
+}
+
+.mini-terminal-body .log-error {
+    color: var(--color-error);
+}
+
+/* Progress Bar */
+.progress-mini {
+    height: 3px;
+    background: color-mix(in oklch, var(--color-base-100) 50%, transparent);
+    border-radius: var(--fluent-radius-sm);
+    margin: 0.5rem 0.75rem 0.75rem;
+    overflow: hidden;
+    transition: background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.progress-mini .bar {
+    height: 100%;
+    background: var(--color-primary);
+    border-radius: var(--fluent-radius-sm);
+    transition: width var(--fluent-duration-slow) var(--fluent-ease-standard), background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+/* Drag Overlay - Consistent with Search */
+.drag-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: color-mix(in oklch, var(--color-base-100) 60%, transparent);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.drag-overlay-content {
+    text-align: center;
+    color: var(--color-base-content);
+}
+
+.drag-overlay-content i {
+    font-size: 4rem;
+    color: var(--color-base-content);
+    margin-bottom: 1rem;
+    display: block;
+    text-shadow: 0 4px 12px color-mix(in oklch, var(--color-base-100) 30%, transparent);
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+.drag-overlay-content p {
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: var(--color-base-content);
+    margin: 0;
+    text-shadow: 0 2px 8px color-mix(in oklch, var(--color-base-100) 30%, transparent);
+    transition: color var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+
+/* Log Filter CSS-only */
+.mini-terminal-body.filter-error .log-info,
+.mini-terminal-body.filter-error .log-warn {
+    display: none !important;
+}
+
+.mini-terminal-body.filter-warn .log-info,
+.mini-terminal-body.filter-warn .log-error {
+    display: none !important;
+}
+
+/* TASK-52.3.6: copy fail modal pre block (clipboard fail fallback dump) */
+.copy-fail-pre {
+    max-height: 50vh;
+    overflow-y: auto;
+    user-select: text;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.85em;
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    background: var(--surface-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--fluent-radius-md);
+    color: var(--text-default, currentColor);
+}

@@ -1,0 +1,502 @@
+"""
+OpenAver Windows 單機版啟動器
+整合 FastAPI 後端 + PyWebView 前端於同一進程
+"""
+import os
+import sys
+import time
+import threading
+import socket
+import json
+import urllib.request
+import urllib.error
+import logging
+import traceback
+from pathlib import Path
+
+# 確保專案根目錄在 sys.path 中
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+INSTALL_DIR = Path(APP_DIR).parent
+CURRENT_PORT_TXT = INSTALL_DIR / "current_port.txt"
+CURRENT_PORT_JSON = INSTALL_DIR / "current_port.json"
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+
+# 確保 windows 目錄也在 sys.path 中（for pywebview_api import）
+WINDOWS_DIR = os.path.dirname(os.path.abspath(__file__))
+if WINDOWS_DIR not in sys.path:
+    sys.path.insert(0, WINDOWS_DIR)
+
+from core.logger import setup_logging, get_logger
+import webview
+from pywebview_api import api, bind_events
+from tray import DesktopLifecycle, NativeTrayIcon
+
+# 配置
+CLIENT_HOST = "127.0.0.1"  # 桌面 App 自連：find_free_port、health 探活、WebView URL（loopback only）
+PORT = 49152  # 使用動態/私有端口範圍 (49152-65535)，避免權限問題
+STARTUP_TIMEOUT = 30  # 最多等待 30 秒
+
+
+# ============ WebView2 檢查 ============
+
+def check_webview2_installed():
+    """檢查 WebView2 Runtime 是否已安裝"""
+    try:
+        import winreg
+        # 檢查 Registry - 64 位元路徑
+        key_path = r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path):
+            return True
+    except (FileNotFoundError, OSError):
+        pass
+
+    try:
+        import winreg
+        # 備用路徑 - 32 位元
+        key_path = r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path):
+            return True
+    except (FileNotFoundError, OSError):
+        pass
+
+    return False
+
+
+def show_webview2_prompt():
+    """顯示 WebView2 安裝提示"""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        import webbrowser
+
+        root = tk.Tk()
+        root.withdraw()
+
+        message = (
+            "OpenAver 需要 Microsoft Edge WebView2 Runtime 才能運行。\n\n"
+            "這是 Windows 10/11 的標準元件，但您的系統尚未安裝。\n\n"
+            "是否前往下載頁面？（約 2MB，安裝需 1 分鐘）"
+        )
+
+        result = messagebox.askyesno("需要 WebView2 Runtime", message)
+
+        if result:
+            webbrowser.open("https://go.microsoft.com/fwlink/p/?LinkId=2124703")
+
+        root.destroy()
+        return result
+    except Exception as e:
+        # 使用 ASCII-safe 格式避免 Windows console 編碼問題
+        try:
+            err_logger = get_logger('standalone')
+            err_logger.warning(f"[OpenAver] 無法顯示 WebView2 提示視窗：{e}")
+        except Exception:  # noqa: S110 — logger may not be initialized; silent fallback is intentional
+            pass
+        return False
+
+
+# ============ 錯誤處理 ============
+
+def show_error(title, message, details=None, logger=None):
+    """顯示錯誤訊息視窗"""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+
+        full_message = message
+        if details:
+            full_message += f"\n\n錯誤詳情：\n{details[:500]}"  # 限制詳情長度
+
+        messagebox.showerror(title, full_message)
+        root.destroy()
+    except Exception:
+        # tkinter 不可用時，只輸出到 console/log
+        if logger:
+            logger.error(f"{title}: {message}")
+            if details:
+                logger.error(f"詳情: {details}")
+        else:
+            try:
+                err_logger = get_logger('standalone')
+                err_logger.error(f"{title}: {message}")
+                if details:
+                    err_logger.error(f"Details: {details}")
+            except Exception:  # noqa: S110 — logger not yet initialized; silent fallback is intentional
+                pass  # logger 未初始化時靜默失敗
+
+
+# ============ 核心功能 ============
+
+def find_free_port(start_port=49152, logger=None, max_attempts=100):
+    """尋找可用端口（改進版，使用動態端口範圍避免權限問題）"""
+    last_error = None
+    tested_ports = []
+
+    for port in range(start_port, start_port + max_attempts):
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # 設置 SO_REUSEADDR 選項（允許快速重用端口）
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # 設置超時避免卡住
+            sock.settimeout(1)
+            sock.bind((CLIENT_HOST, port))
+            sock.close()
+
+            # 記錄成功找到的端口
+            if logger:
+                logger.info(f"找到可用端口: {port}")
+
+            return port
+        except OSError as e:
+            last_error = e
+            tested_ports.append(port)
+            # 記錄詳細的失敗信息（僅前 5 次和最後 5 次，避免日誌過多）
+            if len(tested_ports) <= 5 or len(tested_ports) >= max_attempts - 5:
+                if logger:
+                    logger.debug(f"端口 {port} 不可用: {e}")
+            continue
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:  # noqa: S110 — cleanup after port probe; socket close failure is harmless
+                    pass
+
+    # 提供更詳細的錯誤信息和解決方案
+    error_msg = f"無法找到可用端口 ({start_port}-{start_port + max_attempts - 1})"
+    if last_error:
+        error_code = getattr(last_error, 'winerror', None) or getattr(last_error, 'errno', None)
+        error_msg += f"\n最後錯誤: {last_error}"
+
+        # 針對 Windows Error 10013 提供具體建議
+        if error_code == 10013:
+            error_msg += "\n\n[解決方案]"
+            error_msg += "\n1. 暫時關閉防火牆或安全軟件（如 360、McAfee）"
+            error_msg += "\n2. 右鍵點擊 OpenAver.bat，選擇「以系統管理員身分執行」"
+            error_msg += "\n3. 檢查 Windows Defender 防火牆設定"
+            error_msg += "\n4. 重新啟動電腦後再試"
+
+        error_msg += f"\n已測試 {len(tested_ports)} 個端口"
+
+    if logger:
+        logger.error(error_msg)
+
+    raise RuntimeError(error_msg)
+
+
+def wait_for_server(port, timeout=STARTUP_TIMEOUT):
+    """等待伺服器啟動"""
+    url = f"http://{CLIENT_HOST}:{port}/api/health"
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as response:
+                if response.status == 200:
+                    return True
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionRefusedError):
+            pass
+        time.sleep(0.2)
+
+    return False
+
+
+def write_current_port(port: int, logger=None) -> None:
+    """Publish the live local API port for agents and troubleshooting."""
+    payload = {
+        "host": CLIENT_HOST,
+        "port": int(port),
+        "base_url": f"http://{CLIENT_HOST}:{int(port)}",
+        "pid": os.getpid(),
+        "updated_at": int(time.time()),
+    }
+    try:
+        CURRENT_PORT_TXT.write_text(str(port), encoding="utf-8")
+        CURRENT_PORT_JSON.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        if logger:
+            logger.warning("write current port failed: %s", exc)
+
+
+def clear_current_port(logger=None) -> None:
+    """Remove stale runtime port hints when the desktop app exits normally."""
+    for path in (CURRENT_PORT_TXT, CURRENT_PORT_JSON):
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception as exc:
+            if logger:
+                logger.warning("clear current port failed for %s: %s", path, exc)
+
+
+def run_server(port, debug_mode=False):
+    """在背景執行 uvicorn 伺服器"""
+    import uvicorn
+    from web.app import app
+
+    # Debug 模式顯示完整 HTTP 請求 log
+    if debug_mode:
+        log_level = "debug"
+        access_log = True
+    else:
+        log_level = "warning"
+        access_log = False
+
+    config = uvicorn.Config(
+        app,
+        host=CLIENT_HOST,
+        port=port,
+        log_level=log_level,
+        access_log=access_log,
+    )
+    server = uvicorn.Server(config)
+    server.run()
+
+
+# ============ 主程序 ============
+
+def main():
+    # 檢查 DEBUG 環境變數
+    debug_mode = os.environ.get('OPENAVER_DEBUG', '0') == '1'
+    console_level = logging.DEBUG if debug_mode else logging.INFO
+    setup_logging(console_level=console_level)
+    logger = get_logger('standalone')
+
+    logger.info("正在啟動...")
+
+    # 0. 檢查 WebView2（僅 Windows）
+    if sys.platform == 'win32':
+        if not check_webview2_installed():
+            logger.info("WebView2 Runtime 未安裝")
+            if not show_webview2_prompt():
+                logger.info("用戶取消安裝，程式結束")
+                sys.exit(0)
+            else:
+                logger.info("請安裝 WebView2 後重新啟動")
+                sys.exit(0)
+
+    # 1. 標記為 Windows 桌面 App（feature/82 T4：_is_windows_desktop() 讀此環境變數）
+    # 必須在任何 web.app import 之前設定，確保 get_common_context 能正確判斷。
+    os.environ["OPENAVER_STANDALONE"] = "1"
+
+    # 2. 尋找可用端口
+    try:
+        port = find_free_port(PORT, logger)
+        logger.info(f"使用端口: {port}")
+    except RuntimeError as e:
+        # 端口綁定失敗，顯示詳細的解決方案
+        show_error(
+            "啟動失敗 - 無法綁定端口",
+            str(e),
+            None,
+            logger
+        )
+        sys.exit(1)
+
+    # 3. 在背景 thread 啟動 FastAPI
+    logger.info("啟動伺服器...")
+    server_thread = threading.Thread(target=run_server, args=(port, debug_mode), daemon=True)
+    server_thread.start()
+
+    # 3. 等待伺服器就緒
+    logger.info("等待伺服器就緒...")
+    if not wait_for_server(port):
+        logger.info("錯誤：伺服器啟動逾時")
+        show_error(
+            "啟動失敗",
+            "伺服器啟動逾時。\n\n請檢查是否有其他程式佔用端口 8000。",
+            None,
+            logger
+        )
+        sys.exit(1)
+    logger.info("伺服器已就緒")
+
+    # 3b. 接線 LAN listener manager（dual-listener 架構）
+    write_current_port(port, logger)
+    from web.app import app as _app
+    from web.lan_listener import lan_listener
+    lan_listener.wire(_app, local_port=port)
+    from core.config import load_config
+    if load_config().get("general", {}).get("server_mode", False):
+        try:
+            _lp = lan_listener.start()
+            logger.info("server_mode persisted true → LAN listener on :%s", _lp)
+        except Exception as e:                     # noqa: BLE001 — auto-start best-effort
+            logger.warning("auto-start LAN listener failed: %s", e)
+            try:
+                from web.routers.notifications import emit_notification
+                # 不傳 str(e)：Python 例外細節不可暴露給前端（安全規則）。
+                # 細節已由上方 logger.warning 寫入 server-side log。
+                emit_notification("error", "settings.server_info.autostart_failed")
+            except Exception:  # noqa: BLE001,S110 — emit_notification failure is harmless; best-effort only
+                pass
+
+    # 4. 啟動 PyWebView 窗口
+    logger.info("啟動視窗...")
+    webview.settings['OPEN_DEVTOOLS_IN_DEBUG'] = False
+
+    import window_state
+    saved = window_state.load_state()
+    create_kwargs = dict(js_api=api, width=saved['width'], height=saved['height'])
+    if saved['x'] is not None and saved['y'] is not None:
+        create_kwargs['x'] = saved['x']
+        create_kwargs['y'] = saved['y']
+
+    window = webview.create_window(
+        'OpenAver',
+        f'http://{CLIENT_HOST}:{port}',
+        **create_kwargs,
+    )
+
+    # CD-70c-1: JavLibrary CF transport — create + register BEFORE webview.start()
+    # so that _transport is set before first render (eliminates SSR race where
+    # cf_transport_available=false was injected on the initial page load).
+    # pywebview 6.2.1: create_window(hidden=True) before start() is supported;
+    # the native window is only shown after the GUI loop starts via _create_children.
+    jl_win = None
+    try:
+        from cf_transport_impl import PyWebViewCfTransport   # sibling import（WINDOWS_DIR 已在 sys.path）
+        from core.scrapers.javlibrary import JAVLIBRARY_ORIGIN
+        from core.cf_transport import register_cf_transport
+        # NOTE (P3-6, follow-up): the JL window loads JAVLIBRARY_ORIGIN at launch — so the
+        # app connects to javlibrary.com on every startup, even when the source is disabled.
+        # This is required by the same-origin fetch design (the hidden window must be parked
+        # on the origin for cookie-bearing fetch). A lazy-navigate refactor is a follow-up branch.
+        jl_win = webview.create_window(
+            'JavLibrary — CF 驗證',
+            JAVLIBRARY_ORIGIN,
+            width=1200, height=820,
+            hidden=True,
+        )
+        register_cf_transport(PyWebViewCfTransport(jl_win))
+        logger.info("JavLibrary CF transport registered")
+    except Exception as e:
+        logger.warning(f"JavLibrary CF transport init failed (JL will be unavailable): {e}")
+
+    # CD-70c-2 Layer 1: intercept JL window close → hide instead of destroy.
+    # A destroyed window makes self._win dead, breaking all subsequent fetch/is_ready
+    # calls until restart. Returning False from the closing handler cancels the close.
+    # app-quit guard: when the main window is closing (app is quitting), let the JL
+    # window close normally so we don't trap the shutdown sequence.
+    _app_state = {"quitting": False}
+    lifecycle = None
+    if sys.platform == 'win32':
+        from core.config import mutate_config
+
+        def _write_close_action(action: str) -> None:
+            def _mutator(cfg):
+                cfg.setdefault("general", {})["close_action"] = action
+            mutate_config(_mutator)
+
+        lifecycle = DesktopLifecycle(
+            window,
+            jl_win,
+            saved,
+            window_state.save_state,
+            on_quit_cleanup=lan_listener.shutdown,
+            read_close_action=lambda: load_config().get("general", {}).get("close_action", "ask"),
+            write_close_action=_write_close_action,
+        )
+        tray_icon = NativeTrayIcon(
+            Path(APP_DIR) / "web" / "static" / "favicon.png",
+            lifecycle.handle_tray_command,
+            lifecycle.get_close_action,
+        )
+        lifecycle.attach_tray(tray_icon)
+
+    def _on_main_closing():
+        if lifecycle is not None:
+            result = lifecycle.on_window_closing()
+            _app_state["quitting"] = lifecycle.quitting
+            return result
+        # Non-Windows launchers keep the original close-to-exit behaviour.
+        _app_state["quitting"] = True
+        if jl_win is not None:
+            try:
+                jl_win.destroy()
+            except Exception:
+                logger.warning("failed to destroy JL window on app close")
+        lan_listener.shutdown()
+
+    def _on_jl_closing():
+        # CD-70c-2 Layer 1: user closing the hidden CF window must NOT destroy it
+        # (destroyed window → dead transport → JL broken until restart). Hide instead.
+        # Return False to cancel the close (pywebview: closing handler returning False
+        # cancels). During app quit, allow the close so we don't trap shutdown.
+        quitting = lifecycle.quitting if lifecycle is not None else _app_state["quitting"]
+        if not quitting:
+            jl_win.hide()
+            return False
+        # app quitting → return None (allow close)
+
+    window.events.closing += _on_main_closing
+    if jl_win is not None:
+        jl_win.events.closing += _on_jl_closing
+
+    def startup(w):
+        bind_events(w)
+        live = window_state.attach(w, saved)
+        if lifecycle is not None:
+            lifecycle.replace_state(live)
+            lifecycle.start_tray()
+        if saved['maximized']:
+            try:
+                w.maximize()
+            except Exception as e:
+                logger.warning(f"window maximize failed: {e}")
+                # Codex P2: maximize 失敗時清 live state，否則 on_resized/on_moved
+                # 永遠 early-return，下次啟動仍寫回 maximized=true 形成 sticky failure
+                live["maximized"] = False
+
+    # 5. 開始 GUI 事件循環（阻塞直到窗口關閉）
+    # 根據平台選擇 GUI 後端
+    try:
+        if sys.platform == 'darwin':
+            webview.start(startup, window)  # macOS 使用預設 (Cocoa/WebKit)
+        else:
+            webview.start(startup, window, gui='edgechromium')  # Windows
+    finally:
+        if lifecycle is not None:
+            lifecycle.shutdown_after_loop()
+        clear_current_port(logger)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except ImportError as e:
+        show_error(
+            "啟動失敗 - 缺少依賴",
+            "缺少必要的 Python 套件。\n\n請確認是否使用打包版執行，或檢查虛擬環境。",
+            str(e)
+        )
+        sys.exit(1)
+    except PermissionError as e:
+        show_error(
+            "啟動失敗 - 權限不足",
+            "無法存取必要的檔案或目錄。\n\n請以一般使用者權限執行（不要用管理員）。",
+            str(e)
+        )
+        sys.exit(1)
+    except Exception as e:
+        error_details = traceback.format_exc()
+        # 嘗試取得 logger 寫入錯誤（可能尚未初始化）
+        try:
+            err_logger = get_logger('standalone')
+            err_logger.error(f"未預期的錯誤：{e}\n{error_details}")
+        except Exception:  # noqa: S110 — logger may not be initialized at startup crash; silent fallback is intentional
+            pass
+        show_error(
+            "啟動失敗 - 未知錯誤",
+            "OpenAver 啟動時發生錯誤。\n\n請將錯誤詳情回報到 GitHub Issues。",
+            error_details
+        )
+        sys.exit(1)

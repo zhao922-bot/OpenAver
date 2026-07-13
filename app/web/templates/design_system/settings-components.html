@@ -1,0 +1,950 @@
+<!-- D.9a: Settings 基礎表單元件 -->
+<div class="ds-subsection">
+    <h3>1. Toggle Switch + 說明文字</h3>
+    <p class="ds-desc">開關控制項，用於布林設定選項，支援說明文字和 Badge 標籤</p>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 範例 1: 含 Badge -->
+        <div class="settings-form-group">
+            <label class="settings-label">
+                <input type="checkbox" class="toggle toggle-primary" checked>
+                <span class="label-text">
+                    女優畫廊模式 <span class="badge badge-error badge-sm">Beta</span>
+                </span>
+            </label>
+        </div>
+
+        <!-- 範例 2: 含說明文字 -->
+        <div class="settings-form-group">
+            <label class="settings-label">
+                <input type="checkbox" class="toggle toggle-primary">
+                <span class="label-text">無碼模式</span>
+            </label>
+            <small class="settings-hint">啟用時只搜尋 AVSOX / FC2，適合無碼作品</small>
+        </div>
+
+        <!-- 範例 3: 簡單 toggle -->
+        <div class="settings-form-group">
+            <label class="settings-label">
+                <input type="checkbox" class="toggle toggle-primary" checked>
+                <span class="label-text">啟用標題翻譯</span>
+            </label>
+        </div>
+
+        <!-- 範例 4: 簡單 toggle -->
+        <div class="settings-form-group">
+            <label class="settings-label">
+                <input type="checkbox" class="toggle toggle-primary" checked>
+                <span class="label-text">建立資料夾</span>
+            </label>
+        </div>
+
+        <!-- 範例 5: 含說明文字 -->
+        <div class="settings-form-group">
+            <label class="settings-label">
+                <input type="checkbox" class="toggle toggle-primary">
+                <span class="label-text">啟動時收合側邊欄</span>
+            </label>
+            <small class="settings-hint">僅影響桌面版</small>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div class="settings-form-group"&gt;
+  &lt;label class="settings-label"&gt;
+    &lt;input type="checkbox" class="toggle toggle-primary"&gt;
+    &lt;span class="label-text"&gt;無碼模式&lt;/span&gt;
+  &lt;/label&gt;
+  &lt;small class="settings-hint"&gt;啟用時只搜尋 AVSOX / FC2，適合無碼作品&lt;/small&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.9a: Select 下拉選單 -->
+<div class="ds-subsection">
+    <h3>2. Select 下拉選單</h3>
+    <p class="ds-desc">下拉選擇器，用於單選或雙選組合（如排序 + 順序）</p>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 範例 1: 主題模式 -->
+        <div class="settings-form-row">
+            <label class="row-label">主題模式</label>
+            <select class="select select-bordered select-sm">
+                <option value="light">淺色模式 (Light)</option>
+                <option value="dim">深色模式 (Dim)</option>
+            </select>
+        </div>
+
+        <!-- 範例 2: 啟動頁面 -->
+        <div class="settings-form-row">
+            <label class="row-label">啟動時開啟頁面</label>
+            <select class="select select-bordered select-sm">
+                <option value="search">搜尋</option>
+                <option value="gallery">列表生成</option>
+                <option value="showcase">瀏覽</option>
+            </select>
+        </div>
+
+        <!-- 範例 3: 雙 select（排序 + 順序）-->
+        <div class="settings-form-row">
+            <label class="row-label">預設排序</label>
+            <div style="display: flex; gap: 8px; flex: 1;">
+                <select class="select select-bordered select-sm" style="flex: 1;">
+                    <option value="date">發售日期</option>
+                    <option value="mdate">修改日期</option>
+                    <option value="num">番號</option>
+                    <option value="title">片名</option>
+                    <option value="actor">演員</option>
+                    <option value="maker">片商</option>
+                    <option value="size">檔案大小</option>
+                </select>
+                <select class="select select-bordered select-sm" style="width: 100px;">
+                    <option value="descending">遞減</option>
+                    <option value="ascending">遞增</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div class="settings-form-row"&gt;
+  &lt;label class="row-label"&gt;主題模式&lt;/label&gt;
+  &lt;select class="select select-bordered select-sm"&gt;
+    &lt;option value="light"&gt;淺色模式 (Light)&lt;/option&gt;
+    &lt;option value="dim"&gt;深色模式 (Dim)&lt;/option&gt;
+  &lt;/select&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.9a: Number input + 單位後綴 -->
+<div class="ds-subsection">
+    <h3>3. Number Input + 單位後綴</h3>
+    <p class="ds-desc">數字輸入框，右側顯示單位（字元、MB 等）</p>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 範例 1: 標題長度限制 -->
+        <div class="settings-form-row">
+            <label class="row-label">標題長度限制</label>
+            <div class="input-group-inline">
+                <input type="number" class="input input-bordered input-sm" value="80" min="20" max="200">
+                <span class="input-suffix">字元</span>
+            </div>
+        </div>
+
+        <!-- 範例 2: 檔名長度限制 -->
+        <div class="settings-form-row">
+            <label class="row-label">檔名長度限制</label>
+            <div class="input-group-inline">
+                <input type="number" class="input input-bordered input-sm" value="200" min="50" max="255">
+                <span class="input-suffix">字元</span>
+            </div>
+        </div>
+
+        <!-- 範例 3: 最小影片尺寸 -->
+        <div class="settings-form-row">
+            <label class="row-label">最小影片尺寸</label>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div class="input-group-inline">
+                    <input type="number" class="input input-bordered input-sm" value="0" min="0">
+                    <span class="input-suffix">MB</span>
+                </div>
+                <small class="settings-hint">0 = 不過濾</small>
+            </div>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div class="settings-form-row"&gt;
+  &lt;label class="row-label"&gt;標題長度限制&lt;/label&gt;
+  &lt;div class="input-group-inline"&gt;
+    &lt;input type="number" class="input input-bordered input-sm" value="80"&gt;
+    &lt;span class="input-suffix"&gt;字元&lt;/span&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.9a: Text input + 說明文字 -->
+<div class="ds-subsection">
+    <h3>4. Text Input + 說明文字</h3>
+    <p class="ds-desc">文字輸入框，支援說明文字和按鈕組合（如選擇資料夾）</p>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 範例 1: 我的最愛資料夾（含說明）-->
+        <div class="settings-form-row">
+            <label class="row-label">我的最愛資料夾</label>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <input type="text" class="input input-bordered input-sm" placeholder="留空 = 系統下載資料夾">
+                <small class="settings-hint">範例：C:\Users\&lt;你的使用者名稱&gt;\下載</small>
+            </div>
+        </div>
+
+        <!-- 範例 2: 輸出目錄（含按鈕）-->
+        <div class="settings-form-row">
+            <label class="row-label">輸出目錄</label>
+            <div style="flex: 1; display: flex; gap: 8px;">
+                <input type="text" class="input input-bordered input-sm" value="output" style="flex: 1;">
+                <button class="btn btn-outline btn-sm" title="選擇資料夾" type="button">
+                    <i class="bi bi-folder"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 範例 3: 影片播放器（含說明）-->
+        <div class="settings-form-row">
+            <label class="row-label">影片播放器</label>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <input type="text" class="input input-bordered input-sm" placeholder="留空使用系統預設">
+                <small class="settings-hint">例如: C:\Program Files\DAUM\PotPlayer\PotPlayerMini64.exe</small>
+            </div>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div class="settings-form-row"&gt;
+  &lt;label class="row-label"&gt;輸出目錄&lt;/label&gt;
+  &lt;div style="flex: 1; display: flex; gap: 8px;"&gt;
+    &lt;input type="text" class="input input-bordered input-sm" value="output" style="flex: 1;"&gt;
+    &lt;button class="btn btn-outline btn-sm" type="button"&gt;
+      &lt;i class="bi bi-folder"&gt;&lt;/i&gt;
+    &lt;/button&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.9b: 收合區塊（Collapsible Section）-->
+<div class="ds-subsection">
+    <h3>5. 收合區塊（Collapsible Section）</h3>
+    <p class="ds-desc">進階設定區域的收合/展開控制，卡片式觸發器 + Alpine.js 互動</p>
+
+    <!-- 展開狀態 -->
+    <h4 class="ds-variant-label" style="margin-top: 1.5rem;">Expanded State</h4>
+    <div class="ds-card-demo" style="max-width: 700px; margin: 0 auto; padding: 1.5rem;">
+        <div x-data="{ expanded: true }">
+            <button class="collapsible-trigger" type="button" @click="expanded = !expanded" :aria-expanded="expanded.toString()">
+                <span class="collapsible-title">
+                    <i class="bi bi-gear"></i> 進階刮削設定
+                </span>
+                <span class="btn-icon-collapse" aria-hidden="true">
+                    <i class="bi bi-chevron-down" :class="{ 'rotate-180': expanded }"></i>
+                </span>
+            </button>
+            <div x-show="expanded" x-transition class="collapsible-content">
+                <!-- 展開後的內容：用 D.9a 的 form rows 作為範例 -->
+                <div class="settings-form-group">
+                    <label class="settings-label">
+                        <input type="checkbox" class="toggle toggle-primary" checked>
+                        <span class="label-text">建立資料夾</span>
+                    </label>
+                </div>
+
+                <div class="settings-form-row">
+                    <label class="row-label">標題長度限制</label>
+                    <div class="input-group-inline">
+                        <input type="number" class="input input-bordered input-sm" value="80" min="20" max="200">
+                        <span class="input-suffix">字元</span>
+                    </div>
+                </div>
+
+                <div class="settings-form-row">
+                    <label class="row-label">檔名長度限制</label>
+                    <div class="input-group-inline">
+                        <input type="number" class="input input-bordered input-sm" value="200" min="50" max="255">
+                        <span class="input-suffix">字元</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 收合狀態 -->
+    <h4 class="ds-variant-label">Collapsed State</h4>
+    <div class="ds-card-demo" style="max-width: 700px; margin: 0 auto; padding: 1.5rem;">
+        <div x-data="{ expanded: false }">
+            <button class="collapsible-trigger" type="button" @click="expanded = !expanded" :aria-expanded="expanded.toString()">
+                <span class="collapsible-title">
+                    <i class="bi bi-sliders"></i> 進階顯示選項
+                </span>
+                <span class="btn-icon-collapse" aria-hidden="true">
+                    <i class="bi bi-chevron-down" :class="{ 'rotate-180': expanded }"></i>
+                </span>
+            </button>
+            <div x-show="expanded" x-transition class="collapsible-content">
+                <!-- 收合時不顯示 -->
+            </div>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div x-data="{ expanded: false }"&gt;
+  &lt;button class="collapsible-trigger" type="button" @click="expanded = !expanded" :aria-expanded="expanded.toString()"&gt;
+    &lt;span class="collapsible-title"&gt;
+      &lt;i class="bi bi-gear"&gt;&lt;/i&gt; 進階刮削設定
+    &lt;/span&gt;
+    &lt;span class="btn-icon-collapse" aria-hidden="true"&gt;
+      &lt;i class="bi bi-chevron-down" :class="{ 'rotate-180': expanded }"&gt;&lt;/i&gt;
+    &lt;/span&gt;
+  &lt;/button&gt;
+  &lt;div x-show="expanded" x-transition class="collapsible-content"&gt;
+    &lt;!-- 進階設定內容 --&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.9b: 變數插入 Dropdown -->
+<div class="ds-subsection">
+    <h3>6. 變數插入 Dropdown</h3>
+    <p class="ds-desc">檔案命名格式的變數插入控制項，展示變數列表 + description + example</p>
+
+    <!-- 單一變數插入（檔案命名格式）-->
+    <h4 class="ds-variant-label" style="margin-top: 1.5rem;">Single Variable Dropdown (檔案命名格式)</h4>
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <div class="settings-form-row">
+            <label class="row-label">檔案命名格式</label>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <div class="format-preview">
+                    <span class="tag-badge">番號</span>
+                    <span class="tag-badge">片商</span> {title}
+                </div>
+                <div class="variable-input-group">
+                    <input type="text" class="input input-bordered input-sm" value="[{num}][{maker}] {title}" placeholder="[{num}][{maker}] {title}" style="flex: 1;">
+                    <div class="variable-dropdown">
+                        <button class="btn-variable" type="button">
+                            <i class="bi bi-braces"></i> 變數
+                        </button>
+                        <!-- 變數下拉列表（靜態展示，打開狀態）-->
+                        <div class="variable-menu" style="display: block; position: relative; margin-top: 4px;">
+                            <span class="variable-badge">番號</span>
+                            <span class="variable-badge">標題</span>
+                            <span class="variable-badge">女優</span>
+                            <span class="variable-badge">所有女優</span>
+                            <span class="variable-badge">片商</span>
+                            <span class="variable-badge">發售日</span>
+                            <span class="variable-badge">年份</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 多層資料夾連動（外層 / 中層 / 內層）-->
+    <h4 class="ds-variant-label">Multi-Layer Folder Structure (3 層連動)</h4>
+    <div class="ds-card-demo" style="max-width: 700px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 第一行：外層 / 中層 -->
+        <div class="folder-layers-row">
+            <div class="folder-layer-group disabled" style="flex-direction: column; align-items: stretch;">
+                <div style="display: flex; gap: 4px;">
+                    <input type="text" class="input input-bordered input-sm" placeholder="外層" disabled>
+                    <div class="variable-dropdown">
+                        <button class="btn-variable" type="button" disabled>
+                            <i class="bi bi-braces"></i> 變數
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <span class="folder-separator">/</span>
+            <div class="folder-layer-group disabled" style="flex-direction: column; align-items: stretch;">
+                <div style="display: flex; gap: 4px;">
+                    <input type="text" class="input input-bordered input-sm" placeholder="中層" disabled>
+                    <div class="variable-dropdown">
+                        <button class="btn-variable" type="button" disabled>
+                            <i class="bi bi-braces"></i> 變數
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 第二行：內層（佔整行）-->
+        <div class="folder-layer-group" style="flex-direction: column; align-items: stretch; margin-top: 8px;">
+            <div class="format-preview">
+                <span class="tag-badge">番號</span>
+            </div>
+            <div style="display: flex; gap: 4px;">
+                <span class="input-group-text">內層</span>
+                <input type="text" class="input input-bordered input-sm" value="{num}" placeholder="{num}" style="flex: 1;">
+                <div class="variable-dropdown">
+                    <button class="btn-variable" type="button">
+                        <i class="bi bi-braces"></i> 變數
+                    </button>
+                    <!-- 變數下拉列表（靜態展示）-->
+                    <div class="variable-menu" style="display: block; position: relative; margin-top: 4px;">
+                        <span class="variable-badge">番號</span>
+                        <span class="variable-badge">標題</span>
+                        <span class="variable-badge">女優</span>
+                        <span class="variable-badge">片商</span>
+                        <span class="variable-badge">年份</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 即時預覽路徑 -->
+        <div class="folder-preview">
+            <i class="bi bi-file-earmark-play"></i>
+            <span class="preview-text">預覽: SSNI-618/[SSNI-618][SOD] 絕對領域.mp4</span>
+        </div>
+
+        <!-- 說明文字 -->
+        <div style="margin-top: 1rem; padding: 0.75rem; background: color-mix(in oklch, var(--color-base-content) 3%, transparent); border-radius: var(--radius-sm); border-left: 3px solid var(--accent);">
+            <small style="color: var(--text-secondary); font-size: 0.8rem;">
+                <i class="bi bi-info-circle"></i>
+                <strong style="color: var(--text-primary);">連動規則：</strong>
+                內層有值才能啟用中層，中層有值才能啟用外層（由內向外逐層啟用）
+            </small>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;!-- 格式預覽 --&gt;
+&lt;div class="format-preview"&gt;
+  &lt;span class="tag-badge"&gt;番號&lt;/span&gt;
+  &lt;span class="tag-badge"&gt;片商&lt;/span&gt; {title}
+&lt;/div&gt;
+
+&lt;!-- 單一變數插入 --&gt;
+&lt;div class="variable-input-group"&gt;
+  &lt;input type="text" class="input input-bordered input-sm"&gt;
+  &lt;div class="variable-dropdown"&gt;
+    &lt;button class="btn-variable" type="button"&gt;
+      &lt;i class="bi bi-braces"&gt;&lt;/i&gt; 變數
+    &lt;/button&gt;
+    &lt;div class="variable-menu"&gt;
+      &lt;span class="variable-badge"&gt;番號&lt;/span&gt;
+      &lt;span class="variable-badge"&gt;標題&lt;/span&gt;
+      &lt;span class="variable-badge"&gt;女優&lt;/span&gt;
+      &lt;span class="variable-badge"&gt;片商&lt;/span&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.9c: API Key 警告 Alert -->
+<div class="ds-subsection">
+    <h3>7. API Key 警告 Alert</h3>
+    <p class="ds-desc">用於 Gemini API Key 輸入框下方的安全提示，強調敏感資料風險</p>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- API Key 輸入框（上下文）-->
+        <div class="settings-form-row">
+            <label class="row-label">API Key</label>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; gap: 8px;">
+                    <input type="password" class="input input-bordered input-sm" placeholder="AIza..." style="flex: 1;">
+                    <button class="btn btn-outline btn-sm" type="button">
+                        <i class="bi bi-plug"></i> 測試
+                    </button>
+                </div>
+                <small class="settings-hint">
+                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
+                    可免費申請
+                </small>
+            </div>
+        </div>
+
+        <!-- 安全警告 Alert -->
+        <div class="alert alert-warning api-key-alert">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <div class="alert-content">
+                <strong>安全提示：</strong>
+                <ul class="alert-list">
+                    <li>API Key 將以明文存儲在 config.json</li>
+                    <li>請勿將 config.json 分享給他人</li>
+                    <li>如需撤銷，請前往 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="alert-link">Google AI Studio</a> 重新生成</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div class="alert alert-warning api-key-alert"&gt;
+  &lt;i class="bi bi-exclamation-triangle-fill"&gt;&lt;/i&gt;
+  &lt;div class="alert-content"&gt;
+    &lt;strong&gt;安全提示：&lt;/strong&gt;
+    &lt;ul class="alert-list"&gt;
+      &lt;li&gt;API Key 將以明文存儲在 config.json&lt;/li&gt;
+      &lt;li&gt;請勿將 config.json 分享給他人&lt;/li&gt;
+      &lt;li&gt;如需撤銷，請前往 &lt;a href="..." target="_blank" class="alert-link"&gt;Google AI Studio&lt;/a&gt; 重新生成&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.9c: 版本 + 檢查更新（3 態互動展示）-->
+<div class="ds-subsection" x-data="{ checkUpdateState: 'default' }">
+    <h3>8. 版本 + 檢查更新</h3>
+    <p class="ds-desc">版本資訊顯示 + 檢查更新按鈕（含 default / loading / completed 三態）</p>
+
+    <!-- 互動控制：5 個按鈕切換狀態 -->
+    <div style="max-width: 600px; margin: 0 auto 1rem; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+        <button class="btn btn-sm btn-outline" type="button" @click="checkUpdateState = 'default'">
+            顯示 Default
+        </button>
+        <button class="btn btn-sm btn-outline" type="button" @click="checkUpdateState = 'loading'">
+            顯示 Loading
+        </button>
+        <button class="btn btn-sm btn-outline" type="button" @click="checkUpdateState = 'completed-new'">
+            顯示 Completed (有更新)
+        </button>
+        <button class="btn btn-sm btn-outline" type="button" @click="checkUpdateState = 'completed-latest'">
+            顯示 Completed (已最新)
+        </button>
+        <button class="btn btn-sm btn-outline" type="button" @click="checkUpdateState = 'completed-error'">
+            顯示 Completed (錯誤)
+        </button>
+    </div>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 版本資訊 -->
+        <div class="settings-form-row">
+            <label class="row-label">版本資訊</label>
+            <span class="version-text">v0.3.0</span>
+        </div>
+
+        <!-- 檢查更新 -->
+        <div class="settings-form-row">
+            <label class="row-label">軟體更新</label>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <small class="settings-hint">手動檢查 GitHub 是否有新版本</small>
+                <div class="update-check-wrapper">
+                    <!-- Default 狀態 -->
+                    <button class="btn btn-outline btn-sm" type="button" x-show="checkUpdateState === 'default'">
+                        <i class="bi bi-cloud-download"></i> 檢查更新
+                    </button>
+
+                    <!-- Loading 狀態 -->
+                    <button class="btn btn-outline btn-sm" type="button" disabled x-show="checkUpdateState === 'loading'">
+                        <span class="loading loading-spinner loading-sm"></span> 檢查中...
+                    </button>
+
+                    <!-- Completed 狀態 - 有更新 -->
+                    <template x-if="checkUpdateState === 'completed-new'">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn btn-outline btn-sm" type="button">
+                                <i class="bi bi-cloud-download"></i> 檢查更新
+                            </button>
+                            <div class="badge badge-success gap-2" style="font-size: 0.75rem; padding: 0.5rem 0.75rem;">
+                                <i class="bi bi-download"></i>
+                                <a href="https://github.com/owner/repo/releases/latest" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">
+                                    新版本 v0.3.1 可用
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Completed 狀態 - 已最新 -->
+                    <template x-if="checkUpdateState === 'completed-latest'">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn btn-outline btn-sm" type="button">
+                                <i class="bi bi-cloud-download"></i> 檢查更新
+                            </button>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">
+                                <i class="bi bi-check-circle"></i> 已是最新版本
+                            </span>
+                        </div>
+                    </template>
+
+                    <!-- Completed 狀態 - 錯誤 -->
+                    <template x-if="checkUpdateState === 'completed-error'">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn btn-outline btn-sm" type="button">
+                                <i class="bi bi-cloud-download"></i> 檢查更新
+                            </button>
+                            <span style="font-size: 0.8rem; color: var(--color-error);">
+                                <i class="bi bi-exclamation-circle"></i> 網路錯誤
+                            </span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;!-- Default 狀態 --&gt;
+&lt;button class="btn btn-outline btn-sm" type="button"&gt;
+  &lt;i class="bi bi-cloud-download"&gt;&lt;/i&gt; 檢查更新
+&lt;/button&gt;
+
+&lt;!-- Loading 狀態 --&gt;
+&lt;button class="btn btn-outline btn-sm" type="button" disabled&gt;
+  &lt;span class="loading loading-spinner loading-sm"&gt;&lt;/span&gt; 檢查中...
+&lt;/button&gt;
+
+&lt;!-- Completed 狀態 - 有更新 --&gt;
+&lt;div class="badge badge-success gap-2"&gt;
+  &lt;i class="bi bi-download"&gt;&lt;/i&gt;
+  &lt;a href="..." target="_blank"&gt;新版本 v0.3.1 可用&lt;/a&gt;
+&lt;/div&gt;
+
+&lt;!-- Completed 狀態 - 已最新 --&gt;
+&lt;span style="color: var(--text-muted);"&gt;
+  &lt;i class="bi bi-check-circle"&gt;&lt;/i&gt; 已是最新版本
+&lt;/span&gt;
+
+&lt;!-- Completed 狀態 - 錯誤 --&gt;
+&lt;span style="color: var(--color-error);"&gt;
+  &lt;i class="bi bi-exclamation-circle"&gt;&lt;/i&gt; 網路錯誤
+&lt;/span&gt;</code></pre>
+</div>
+
+<!-- D.9c: 儲存按鈕（Primary CTA）-->
+<div class="ds-subsection">
+    <h3>9. 儲存按鈕（Primary CTA）</h3>
+    <p class="ds-desc">Settings 表單的主要行動按鈕，位於表單最下方右對齊</p>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 上下文：最後一個表單項 -->
+        <div class="settings-form-row">
+            <label class="row-label">主題模式</label>
+            <select class="select select-bordered select-sm">
+                <option value="light">淺色模式 (Light)</option>
+                <option value="dim">深色模式 (Dim)</option>
+            </select>
+        </div>
+
+        <!-- 分隔線 -->
+        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border-light); opacity: 0.5;">
+
+        <!-- 儲存按鈕區域 -->
+        <div class="save-btn-wrapper">
+            <button type="submit" class="btn btn-primary save-btn">
+                <i class="bi bi-save"></i> 儲存設定
+            </button>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div class="save-btn-wrapper"&gt;
+  &lt;button type="submit" class="btn btn-primary save-btn"&gt;
+    &lt;i class="bi bi-save"&gt;&lt;/i&gt; 儲存設定
+  &lt;/button&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.11: Font Size Control -->
+<div class="ds-subsection"
+     x-data="{ fontSize: 'md' }">
+    <h3>11. Font Size Control</h3>
+    <p class="ds-desc">
+        Settings header 右上角的 5 段字型大小快速切換器（xs / sm / md / lg / xl）。
+        按鈕文字統一顯示「A」，但各自套用對應的 <code>font-size</code>，視覺上呈現從小到大的漸變。
+        active 狀態套用 <code>.active</code> class，顯示 accent 背景色。
+    </p>
+
+    <div class="ds-card-demo" style="max-width: 400px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; align-items: flex-start;">
+        <div class="font-size-control">
+            <template x-for="s in [{k:'xs',l:'A'},{k:'sm',l:'A'},{k:'md',l:'A'},{k:'lg',l:'A'},{k:'xl',l:'A'}]" :key="s.k">
+                <button type="button"
+                        class="font-size-btn"
+                        :class="{ active: fontSize === s.k }"
+                        :style="'font-size:' + {xs:'0.7rem',sm:'0.8rem',md:'0.9rem',lg:'1.05rem',xl:'1.2rem'}[s.k]"
+                        @click="fontSize = s.k"
+                        :title="'字型大小：' + s.k"
+                        x-text="s.l">
+                </button>
+            </template>
+        </div>
+        <small style="color: var(--text-muted);">目前選擇：<code x-text="fontSize"></code></small>
+    </div>
+
+    <pre class="ds-code"><code>&lt;div class="font-size-control"&gt;
+  &lt;template x-for="s in [{k:'xs',l:'A'},{k:'sm',l:'A'},{k:'md',l:'A'},{k:'lg',l:'A'},{k:'xl',l:'A'}]"&gt;
+    &lt;button type="button"
+            class="font-size-btn"
+            :class="{ active: fontSize === s.k }"
+            :style="'font-size:' + {xs:'0.7rem',sm:'0.8rem',md:'0.9rem',lg:'1.05rem',xl:'1.2rem'}[s.k]"
+            @click="fontSize = s.k"
+            x-text="s.l"&gt;
+    &lt;/button&gt;
+  &lt;/template&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.12: User Tag Editor -->
+<div class="ds-subsection"
+     x-data="{
+         tags: ['劇情', '高清'],
+         userTags: ['我的標籤'],
+         addingTag: false,
+         newTagValue: '',
+         removeUserTag(tag) { this.userTags = this.userTags.filter(t => t !== tag); },
+         showAddTagInput() { this.addingTag = true; this.$nextTick(() => this.$refs.tagInputDemo && this.$refs.tagInputDemo.focus()); },
+         confirmAddTag() {
+             const v = this.newTagValue.trim();
+             if (v && !this.userTags.includes(v)) this.userTags.push(v);
+             this.newTagValue = '';
+             this.addingTag = false;
+         },
+         cancelAddTag() { this.newTagValue = ''; this.addingTag = false; }
+     }">
+    <h3>12. User Tag Editor</h3>
+    <p class="ds-desc">
+        來源：<code>search.html</code> 詳情面板的標籤編輯器。
+        分為系統 tag（<code>.tag-badge</code>，唯讀）和用戶 tag（<code>.tag-badge.user-tag</code>，可刪除）。
+        點「+」顯示輸入框，輸入後按 ✓ 或 Enter 新增；點 × 刪除 user tag；Escape 取消。
+    </p>
+
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <span class="info-value" style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+            <!-- 系統 tag（唯讀） -->
+            <template x-for="tag in tags" :key="tag">
+                <span class="badge tag-badge" x-text="tag"></span>
+            </template>
+
+            <!-- 用戶 tag（可刪除） -->
+            <template x-for="tag in userTags" :key="'u_' + tag">
+                <span class="badge tag-badge user-tag">
+                    <span x-text="tag"></span>
+                    <span class="tag-remove" @click="removeUserTag(tag)">&times;</span>
+                </span>
+            </template>
+
+            <!-- 新增按鈕 -->
+            <button x-show="!addingTag" @click="showAddTagInput()" class="btn btn-sm tag-add-btn" title="新增標籤">+</button>
+
+            <!-- 新增輸入框 -->
+            <span x-show="addingTag" class="tag-input-wrapper">
+                <input type="text"
+                       x-ref="tagInputDemo"
+                       x-model="newTagValue"
+                       @keydown.enter="confirmAddTag()"
+                       @keydown.escape="cancelAddTag()"
+                       class="tag-input"
+                       placeholder="輸入標籤"
+                       maxlength="20">
+                <button @click="confirmAddTag()" class="btn btn-sm tag-confirm">✓</button>
+                <button @click="cancelAddTag()" class="btn btn-sm tag-cancel">✕</button>
+            </span>
+        </span>
+    </div>
+
+    <pre class="ds-code"><code>&lt;!-- 系統 tag（唯讀）--&gt;
+&lt;span class="badge tag-badge" x-text="tag"&gt;&lt;/span&gt;
+
+&lt;!-- 用戶 tag（可刪除）--&gt;
+&lt;span class="badge tag-badge user-tag"&gt;
+  &lt;span x-text="tag"&gt;&lt;/span&gt;
+  &lt;span class="tag-remove" @click="removeUserTag(tag)"&gt;&amp;times;&lt;/span&gt;
+&lt;/span&gt;
+
+&lt;!-- 新增按鈕 --&gt;
+&lt;button x-show="!addingTag" @click="showAddTagInput()"
+        class="btn btn-sm tag-add-btn"&gt;+&lt;/button&gt;
+
+&lt;!-- 新增輸入框 --&gt;
+&lt;span x-show="addingTag" class="tag-input-wrapper"&gt;
+  &lt;input type="text" x-model="newTagValue"
+         @keydown.enter="confirmAddTag()" @keydown.escape="cancelAddTag()"
+         class="tag-input" placeholder="輸入標籤"&gt;
+  &lt;button @click="confirmAddTag()" class="btn btn-sm tag-confirm"&gt;✓&lt;/button&gt;
+  &lt;button @click="cancelAddTag()" class="btn btn-sm tag-cancel"&gt;✕&lt;/button&gt;
+&lt;/span&gt;</code></pre>
+</div>
+
+<!-- D.13: Source Pill (cross-page shared component, TASK-62a-0) -->
+<div class="ds-subsection">
+    <h3>13. Source Pill（跨頁共用元件）</h3>
+    <p class="ds-desc">
+        掃描來源膠囊 — 來源排序開關 / Parts Bin 可加入態。元件已從 settings.css 抽至
+        <code>components/source-pill.css</code> 並去 <code>#settings-components</code> scope，
+        故 Settings / Search / Showcase 皆可直接渲染。
+        <strong>本卡刻意不包 <code>id="settings-components"</code></strong> — 仍正確著色即證明已 unscoped。
+        Parts Bin 三態：<strong>可加入（staged, available=true）</strong>：+ icon、無刪除線、cursor pointer；
+        <strong>不可達（available=false）</strong>：灰 dashed + 灰 slash + 右上 amber dot；
+        <strong>active（promoted）</strong>：由 Settings Active Row 管理（非 Parts Bin）。
+    </p>
+
+    <!-- NOTE: 無 id="settings-components" 包裹（unscoped component 的證明） -->
+    <div class="ds-card-demo" style="max-width: 700px; margin: 0 auto; padding: 1.5rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <!-- 啟用（有碼 accent） -->
+        <div class="source-pill" data-enabled="true">
+            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+            <span class="pill-name">JavBus</span>
+        </div>
+
+        <!-- 停用（slash + strikethrough + dashed） -->
+        <div class="source-pill" data-enabled="false">
+            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+            <span class="pill-name">DMM</span>
+        </div>
+
+        <!-- 無碼啟用（success accent） -->
+        <div class="source-pill source-pill--uncensored" data-enabled="true">
+            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+            <span class="pill-name">FC2</span>
+        </div>
+
+        <!-- manual-only（BETA badge + dashed accent，不 strikethrough） -->
+        <div class="source-pill source-pill--manual-only" data-enabled="false">
+            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+            <span class="pill-name">JavLibrary</span>
+            <span class="source-pill-badge">BETA</span>
+        </div>
+
+        <!-- metatube（m 角標 + 斷線無 hover lift） -->
+        <div class="source-pill is-disconnected" data-enabled="false">
+            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+            <span class="pill-name">MetaTube</span>
+            <span class="source-pill-mt-badge" aria-hidden="true">m</span>
+        </div>
+
+        <!-- parts-bin 可加入（staged reachable：available=true，顯 +，無刪除線） -->
+        <div class="source-pill is-partsbin" data-enabled="false" data-available="true">
+            <i class="bi bi-plus-circle plus-icn" aria-hidden="true"></i>
+            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+            <span class="pill-name">StagedProvider</span>
+        </div>
+
+        <!-- parts-bin 不可達（unreachable：available=false，灰 dashed + slash + amber dot） -->
+        <div class="source-pill is-partsbin" data-enabled="false" data-available="false">
+            <i class="bi bi-plus-circle plus-icn" aria-hidden="true"></i>
+            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+            <span class="pill-name">UnreachableProvider</span>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;!-- unscoped：不需 id="settings-components" 包裹 --&gt;
+&lt;!-- 啟用 / 停用 --&gt;
+&lt;div class="source-pill" data-enabled="true"&gt;
+  &lt;i class="bi bi-slash-circle slash-icn"&gt;&lt;/i&gt;
+  &lt;span class="pill-name"&gt;JavBus&lt;/span&gt;
+&lt;/div&gt;
+
+&lt;!-- 無碼（success accent）--&gt;
+&lt;div class="source-pill source-pill--uncensored" data-enabled="true"&gt;...&lt;/div&gt;
+
+&lt;!-- manual-only（BETA badge）--&gt;
+&lt;div class="source-pill source-pill--manual-only" data-enabled="false"&gt;
+  &lt;span class="pill-name"&gt;JavLibrary&lt;/span&gt;
+  &lt;span class="source-pill-badge"&gt;BETA&lt;/span&gt;
+&lt;/div&gt;
+
+&lt;!-- metatube（m 角標）--&gt;
+&lt;span class="source-pill-mt-badge"&gt;m&lt;/span&gt;
+
+&lt;!-- parts-bin 可加入（staged，available=true：+ icon、無刪除線、pointer）--&gt;
+&lt;div class="source-pill is-partsbin" data-enabled="false" data-available="true"&gt;
+  &lt;i class="bi bi-plus-circle plus-icn" aria-hidden="true"&gt;&lt;/i&gt;
+  &lt;i class="bi bi-slash-circle slash-icn" aria-hidden="true"&gt;&lt;/i&gt;
+  &lt;span class="pill-name"&gt;StagedProvider&lt;/span&gt;
+&lt;/div&gt;
+
+&lt;!-- parts-bin 不可達（available=false：灰 dashed + slash + 右上 amber dot）--&gt;
+&lt;div class="source-pill is-partsbin" data-enabled="false" data-available="false"&gt;
+  &lt;i class="bi bi-plus-circle plus-icn" aria-hidden="true"&gt;&lt;/i&gt;
+  &lt;i class="bi bi-slash-circle slash-icn" aria-hidden="true"&gt;&lt;/i&gt;
+  &lt;span class="pill-name"&gt;UnreachableProvider&lt;/span&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- #settings-components scope wrapper：包 §15 segmented + §16 metatube banner 兩個 demo，
+     使 settings.css 的 #settings-components scoped 規則生效（唯一真 id，避免 duplicate id）。 -->
+<div id="settings-components">
+
+<!-- D.15: Segmented 控件 — 全開 | 無碼模式（TASK-64e-2） -->
+<div class="ds-subsection">
+    <h3>15. Segmented 控件（全開 | 無碼模式）</h3>
+    <p class="ds-desc">
+        搜尋來源卡 batchbar 左側的藥丸型分段控件，取代原有的 track+thumb toggle。
+        左段「全開」（<code>#sourcesAllOpenToggle</code>）啟用所有 builtin 來源至 cap；
+        右段「無碼模式」（<code>#sourcesUncensoredToggle</code>）關閉所有有碼來源。
+        CSS scope：<code>#settings-components .settings-sources-segmented</code>（pill 白名單 §1 第 7 條）。
+        <code>.is-on</code> 態玻璃高亮（backdrop-filter + shadow-2）。<code>prefers-reduced-motion</code> 停 transition。
+    </p>
+
+    <!-- scope 由外層 #settings-components wrapper 提供（見上） -->
+    <div class="ds-card-demo" style="max-width: 600px; margin: 0 auto; padding: 1.5rem;">
+        <!-- 態一：全開段亮（全開段 .is-on） -->
+        <div style="margin-bottom: 1rem;">
+            <small style="color: var(--text-muted); display: block; margin-bottom: 0.5rem;">態一：全開段亮（allBuiltinEnabled &amp;&amp; !uncensoredMode）</small>
+            <div class="settings-sources-segmented" style="pointer-events: none;" aria-hidden="true">
+                <button type="button" class="is-on">全開</button>
+                <button type="button">無碼模式</button>
+            </div>
+        </div>
+
+        <!-- 態二：無碼段亮（無碼段 .is-on） -->
+        <div>
+            <small style="color: var(--text-muted); display: block; margin-bottom: 0.5rem;">態二：無碼段亮（uncensoredMode）</small>
+            <div class="settings-sources-segmented" style="pointer-events: none;" aria-hidden="true">
+                <button type="button">全開</button>
+                <button type="button" class="is-on">無碼模式</button>
+            </div>
+        </div>
+    </div>
+
+    <pre class="ds-code"><code>&lt;!-- 父層需有 id="settings-components"（CSS scope guard）--&gt;
+&lt;div class="settings-sources-segmented"&gt;
+  &lt;button id="sourcesAllOpenToggle"
+          :class="{ 'is-on': allBuiltinEnabled &amp;&amp; !uncensoredMode }"
+          :aria-pressed="(allBuiltinEnabled &amp;&amp; !uncensoredMode) ? 'true' : 'false'"
+          @click="if (uncensoredMode &amp;&amp; enabledCount &gt;= 10) { _flashCapAlert(); } else { enableAllToCap(); }"&gt;
+    全開
+  &lt;/button&gt;
+  &lt;button id="sourcesUncensoredToggle"
+          :class="{ 'is-on': uncensoredMode }"
+          :aria-pressed="uncensoredMode ? 'true' : 'false'"
+          @click="uncensoredMode = true"&gt;
+    無碼模式
+  &lt;/button&gt;
+&lt;/div&gt;</code></pre>
+</div>
+
+<!-- D.16: metatube 連線狀態 banner — feature/69 T5 dim 驗證面（P9/P10）-->
+<div class="ds-subsection">
+    <h3>16. metatube 連線狀態 banner（已連線態）</h3>
+    <p class="ds-desc">
+        掃描來源卡 metatube 區「已連線」狀態列（<code>.settings-mt-connect-status</code>，僅 <code>metatubeConnected</code> 分支渲染；
+        未連線是 connect form 非 banner）。綠 ✓ + 伺服器 URL + 編輯／中斷／重測 mini 鈕，下接 tier-hint。
+        CSS scope：<code>#settings-components</code>。
+        <strong>dim 校準（69 T3）</strong>：近黑底吃光 8% success tint → 提 tint 16% + solid 邊 + 3px 左色條，
+        綠態明確可辨。切 dim 對照即 <strong>P9/P10</strong> 驗證點。
+    </p>
+
+    <!-- scope 由外層 #settings-components wrapper 提供（見 §15 之上） -->
+    <div class="ds-card-demo" style="max-width: 700px; margin: 0 auto; padding: 1.5rem;">
+        <div class="settings-mt-connect-status" style="pointer-events: none;" aria-hidden="true">
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+            <span class="status-text">
+                已連線 metatube
+                <code>http://192.168.1.50:8090</code>
+            </span>
+            <button type="button" class="settings-sources-mini-btn"><i class="bi bi-pencil"></i> 編輯</button>
+            <button type="button" class="settings-sources-mini-btn"><i class="bi bi-x-circle"></i> 中斷</button>
+            <button type="button" class="settings-sources-mini-btn"><i class="bi bi-arrow-clockwise"></i> 重測</button>
+        </div>
+        <div class="settings-mt-tier-hint" style="margin-top: 0.6rem;">
+            <i class="bi bi-stars" aria-hidden="true"></i>
+            <span>已連線 metatube，30+ provider 可用於進階重刮與搜尋。</span>
+        </div>
+    </div>
+</div>
+
+</div><!-- /#settings-components scope wrapper（§15 + §16）-->
+
+<!-- D.17: 進階重刮彈窗 source picker（step-1）— feature/69 T5 dim 驗證面（P1/P20）-->
+<div class="ds-subsection">
+    <h3>17. 進階重刮彈窗 — 來源 picker（step-1）</h3>
+    <p class="ds-desc">
+        🔄 長壓開的進階重刮彈窗 step-1「挑來源」視圖（<code>_rescrape_modal.html</code>）。
+        重用 <code>.source-pill--action</code>（點擊式非拖曳）：auto pill + builtin（有碼／無碼）+ metatube pill（<code>m</code> 角標）；
+        找不到番號就地顯示 <code>.rescrape-inline-error</code>（不換頁）。
+        <strong>dim 校準（69 T2/T4）</strong>：膠囊有碼／無碼一眼可辨（<strong>P1</strong>）、inline-error warning 提 tint + solid 邊（<strong>P20</strong>）。
+        切 dim 對照即 P1/P20 驗證點。
+    </p>
+
+    <div class="ds-card-demo" style="max-width: 700px; margin: 0 auto; padding: 1.5rem;">
+        <label class="rescrape-label" style="display: block; margin-bottom: 0.6rem;">挑選刮削來源</label>
+        <div class="source-pill-row" style="display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;" aria-hidden="true">
+            <button type="button" class="source-pill source-pill--action" data-enabled="true">
+                <i class="bi bi-stars" aria-hidden="true"></i>
+                <span class="pill-name">自動選擇</span>
+            </button>
+            <button type="button" class="source-pill source-pill--action" data-enabled="true">
+                <span class="pill-name">JavBus</span>
+            </button>
+            <button type="button" class="source-pill source-pill--action source-pill--uncensored" data-enabled="true">
+                <span class="pill-name">AVSOX</span>
+            </button>
+            <button type="button" class="source-pill source-pill--action" data-enabled="true">
+                <span class="pill-name">JAV321</span>
+                <span class="source-pill-mt-badge" aria-hidden="true">m</span>
+            </button>
+        </div>
+        <div class="rescrape-inline-error" style="margin-top: 0.7rem; pointer-events: none;" aria-hidden="true">
+            <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+            <span>找不到此番號，換個來源或確認番號正確</span>
+        </div>
+    </div>
+</div>

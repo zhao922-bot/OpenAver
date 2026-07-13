@@ -1,0 +1,1306 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('settings.page_title') }} - OpenAver{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/pages/settings.css">
+{% endblock %}
+
+{% block content %}
+<div id="settings-components" x-data="settings" data-lan-ip="{{ lan_ip or '' }}">
+    <div class="settings-header">
+        <!-- 81b-T1: 左 cluster 包標題 + 膠囊 + 連線 inline 區塊；flex 樣式由 T2 補 -->
+        <div class="settings-header-left">
+            <h4 class="mb-0">
+                <i class="bi bi-gear"></i> {{ t('settings.header.title') }}
+            </h4>
+            <!-- Server Mode Toggle (80a-T3) — 81b-T1: 從 actions 末尾搬到標題側 -->
+            <div class="settings-server-mode">
+                <div class="settings-sources-segmented" role="group" :aria-label="window.t('settings.mode.label')">
+                    <button type="button"
+                            data-mode="local"
+                            :class="{ 'is-on': !serverMode }"
+                            @click="requestServerModeChange(false)"
+                            x-text="window.t('settings.mode.local')">
+                    </button>
+                    <button type="button"
+                            data-mode="server"
+                            :class="{ 'is-on': serverMode }"
+                            @click="requestServerModeChange(true)"
+                            x-text="window.t('settings.mode.server')">
+                    </button>
+                </div>
+            </div>
+            <!-- 81b-T1: 連線資訊 inline 區塊（ip:port + 複製 icon + ? popover）；
+                 x-cloak 防 Alpine boot 前 FOUC（同原第二排 .settings-server-info 理由）-->
+            <div class="settings-server-inline" x-show="serverMode" x-cloak>
+                <template x-if="serverUrl()">
+                    <div class="settings-server-info-row">
+                        <span class="settings-server-url" x-text="serverUrlDisplay()"></span>
+                        <button type="button"
+                                class="settings-server-copy-btn"
+                                @click="copyServerUrl()"
+                                :title="window.t('settings.server_info.copy')"
+                                :aria-label="window.t('settings.server_info.copy')">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                        <button type="button"
+                                class="settings-server-copy-btn"
+                                @click="rotateLanToken()"
+                                :title="window.t('settings.server_info.rotate_token')"
+                                :aria-label="window.t('settings.server_info.rotate_token')">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </template>
+                <!-- lanIp 在但 lanPort 缺（listener 未啟動，如重啟 auto-start 失敗）→ 指向正確問題，非「取不到 IP」 -->
+                <template x-if="!serverUrl() && lanIp">
+                    <div class="settings-server-no-ip" x-text="window.t('settings.server_info.listener_down')"></div>
+                </template>
+                <!-- IP 抓不到但 listener 已開（lanPort 已知）→ 顯示 port，否則用戶湊不出 IP:port -->
+                <template x-if="!serverUrl() && !lanIp && lanPort">
+                    <div class="settings-server-no-ip" x-text="window.t('settings.server_info.no_lan_ip_with_port', { port: lanPort })"></div>
+                </template>
+                <!-- 連 lanIp、lanPort 都沒有 → 真的是區網 IP 偵測失敗（也無 port） -->
+                <template x-if="!serverUrl() && !lanIp && !lanPort">
+                    <div class="settings-server-no-ip" x-text="window.t('settings.server_info.no_lan_ip')"></div>
+                </template>
+                <!-- ? 警語 popover（沿用 .help-popover disclosure 模式，與「下載劇照」等一致；
+                     81b-T1 直接落地完整互動＝既有 pattern verbatim copy，T3 收為 verify-only）-->
+                <div class="settings-server-warning-anchor popover-anchor">
+                    <button type="button" class="help-popover-btn"
+                            @click.prevent="showServerWarning = !showServerWarning"
+                            :aria-expanded="showServerWarning">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                    <div x-show="showServerWarning" x-cloak x-transition
+                         @click.outside="showServerWarning = false"
+                         class="help-popover">
+                        <small class="help-popover__body">
+                            {{ t('settings.server_info.warning') }}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="settings-header-actions">
+            <!-- Font Size Control -->
+            <div class="font-size-control">
+                <template x-for="s in [{k:'xs',l:'A'},{k:'sm',l:'A'},{k:'md',l:'A'},{k:'lg',l:'A'},{k:'xl',l:'A'}]">
+                    <button type="button"
+                            class="font-size-btn"
+                            :class="{ active: fontSize === s.k }"
+                            :style="'font-size:' + {xs:'0.7rem',sm:'0.8rem',md:'0.9rem',lg:'1.05rem',xl:'1.2rem'}[s.k]"
+                            @click="fontSize = s.k"
+                            :title="window.t('settings.header.font_size_prefix') + ': ' + s.k"
+                            x-text="s.l">
+                    </button>
+                </template>
+            </div>
+            <!-- Locale Toggle -->
+            <div class="settings-locale-toggle">
+                <button class="locale-toggle-btn"
+                        type="button"
+                        x-text="{'zh-TW':'繁','zh-CN':'简','ja':'あ','en':'EN'}[locale] || '繁'"
+                        @click="cycleLocale()"
+                        :title="window.t('settings.header.locale_prefix') + ': ' + locale">
+                </button>
+            </div>
+            <!-- Theme Toggle -->
+            <div class="settings-theme-toggle">
+                <button class="theme-toggle-btn"
+                        @click="toggleThemeWithTransition($event, () => { theme = (theme === 'light' ? 'dim' : 'light') })"
+                        :title="theme === 'light' ? window.t('settings.header.switch_dark') : window.t('settings.header.switch_light')"
+                        type="button">
+                    <i class="bi" :class="theme === 'light' ? 'bi-moon-stars' : 'bi-sun'"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 64b-1: .settings-tab-bar 整段移除（6 個 .settings-tab button）；nav icon-only 嵌 header 由 64b-2 重建 -->
+
+    <!-- 靜態 inert：HTML 渲染即生效，Alpine boot 前保護 -->
+    <!-- Alpine boot 後由 :inert binding 接管 -->
+    <!-- 64b-1: form wraps all 3 sections (replaces 6-panel layout). -->
+    <form id="settingsForm" @submit.prevent="saveConfig" inert :inert="_configLoading">
+
+        <!-- ── quick-toggle 列（CD-64-B8）：下載劇照 + 進階搜尋，header 下 section 上 ── -->
+        <div class="settings-quick-toggle-row">
+
+            <!-- 下載劇照（extrafanart） -->
+            <div class="settings-form-group popover-anchor">
+                <label class="settings-label">
+                    <input type="checkbox" class="toggle toggle-primary"
+                           x-model="form.downloadSampleImages">
+                    <span class="label-text">{{ t('settings.scraper.download_sample_images_label') }}</span>
+                    <button type="button" class="help-popover-btn"
+                            @click.prevent="showSampleImagesHelp = !showSampleImagesHelp"
+                            :aria-expanded="showSampleImagesHelp">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </label>
+                <div x-show="showSampleImagesHelp" x-cloak x-transition
+                     @click.outside="showSampleImagesHelp = false"
+                     class="help-popover">
+                    <small class="help-popover__body">
+                        {{ t('settings.scraper.download_sample_images_hint') }}
+                    </small>
+                </div>
+            </div>
+
+            <!-- 封面縮圖快取（71-T5） -->
+            <div class="settings-form-group popover-anchor">
+                <label class="settings-label">
+                    <input type="checkbox" class="toggle toggle-primary"
+                           x-model="form.thumbnailCacheEnabled"
+                           @change="onThumbCacheToggleChange()">
+                    <span class="label-text">{{ t('settings.thumbnail_cache.label') }}</span>
+                    <button type="button" class="help-popover-btn"
+                            @click.prevent="showThumbCacheHelp = !showThumbCacheHelp"
+                            :aria-expanded="showThumbCacheHelp">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </label>
+                <div x-show="showThumbCacheHelp" x-cloak x-transition
+                     @click.outside="showThumbCacheHelp = false"
+                     class="help-popover">
+                    <small class="help-popover__body">
+                        {{ t('settings.thumbnail_cache.hint') }}
+                    </small>
+                </div>
+            </div>
+
+        </div><!-- /settings-quick-toggle-row -->
+
+        <!-- ── Section 1: 搜尋與刮削（兩卡同包） ── -->
+        <section id="sec-search" class="settings-section">
+
+          <!-- Card ①：搜尋來源 -->
+          <div class="card mb-4">
+            <div class="settings-card-header"><i class="bi bi-collection"></i> {{ t('settings.tabs.sources') }}</div>
+            <div class="card-body">
+
+                    <!-- ===== Section 2 — Active Row (Zone A) — 61c-1 structure ===== -->
+                    <!-- Batch bar: segmented 全開|無碼 control (64e-2) -->
+                    <div class="settings-sources-batchbar">
+                        <div class="settings-sources-batchbar-left">
+                            <div class="settings-sources-segmented">
+                                <button type="button"
+                                        id="sourcesAllOpenToggle"
+                                        :class="{ 'is-on': allBuiltinEnabled && !uncensoredMode }"
+                                        :aria-pressed="(allBuiltinEnabled && !uncensoredMode) ? 'true' : 'false'"
+                                        @click="if (uncensoredMode && enabledCount >= 10) { _flashCapAlert(); } else { enableAllToCap(); }">
+                                    {{ t('settings.sources.select_all') }}
+                                </button>
+                                <button type="button"
+                                        id="sourcesUncensoredToggle"
+                                        :class="{ 'is-on': uncensoredMode }"
+                                        :aria-pressed="uncensoredMode ? 'true' : 'false'"
+                                        @click="uncensoredMode = true">
+                                    {{ t('settings.sources.uncensored_mode_label') }}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="settings-sources-batchbar-right">
+                            <span class="settings-sources-counter popover-anchor">
+                                <span>{{ t('settings.sources.counter_prefix') }}</span>
+                                <strong x-text="enabledCount"></strong>
+                                <span class="cap-divider">/</span>
+                                <span class="cap-value">10</span>
+                                <span class="cap-tag">{{ t('settings.sources.cap_tag') }}</span>
+                                <button type="button" class="help-popover-btn"
+                                        @click.prevent="showCounterHelp = !showCounterHelp"
+                                        :aria-expanded="showCounterHelp">
+                                    <i class="bi bi-question-circle"></i>
+                                </button>
+                                <div x-show="showCounterHelp" x-cloak x-transition
+                                     @click.outside="showCounterHelp = false"
+                                     class="help-popover">
+                                    <small class="help-popover__body">
+                                        {{ t('settings.sources.counter_help') }}
+                                    </small>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Flat pill row — 61c-2 wires `sources` (Active Row order). -->
+                    <div class="settings-sources-pills" role="listbox" aria-label="Active Row">
+                        <template x-for="s in activeRowSources" :key="s.id">
+                            <div class="source-pill"
+                                 :class="{
+                                     'source-pill--uncensored': isUncensored(s),
+                                     'source-pill--manual-only': s.manual_only,
+                                     'is-disconnected': isDisconnectedMetatube(s),
+                                     'is-grabbed': _grabbedId === s.id,
+                                     dragging: draggingId === s.id,
+                                     'drop-target': dropTargetId === s.id,
+                                 }"
+                                 :data-enabled="pillVisualEnabled(s) ? 'true' : 'false'"
+                                 :data-proxy-required="(s.requires_proxy && !isDmmAvailable()) ? 'true' : 'false'"
+                                 role="option"
+                                 :aria-selected="s.enabled ? 'true' : 'false'"
+                                 :aria-grabbed="_grabbedId === s.id ? 'true' : 'false'"
+                                 tabindex="0"
+                                 :draggable="isDraggable(s) ? 'true' : 'false'"
+                                 @click="clickActiveRowPill(s)"
+                                 @keydown.enter.prevent="clickActiveRowPill(s)"
+                                 @keydown.space.prevent="onPillSpace(s)"
+                                 @keydown.arrow-left.prevent="onPillArrow(s, -1)"
+                                 @keydown.arrow-up.prevent="onPillArrow(s, -1)"
+                                 @keydown.arrow-right.prevent="onPillArrow(s, 1)"
+                                 @keydown.arrow-down.prevent="onPillArrow(s, 1)"
+                                 @keydown.escape="onPillEscape()"
+                                 @dragstart="onDragStart($event, s.id)"
+                                 @dragend="onDragEnd()"
+                                 @dragover.prevent="onDragOver($event, s.id)"
+                                 @dragleave="dropTargetId = null"
+                                 @drop.prevent="onDrop($event, s.id)">
+                                <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+                                <span class="pill-name" x-text="s.display_name"></span>
+                                <span class="source-pill-mt-badge"
+                                      x-show="s.type === 'metatube'"
+                                      aria-hidden="true">m</span>
+                                <span class="source-pill-badge" x-show="s.manual_only">
+                                    {{ t('settings.sources.manual_only_badge') }}
+                                </span>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Cap-block alert placeholder (61c-2 wires showCapAlert) -->
+                    <div class="settings-sources-cap-alert"
+                         x-show="showCapAlert"
+                         role="alert"
+                         aria-live="polite">
+                        <i class="bi bi-shield-exclamation"></i>
+                        <div>
+                            <strong>{{ t('settings.sources.cap_exceeded_title') }}</strong>
+                            <p>{{ t('settings.sources.cap_exceeded_body') }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Full-disabled warning (placeholder copy; 61c-6 refines) -->
+                    <div class="settings-sources-warn"
+                         x-show="enabledCount === 0"
+                         role="status"
+                         aria-live="polite">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <span>{{ t('settings.sources.warn_all_disabled') }}</span>
+                    </div>
+
+                    <!-- 64e-3: proxy row 搬至 metatube toggle 正上方（CD-64-E5 方案 B 整行 move，貼近 DMM 來源 + 連線區） -->
+                    <div class="settings-form-row">
+                        <label class="row-label">
+                            Proxy
+                            <small class="settings-hint">{{ t('settings.search.proxy_dmm_hint') }}</small>
+                        </label>
+                        <div class="flex-1 flex flex-col gap-1">
+                            <div class="variable-input-group">
+                                <input type="text" class="input input-bordered input-sm flex-1"
+                                    x-model="form.proxyUrl"
+                                    placeholder="{{ t('settings.search.proxy_placeholder') }}">
+                                <button class="btn btn-sm btn-outline" type="button"
+                                    @click="testProxy()"
+                                    :disabled="!form.proxyUrl.trim() || testProxyLoading">
+                                    <span x-show="testProxyLoading" class="loading loading-spinner loading-sm"></span>
+                                    {{ t('settings.action.test') }}
+                                </button>
+                            </div>
+                            <small class="settings-hint" x-show="proxyStatus" x-text="proxyStatus"
+                                :class="{ 'text-success': proxyStatusOk, 'text-error': proxyStatus && !proxyStatusOk && !testProxyLoading }"></small>
+                        </div>
+                    </div>
+
+                    <!-- Metatube 連線（B3）toggle（CD-63b-3）— 64b-6: 移至 Section 3 正上方 -->
+                    <div class="settings-form-group">
+                        <label class="settings-label">
+                            <input type="checkbox" class="toggle toggle-primary"
+                                   id="metatubeEnableToggle"
+                                   x-model="metatubeEnabled"
+                                   @change="onMetatubeEnabledChange()">
+                            <span class="label-text">{{ t('settings.sources.mt_enable_label') }}</span>
+                        </label>
+                        <small class="settings-hint">{{ t('settings.sources.mt_enable_help') }}</small>
+                    </div>
+
+                    <!-- ===== Section 3 — Metatube Connection (Zone B) — 61c-1 guard wrapper ===== -->
+                    <!-- B1: metatubeEnabled hardcoded false → 整段不渲染（disabled state）。
+                         idle/connected 結構在此就位，供測試 + B3 接實際連線。 -->
+                    <div class="settings-sources-section3" x-show="metatubeEnabled" x-collapse>
+
+                        <!-- STATE: idle — connect form (metatubeEnabled && !metatubeConnected) -->
+                        <div class="settings-mt-connect-form"
+                             x-show="!metatubeConnected"
+                             role="group">
+                            <label class="settings-mt-field">
+                                <span>{{ t('settings.sources.mt_server_url_label') }}</span>
+                                <input type="text"
+                                       x-model="metatubeServerUrl"
+                                       placeholder="http://192.168.1.50:8900">
+                            </label>
+                            <label class="settings-mt-field">
+                                <span>{{ t('settings.sources.mt_token_label') }}</span>
+                                <input type="password"
+                                       x-model="metatubeToken"
+                                       autocomplete="off">
+                            </label>
+                            <label class="settings-mt-field-checkbox">
+                                <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="metatubeLanMode">
+                                <span>{{ t('settings.sources.mt_lan_mode_label') }}</span>
+                            </label>
+                            <button type="button"
+                                    class="settings-mt-connect-btn"
+                                    :disabled="metatubeConnecting"
+                                    @click="metatubeConnect()">
+                                <i class="bi" :class="metatubeConnecting ? 'bi-hourglass-split' : 'bi-plug'"></i>
+                                <span x-text="metatubeConnecting ? window.t('settings.sources.mt_connecting_btn') : window.t('settings.sources.mt_connect_btn')"></span>
+                            </button>
+                        </div>
+
+                        <!-- STATE: connected — status row + Parts Bin (metatubeEnabled && metatubeConnected) -->
+                        <div x-show="metatubeConnected">
+
+                            <!-- Connection status row -->
+                            <div class="settings-mt-connect-status">
+                                <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                                <span class="status-text">
+                                    {{ t('settings.sources.mt_connected_status') }}
+                                    <code x-text="metatubeServerUrl" x-show="metatubeServerUrl"></code>
+                                </span>
+                                <button type="button"
+                                        class="settings-sources-mini-btn"
+                                        @click="metatubeEdit()">
+                                    <i class="bi bi-pencil"></i> {{ t('settings.sources.mt_edit_btn') }}
+                                </button>
+                                <button type="button"
+                                        class="settings-sources-mini-btn"
+                                        @click="metatubeDisconnect()">
+                                    <i class="bi bi-x-circle"></i> {{ t('settings.sources.mt_disconnect_btn') }}
+                                </button>
+                                <!-- Retest button — shown when connected AND probe finished (CD-63b-4 B2) -->
+                                <button type="button" class="settings-sources-mini-btn"
+                                        x-show="metatubeConnected && probeDone"
+                                        @click="metatubeRetest()">
+                                    <i class="bi bi-arrow-clockwise"></i> {{ t('settings.sources.mt_retest_btn') }}
+                                </button>
+                            </div>
+
+                            <!-- Probe progress line — shown while probe is running (CD-63b-4 B1) -->
+                            <div class="settings-mt-probe-progress" x-show="!probeDone">
+                                <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+                                <span>{{ t('settings.sources.mt_probe_testing') }}</span>
+                                <span class="probe-counter">(<span x-text="probeProgress"></span>/<span x-text="probeTotal"></span>)</span>
+                            </div>
+
+                            <!-- Tier hint -->
+                            <div class="settings-mt-tier-hint">
+                                <i class="bi bi-stars" aria-hidden="true"></i>
+                                <span>{{ t('settings.sources.mt_connected_tier_hint') }}</span>
+                            </div>
+
+                            <!-- Parts Bin header (collapsible, default collapsed) — N = partsBinSources.length -->
+                            <button type="button"
+                                    class="settings-mt-partsbin-head"
+                                    @click="partsBinExpanded = !partsBinExpanded"
+                                    :aria-expanded="partsBinExpanded ? 'true' : 'false'"
+                                    :aria-label="partsBinExpanded ? '{{ t('settings.sources.mt_provider_list_collapse_aria') }}' : '{{ t('settings.sources.mt_provider_list_expand_aria') }}'">
+                                <i class="bi" :class="partsBinExpanded ? 'bi-chevron-down' : 'bi-chevron-right'" aria-hidden="true"></i>
+                                <span>{{ t('settings.sources.mt_provider_list_header') }}</span>
+                                <span class="settings-mt-partsbin-count" x-text="partsBinSources.length"></span>
+                            </button>
+
+                            <!-- Parts Bin body — flat pill loop (NOT draggable; no Recommended group, B3 §7.5). -->
+                            <div class="settings-mt-partsbin-body" x-show="partsBinExpanded">
+                                <div class="settings-sources-pills" role="listbox" aria-label="Provider list">
+                                    <template x-for="src in partsBinSources" :key="src.id">
+                                        <div class="source-pill is-partsbin"
+                                             data-enabled="false"
+                                             :data-available="src.available ? 'true' : 'false'"
+                                             role="option"
+                                             :aria-selected="false"
+                                             :aria-label="`${src.display_name} — ${src.available === false ? window.t('settings.sources.mt_probe_failed_pill_hint') : window.t('settings.sources.mt_promote_hint')}`"
+                                             :title="src.available === false ? window.t('settings.sources.mt_probe_failed_pill_hint') : window.t('settings.sources.mt_promote_hint')"
+                                             tabindex="0"
+                                             @click="promoteMetatube(src.id)"
+                                             @keydown.enter.prevent="promoteMetatube(src.id)"
+                                             @keydown.space.prevent="promoteMetatube(src.id)">
+                                            <i class="bi bi-plus-circle plus-icn" aria-hidden="true"></i>
+                                            <i class="bi bi-slash-circle slash-icn" aria-hidden="true"></i>
+                                            <span class="pill-name" x-text="src.display_name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+            </div>
+          </div>
+
+          <!-- Card ②：刮削與翻譯 -->
+          <div class="card mb-4">
+            <div class="settings-card-header"><i class="bi bi-gear"></i> {{ t('settings.tabs.scraping') }}</div>
+            <div class="card-body">
+
+                    <!-- 我的最愛資料夾（scanner dropdown + favoriteScannerLink） -->
+                    <div class="settings-form-row">
+                        <label class="row-label">
+                            {{ t('settings.search.favorite_folder_label') }}
+                            <small class="settings-hint">{{ t('settings.search.favorite_folder_hint') }}</small>
+                        </label>
+                        <div class="flex-1 flex flex-col gap-1">
+                            <!-- input + dropdown 按鈕 -->
+                            <div class="variable-input-group" style="position:relative;">
+                                <input type="text" class="input input-bordered input-sm flex-1" id="searchFavoriteFolder"
+                                    x-model="form.searchFavoriteFolder"
+                                    placeholder="{{ t('settings.search.favorite_folder_placeholder') }}">
+                                <button type="button"
+                                    class="btn btn-sm btn-outline"
+                                    :title="t('settings.favorite_folder.pick_from_scanner')"
+                                    :aria-label="t('settings.favorite_folder.pick_from_scanner')"
+                                    @click.stop="showDirDropdown = !showDirDropdown">
+                                    <i class="bi bi-folder2-open"></i>
+                                </button>
+                                <!-- Scanner directories dropdown（token 對齊 design-system .toolbar-dropdown） -->
+                                <div x-show="showDirDropdown"
+                                     x-transition
+                                     class="scanner-dir-dropdown"
+                                     style="position:absolute;top:calc(100% + 0.25rem);right:0;z-index:50;min-width:16rem;background:var(--surface-2);border:1px solid var(--stroke-default);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:0.375rem;"
+                                     @click.outside="showDirDropdown = false">
+                                    <template x-if="scannerDirectories.length === 0">
+                                        <div style="padding:0.5rem 1rem;color:var(--text-muted);font-size:0.8rem;"
+                                             x-text="t('settings.favorite_folder.no_directories')"></div>
+                                    </template>
+                                    <template x-for="dir in scannerDirectories" :key="dirPath(dir)">
+                                        <button type="button"
+                                            class="btn btn-ghost btn-sm"
+                                            style="width:100%;text-align:left;justify-content:flex-start;border-radius:0;font-size:0.8rem;padding:0.375rem 1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                                            :title="dirPath(dir)"
+                                            @click="pickScannerDirectory(dir)"
+                                            x-text="dirPath(dir)">
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                            <!-- inline 連動狀態行 -->
+                            <small x-show="form.searchFavoriteFolder && favoriteScannerLink !== null"
+                                   :style="favoriteScannerLink && favoriteScannerLink.linked
+                                       ? 'color:var(--color-success)'
+                                       : 'color:var(--color-warning)'"
+                                   x-text="favoriteScannerLink && favoriteScannerLink.linked
+                                       ? t('settings.favorite_folder.linked_text')
+                                       : t('settings.favorite_folder.not_linked_text')">
+                            </small>
+                            <small class="settings-hint">{{ t('settings.search.favorite_folder_example_prefix') | safe }}</small>
+                        </div>
+                    </div>
+
+                    <!-- 翻譯三引擎（Ollama/Gemini/OpenAI-compat 完整欄位） -->
+                    <div class="settings-form-group">
+                        <label class="settings-label">
+                            <input type="checkbox" class="toggle toggle-primary" id="translateEnabled"
+                                x-model="form.translateEnabled">
+                            <i class="bi bi-translate"></i>
+                            <span class="label-text">{{ t('settings.translate.enabled_label') }}</span>
+                        </label>
+                    </div>
+
+                    <!-- 翻譯選項 (動態顯示) -->
+                    <div id="translateOptions"
+                         :class="{ 'opacity-50': !form.translateEnabled }">
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.translate.provider_label') }}</label>
+                            <select class="select select-bordered select-sm" id="translateProvider"
+                                x-model="form.translateProvider"
+                                :disabled="!form.translateEnabled">
+                                <option value="ollama">Ollama{{ t('settings.translate.ollama_local') }}</option>
+                                <option value="gemini">Gemini{{ t('settings.translate.gemini_cloud') }}</option>
+                                <option value="openai" x-text="t('settings.translate.openai_compatible')">OpenAI Compatible</option>
+                            </select>
+                        </div>
+
+                        <!-- Ollama 設定 -->
+                        <div id="ollamaFields" x-show="form.translateProvider === 'ollama'">
+                            <div class="settings-form-row">
+                                <label class="row-label">Ollama URL</label>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <div class="variable-input-group">
+                                        <input type="text" class="input input-bordered input-sm flex-1" id="ollamaUrl"
+                                            x-model="form.ollamaUrl"
+                                            :disabled="!form.translateEnabled">
+                                        <button class="btn btn-sm btn-outline" type="button" id="testOllamaBtn"
+                                            @click="testOllamaConnection()"
+                                            :disabled="!form.translateEnabled || testOllamaLoading">
+                                            <span x-show="testOllamaLoading" class="loading loading-spinner loading-sm"></span>
+                                            <template x-if="!testOllamaLoading">
+                                                <i class="bi bi-plug"></i>
+                                            </template>
+                                            <span x-text="testOllamaLoading ? '' : ' ' + window.t('settings.action.test')"></span>
+                                        </button>
+                                    </div>
+                                    <small class="settings-hint" x-html="ollamaStatus"></small>
+                                </div>
+                            </div>
+
+                            <div class="settings-form-row">
+                                <label class="row-label">{{ t('settings.translate.model_label') }}</label>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <div class="variable-input-group">
+                                        <select class="select select-bordered select-sm flex-1" id="ollamaModel"
+                                            x-model="form.ollamaModel" :disabled="!form.translateEnabled || ollamaModels.length === 0">
+                                            <option value="" disabled x-show="ollamaModels.length === 0">{{ t('settings.translate.test_connection_placeholder') }}</option>
+                                            <template x-for="model in ollamaModels" :key="model">
+                                                <option :value="model" x-text="model"></option>
+                                            </template>
+                                        </select>
+                                        <button class="btn btn-sm btn-outline" type="button" id="testModelBtn"
+                                            @click="testModel()" title="{{ t('settings.translate.test_model_title') }}"
+                                            :disabled="!form.translateEnabled || testModelLoading">
+                                            <span x-show="testModelLoading" class="loading loading-spinner loading-sm"></span>
+                                            <template x-if="!testModelLoading">
+                                                <i class="bi bi-chat-dots"></i>
+                                            </template>
+                                            <span x-text="testModelLoading ? '' : ' ' + window.t('settings.action.test')"></span>
+                                        </button>
+                                    </div>
+                                    <small class="settings-hint" x-html="modelStatus"></small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Gemini 設定 (初始隱藏) -->
+                        <div id="geminiFields" x-show="form.translateProvider === 'gemini'">
+                            <div class="settings-form-row">
+                                <label class="row-label">API Key</label>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <div class="variable-input-group">
+                                        <input type="password" class="input input-bordered input-sm flex-1" id="geminiApiKey"
+                                            x-model="form.geminiApiKey" placeholder="AIza..."
+                                            :disabled="!form.translateEnabled">
+                                        <button class="btn btn-sm btn-outline" type="button" id="testGeminiBtn"
+                                            @click="testGeminiConnection()"
+                                            :disabled="!form.translateEnabled || testGeminiLoading">
+                                            <span x-show="testGeminiLoading" class="loading loading-spinner loading-sm"></span>
+                                            <template x-if="!testGeminiLoading">
+                                                <i class="bi bi-plug"></i>
+                                            </template>
+                                            <span x-text="testGeminiLoading ? '' : ' ' + window.t('settings.action.test')"></span>
+                                        </button>
+                                    </div>
+                                    <small class="settings-hint" x-html="geminiStatus"></small>
+                                    <small class="settings-hint">
+                                        <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>
+                                        {{ t('settings.translate.gemini_free_hint') }}
+                                    </small>
+
+                                    <!-- 安全警告 -->
+                                    <div class="alert alert-warning api-key-alert" role="alert">
+                                        <i class="bi bi-exclamation-triangle-fill"></i>
+                                        <div class="alert-content">
+                                            <strong>{{ t('settings.translate.security_title') }}</strong>
+                                            <ul class="alert-list">
+                                                <li>{{ t('settings.translate.security_item1') }}</li>
+                                                <li>{{ t('settings.translate.security_item2') }}</li>
+                                                <li>{{ t('settings.translate.security_item3_prefix') }} <a href="https://aistudio.google.com/apikey" target="_blank" class="alert-link">Google
+                                                        AI Studio</a> {{ t('settings.translate.security_item3_suffix') }}</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="settings-form-row">
+                                <label class="row-label">{{ t('settings.translate.model_label') }}</label>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <div class="variable-input-group">
+                                        <select class="select select-bordered select-sm flex-1" id="geminiModel"
+                                            x-model="form.geminiModel" :disabled="!form.translateEnabled || geminiModels.length === 0">
+                                            <option value="" disabled x-show="geminiModels.length === 0">{{ t('settings.translate.test_apikey_placeholder') }}</option>
+                                            <template x-for="model in geminiModels" :key="model.name">
+                                                <option :value="model.name" x-text="model.name"></option>
+                                            </template>
+                                        </select>
+                                        <button class="btn btn-sm btn-outline" type="button" id="testGeminiTranslateBtn"
+                                            @click="testGeminiTranslation()" title="{{ t('settings.translate.test_translation_title') }}"
+                                            :disabled="!form.translateEnabled || geminiModels.length === 0 || testGeminiTranslateLoading">
+                                            <span x-show="testGeminiTranslateLoading" class="loading loading-spinner loading-sm"></span>
+                                            <template x-if="!testGeminiTranslateLoading">
+                                                <i class="bi bi-chat-dots"></i>
+                                            </template>
+                                            <span x-text="testGeminiTranslateLoading ? '' : ' ' + window.t('settings.action.test')"></span>
+                                        </button>
+                                    </div>
+                                    <small class="settings-hint" x-html="geminiModelStatus"></small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- OpenAI Compatible 設定 -->
+                        <div id="openaiFields" x-show="form.translateProvider === 'openai'" x-cloak>
+                            <!-- Base URL + Test Connection -->
+                            <div class="settings-form-row">
+                                <label class="row-label" x-text="'Base URL'"></label>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <div class="variable-input-group">
+                                        <input type="text" class="input input-bordered input-sm flex-1"
+                                            x-model="form.openaiBaseUrl"
+                                            placeholder="https://api.openai.com/v1"
+                                            :disabled="!form.translateEnabled">
+                                        <button class="btn btn-sm btn-outline" type="button"
+                                            @click="fetchOpenAIModels()"
+                                            :disabled="!form.translateEnabled || fetchingOpenaiModels">
+                                            <span x-show="fetchingOpenaiModels" class="loading loading-spinner loading-sm"></span>
+                                            <template x-if="!fetchingOpenaiModels">
+                                                <i class="bi bi-plug"></i>
+                                            </template>
+                                            <span x-text="fetchingOpenaiModels ? '' : ' ' + window.t('settings.action.test')"></span>
+                                        </button>
+                                    </div>
+                                    <small class="settings-hint" x-html="openaiStatus"></small>
+                                </div>
+                            </div>
+
+                            <!-- API Key -->
+                            <div class="settings-form-row">
+                                <label class="row-label">API Key</label>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <input type="password" class="input input-bordered input-sm"
+                                        x-model="form.openaiApiKey"
+                                        :placeholder="window.t('settings.translate.openai_api_key_placeholder')"
+                                        :disabled="!form.translateEnabled">
+                                    <small class="settings-hint" x-text="window.t('settings.translate.openai_api_key_hint')"></small>
+                                </div>
+                            </div>
+
+                            <!-- Model (select/input dual mode) + Test Translate -->
+                            <div class="settings-form-row">
+                                <label class="row-label" x-text="window.t('settings.translate.model_label')"></label>
+                                <div class="flex-1 flex flex-col gap-1">
+                                    <div class="variable-input-group">
+                                        <!-- select 模式：有 models 且非自訂模式 -->
+                                        <template x-if="openaiModels.length > 0 && !openaiUseCustomModel">
+                                            <select class="select select-bordered select-sm flex-1"
+                                                x-model="form.openaiModel"
+                                                @change="if ($event.target.value === '__custom__') { openaiUseCustomModel = true; form.openaiModel = ''; }"
+                                                :disabled="!form.translateEnabled">
+                                                <template x-for="m in openaiModels" :key="m">
+                                                    <option :value="m" x-text="m"></option>
+                                                </template>
+                                                <option value="__custom__" x-text="window.t('settings.translate.openai_custom_model') || 'Custom...'"></option>
+                                            </select>
+                                        </template>
+                                        <!-- input 模式：無 models 或自訂模式 -->
+                                        <template x-if="openaiModels.length === 0 || openaiUseCustomModel">
+                                            <div class="flex gap-1 items-center flex-1">
+                                                <input type="text" class="input input-bordered input-sm flex-1"
+                                                    x-model="form.openaiModel"
+                                                    :placeholder="window.t('settings.translate.openai_model_placeholder')"
+                                                    :disabled="!form.translateEnabled">
+                                                <button x-show="openaiUseCustomModel && openaiModels.length > 0"
+                                                    class="btn btn-xs btn-ghost"
+                                                    type="button"
+                                                    @click="openaiUseCustomModel = false; form.openaiModel = openaiModels[0] || '';">
+                                                    <i class="bi bi-list-ul"></i>
+                                                </button>
+                                            </div>
+                                        </template>
+                                        <button class="btn btn-sm btn-outline" type="button"
+                                            @click="testOpenAITranslation()"
+                                            :disabled="!form.translateEnabled || testingOpenaiTranslate || !form.openaiBaseUrl.trim() || !form.openaiModel.trim()">
+                                            <span x-show="testingOpenaiTranslate" class="loading loading-spinner loading-sm"></span>
+                                            <template x-if="!testingOpenaiTranslate">
+                                                <i class="bi bi-chat-dots"></i>
+                                            </template>
+                                            <span x-text="testingOpenaiTranslate ? '' : ' ' + window.t('settings.action.test')"></span>
+                                        </button>
+                                    </div>
+                                    <small class="settings-hint" x-html="openaiModelStatus"></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 外部媒體管理器模式（spec F1）— 沿用 .settings-sources-segmented 元件 -->
+                    <div class="settings-form-row settings-form-row--external-manager">
+                        <label class="row-label">{{ t('settings.scraper.external_manager_label') }}</label>
+                        <div class="flex-1 flex items-center gap-3 flex-wrap">
+                            <div class="settings-sources-segmented" role="group"
+                                 aria-label="{{ t('settings.scraper.external_manager_label') }}">
+                                <button type="button"
+                                        :class="{ 'is-on': form.externalManager === 'off' }"
+                                        :aria-pressed="(form.externalManager === 'off') ? 'true' : 'false'"
+                                        @click="form.externalManager = 'off'">
+                                    {{ t('settings.scraper.external_manager_off') }}
+                                </button>
+                                <button type="button"
+                                        :class="{ 'is-on': form.externalManager === 'jellyfin' }"
+                                        :aria-pressed="(form.externalManager === 'jellyfin') ? 'true' : 'false'"
+                                        @click="form.externalManager = 'jellyfin'">
+                                    Jellyfin
+                                </button>
+                                <button type="button"
+                                        :class="{ 'is-on': form.externalManager === 'emby' }"
+                                        :aria-pressed="(form.externalManager === 'emby') ? 'true' : 'false'"
+                                        @click="form.externalManager = 'emby'">
+                                    Emby
+                                </button>
+                                <button type="button"
+                                        :class="{ 'is-on': form.externalManager === 'kodi' }"
+                                        :aria-pressed="(form.externalManager === 'kodi') ? 'true' : 'false'"
+                                        @click="form.externalManager = 'kodi'">
+                                    Kodi
+                                </button>
+                            </div>
+                            <!-- hint trailing：segmented 右側同列；flex-1 min-w-0 讓窄視窗時 hint 可 wrap 到下一行 -->
+                            <small class="settings-hint flex-1 min-w-0" x-show="form.externalManager === 'off'">
+                                {{ t('settings.scraper.external_manager_off_hint') }}
+                            </small>
+                            <small class="settings-hint flex-1 min-w-0" x-show="form.externalManager === 'jellyfin'">
+                                {{ t('settings.scraper.external_manager_jellyfin_hint') }}
+                            </small>
+                            <small class="settings-hint flex-1 min-w-0" x-show="form.externalManager === 'emby'">
+                                {{ t('settings.scraper.external_manager_emby_hint') }}
+                            </small>
+                            <small class="settings-hint flex-1 min-w-0" x-show="form.externalManager === 'kodi'">
+                                {{ t('settings.scraper.external_manager_kodi_hint') }}
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="settings-form-row"
+                         x-show="['jellyfin','emby','kodi'].includes(form.externalManager)">
+                        <label class="row-label">
+                            {{ t('settings.scraper.strm_mapping.title') }}
+                            <small class="settings-hint">{{ t('settings.scraper.strm_mapping.intro') }}</small>
+                        </label>
+                        <div class="flex-1 flex flex-col gap-2">
+                            <template x-for="(rule, idx) in form.strmRules" :key="idx">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <input type="text" class="input input-bordered input-sm flex-1 min-w-0"
+                                           x-model="rule.local"
+                                           :placeholder="window.t('settings.scraper.strm_mapping.local_placeholder')">
+                                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                    <input type="text" class="input input-bordered input-sm flex-1 min-w-0"
+                                           x-model="rule.remote"
+                                           :placeholder="window.t('settings.scraper.strm_mapping.remote_placeholder')">
+                                    <button class="btn btn-xs btn-outline" type="button"
+                                            @click="removeStrmRule(idx)"
+                                            :aria-label="window.t('settings.scraper.strm_mapping.remove')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </template>
+                            <div>
+                                <button class="btn btn-xs btn-outline" type="button" @click="addStrmRule()">
+                                    <i class="bi bi-plus-lg"></i>
+                                    <span x-text="window.t('settings.scraper.strm_mapping.add_rule')"></span>
+                                </button>
+                                <button class="btn btn-xs btn-outline" type="button"
+                                        @click="rewriteExistingStrm()" :disabled="rewriteStrmLoading">
+                                    <span x-show="rewriteStrmLoading" class="loading loading-spinner loading-xs"></span>
+                                    <i x-show="!rewriteStrmLoading" class="bi bi-arrow-repeat"></i>
+                                    <span x-text="window.t('settings.scraper.strm_mapping.rewrite')"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 進階刮削摺疊（實填既有欄位）；x-collapse 需 @alpinejs/collapse plugin，已在 base.html 載入 -->
+                    <button class="collapsible-trigger" type="button" @click="scraperAdvanced = !scraperAdvanced"
+                            :aria-expanded="scraperAdvanced.toString()">
+                        <span class="collapsible-title"><i class="bi bi-sliders"></i> {{ t('settings.section.scraper_advanced') }}</span>
+                        <span class="btn-icon-collapse" aria-hidden="true"><i class="bi bi-chevron-down" :class="{ 'rotate-180': scraperAdvanced }"></i></span>
+                    </button>
+                    <div x-show="scraperAdvanced" x-collapse class="collapsible-content">
+
+                        <!-- suffix keywords -->
+                        <div class="settings-form-row">
+                            <label class="row-label">
+                                {{ t('settings.scraper.suffix_keywords_label') }}
+                                <small class="settings-hint">{{ t('settings.scraper.suffix_keywords_hint') }}</small>
+                            </label>
+                            <div class="flex-1 flex flex-col gap-1">
+                                <div class="suffix-tags-container">
+                                    <template x-for="(kw, idx) in form.suffixKeywords" :key="idx">
+                                        <span class="badge badge-sm suffix-tag">
+                                            <span x-text="kw"></span>
+                                            <span class="suffix-tag-remove" @click="removeSuffix(idx)">&times;</span>
+                                        </span>
+                                    </template>
+                                    <div class="suffix-input-inline">
+                                        <input type="text" class="input input-bordered input-xs"
+                                            x-model="newSuffixInput"
+                                            placeholder="-4k"
+                                            @keydown.enter.prevent="addSuffix()"
+                                            style="width: 80px;">
+                                        <button class="btn btn-xs btn-outline" type="button"
+                                            @click="addSuffix()" :disabled="!newSuffixInput.trim()">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-form-group">
+                            <label class="settings-label">
+                                <input type="checkbox" class="toggle toggle-primary" id="createFolder"
+                                    x-model="form.createFolder">
+                                <span class="label-text">{{ t('settings.scraper.create_folder_label') }}</span>
+                            </label>
+                        </div>
+
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.scraper.folder_layers_label') }}</label>
+                            <div class="flex-1 flex flex-col gap-2">
+                                <!-- 第一行：外層 / 中層 -->
+                                <div class="folder-layers-row">
+                                    <div class="folder-layer-group flex-col items-stretch" :class="{ 'disabled': !layer1Enabled }" x-data="{ open: false }">
+                                        <div class="format-preview" x-show="form.folderLayer1" x-html="formatPreviewHtml(form.folderLayer1)"></div>
+                                        <div class="flex gap-1">
+                                            <input type="text" class="input input-bordered input-sm" id="folderLayer1" placeholder="{{ t('settings.scraper.folder_layer_outer') }}"
+                                                x-model="form.folderLayer1" :disabled="!layer1Enabled">
+                                            <div class="variable-dropdown">
+                                                <button class="btn-variable" type="button"
+                                                    id="folderLayer1Btn" @click="open = !open" :disabled="!layer1Enabled">
+                                                    <i class="bi bi-braces"></i> {{ t('settings.action.variable') }}
+                                                </button>
+                                                <div x-show="open" @click.outside="open = false" x-transition class="variable-menu">
+                                                    <template x-for="v in folderVariables" :key="v.name">
+                                                        <span class="variable-badge" @click="appendVariable('folderLayer1', v.name); open = false"
+                                                              x-text="v.label" :title="v.name"></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span class="folder-separator">/</span>
+                                    <div class="folder-layer-group flex-col items-stretch" :class="{ 'disabled': !layer2Enabled }" x-data="{ open: false }">
+                                        <div class="format-preview" x-show="form.folderLayer2" x-html="formatPreviewHtml(form.folderLayer2)"></div>
+                                        <div class="flex gap-1">
+                                            <input type="text" class="input input-bordered input-sm" id="folderLayer2" placeholder="{{ t('settings.scraper.folder_layer_middle') }}"
+                                                x-model="form.folderLayer2" :disabled="!layer2Enabled">
+                                            <div class="variable-dropdown">
+                                                <button class="btn-variable" type="button"
+                                                    id="folderLayer2Btn" @click="open = !open" :disabled="!layer2Enabled">
+                                                    <i class="bi bi-braces"></i> {{ t('settings.action.variable') }}
+                                                </button>
+                                                <div x-show="open" @click.outside="open = false" x-transition class="variable-menu">
+                                                    <template x-for="v in folderVariables" :key="v.name">
+                                                        <span class="variable-badge" @click="appendVariable('folderLayer2', v.name); open = false"
+                                                              x-text="v.label" :title="v.name"></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 第二行：內層（佔整行） -->
+                                <div class="folder-layer-group flex-col items-stretch" :class="{ 'disabled': !layer3Enabled }" x-data="{ open: false }">
+                                    <div class="format-preview" x-show="form.folderLayer3" x-html="formatPreviewHtml(form.folderLayer3)"></div>
+                                    <div class="flex gap-1">
+                                        <span class="input-group-text">{{ t('settings.scraper.folder_layer_inner') }}</span>
+                                        <input type="text" class="input input-bordered input-sm flex-1" id="folderLayer3"
+                                            x-model="form.folderLayer3" placeholder="{num}" :disabled="!layer3Enabled">
+                                        <div class="variable-dropdown">
+                                            <button class="btn-variable" type="button"
+                                                id="folderLayer3Btn" @click="open = !open" :disabled="!layer3Enabled">
+                                                <i class="bi bi-braces"></i> {{ t('settings.action.variable') }}
+                                            </button>
+                                            <div x-show="open" @click.outside="open = false" x-transition class="variable-menu">
+                                                <template x-for="v in folderVariables" :key="v.name">
+                                                    <span class="variable-badge" @click="appendVariable('folderLayer3', v.name); open = false"
+                                                          x-text="v.label" :title="v.name"></span>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="folder-preview">
+                                    <i class="bi bi-file-earmark-play"></i>
+                                    <span class="preview-text">{{ t('settings.scraper.preview_prefix') }}: <span x-text="folderPreviewText"></span></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.scraper.filename_format_label') }}</label>
+                            <div class="flex-1 flex flex-col gap-1">
+                                <div class="format-preview" x-show="form.filenameFormat" x-html="formatPreviewHtml(form.filenameFormat)"></div>
+                                <div class="variable-input-group" x-data="{ open: false }">
+                                    <input type="text" class="input input-bordered input-sm flex-1" id="filenameFormat"
+                                        x-ref="filenameFormat"
+                                        x-model="form.filenameFormat" placeholder="[{num}][{maker}] {title}{suffix}">
+                                    <div class="variable-dropdown">
+                                        <button class="btn-variable" type="button"
+                                            @click="open = !open" :aria-expanded="open">
+                                            <i class="bi bi-braces"></i> {{ t('settings.action.variable') }}
+                                        </button>
+                                        <div x-show="open" @click.outside="open = false" x-transition class="variable-menu">
+                                            <template x-for="v in formatVariables" :key="v.name">
+                                                <span class="variable-badge" @click="insertVariable('filenameFormat', v.name); open = false"
+                                                      x-text="v.label" :title="v.name"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.scraper.max_title_length_label') }}</label>
+                            <div class="input-group-inline">
+                                <input type="number" class="input input-bordered input-sm" id="maxTitleLength"
+                                    x-model.number="form.maxTitleLength" min="20" max="200">
+                                <span class="input-suffix">{{ t('settings.scraper.unit_chars') }}</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-form-row">
+                            <label class="row-label" for="maxFilenameLength">{{ t('settings.scraper.max_filename_length_label') }}</label>
+                            <div class="input-group-inline popover-anchor">
+                                <input type="number" class="input input-bordered input-sm" id="maxFilenameLength"
+                                    x-model.number="form.maxFilenameLength" min="50" max="255">
+                                <span class="input-suffix">{{ t('settings.scraper.unit_chars') }}</span>
+                                <button type="button" class="help-popover-btn"
+                                        @click="showPathHelp = !showPathHelp"
+                                        :aria-expanded="showPathHelp"
+                                        aria-controls="pathLengthHelp"
+                                        aria-label="{{ t('settings.scraper.path_length_help_aria') }}">
+                                    <i class="bi bi-question-circle"></i>
+                                </button>
+                                <div id="pathLengthHelp" x-show="showPathHelp" x-cloak x-transition
+                                     @click.outside="showPathHelp = false"
+                                     class="help-popover">
+                                    <small class="help-popover__body">
+                                        {{ t('settings.scraper.path_length_help_line1') }}<br>
+                                        {{ t('settings.scraper.path_length_help_line2') | safe }}
+                                    </small>
+                                    <pre class="help-popover__code"><code>Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1</code></pre>
+                                    <small class="help-popover__body">
+                                        {{ t('settings.scraper.path_length_help_line3') }}<br>
+                                        {{ t('settings.scraper.path_length_help_line4') }}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.scraper.video_extensions_label') }}</label>
+                            <div class="flex-1 flex flex-col gap-1">
+                                <input type="text" class="input input-bordered input-sm" id="videoExtensions"
+                                    x-model="form.videoExtensions">
+                                <small class="settings-hint">{{ t('settings.scraper.video_extensions_hint') }}</small>
+                            </div>
+                        </div>
+
+
+                    </div><!-- /collapsible-content scraperAdvanced -->
+
+            </div>
+          </div>
+
+        </section><!-- /sec-search -->
+
+        <!-- ── Section 2: 列表生成 ── -->
+        <section id="sec-gallery" class="settings-section">
+          <div class="card mb-4">
+            <div class="settings-card-header"><i class="bi bi-list-ul"></i> {{ t('nav.scanner') }}</div>
+            <div class="card-body">
+
+                    <!-- 主卡：output dir + filename -->
+                    <div class="settings-form-row">
+                        <label class="row-label">{{ t('settings.gallery.output_dir_label') }}</label>
+                        <div class="variable-input-group">
+                            <input type="text" class="input input-bordered input-sm flex-1" id="avlistOutputDir"
+                                x-model="form.avlistOutputDir" placeholder="output">
+                            <button class="btn btn-sm btn-outline btn-neutral" type="button"
+                                @click="selectOutputFolder()" title="{{ t('settings.gallery.select_folder_title') }}">
+                                <i class="bi bi-folder"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="settings-form-row">
+                        <label class="row-label">{{ t('settings.gallery.output_filename_label') }}</label>
+                        <input type="text" class="input input-bordered input-sm" id="avlistOutputFilename"
+                            x-model="form.avlistOutputFilename" placeholder="gallery_output.html">
+                    </div>
+
+                    <!-- 進階顯示摺疊（實填） -->
+                    <button class="collapsible-trigger" type="button" @click="galleryAdvanced = !galleryAdvanced"
+                            :aria-expanded="galleryAdvanced.toString()">
+                        <span class="collapsible-title"><i class="bi bi-sliders"></i> {{ t('settings.section.gallery_advanced') }}</span>
+                        <span class="btn-icon-collapse" aria-hidden="true"><i class="bi bi-chevron-down" :class="{ 'rotate-180': galleryAdvanced }"></i></span>
+                    </button>
+                    <div x-show="galleryAdvanced" x-collapse class="collapsible-content">
+
+                        <!-- 輸出模式 avlistMode -->
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.gallery.default_mode_label') }}</label>
+                            <select class="select select-bordered select-sm" id="avlistMode"
+                                x-model="form.avlistMode">
+                                <option value="image">{{ t('settings.gallery.mode_image') }}</option>
+                                <option value="detail">{{ t('settings.gallery.mode_detail') }}</option>
+                                <option value="text">{{ t('settings.gallery.mode_text') }}</option>
+                            </select>
+                        </div>
+
+                        <!-- 輸出排序 avlistSort / avlistOrder（7 選項） -->
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.gallery.default_sort_label') }}</label>
+                            <div class="sort-row flex gap-2 flex-1">
+                                <select class="select select-bordered select-sm flex-1" id="avlistSort"
+                                    x-model="form.avlistSort">
+                                    <option value="date">{{ t('settings.gallery.sort_date') }}</option>
+                                    <option value="mdate">{{ t('settings.gallery.sort_mdate') }}</option>
+                                    <option value="num">{{ t('settings.gallery.sort_num') }}</option>
+                                    <option value="title">{{ t('settings.gallery.sort_title') }}</option>
+                                    <option value="actor">{{ t('settings.gallery.sort_actor') }}</option>
+                                    <option value="maker">{{ t('settings.gallery.sort_maker') }}</option>
+                                    <option value="size">{{ t('settings.gallery.sort_size') }}</option>
+                                </select>
+                                <select class="select select-bordered select-sm w-[100px]" id="avlistOrder"
+                                    x-model="form.avlistOrder">
+                                    <option value="descending">{{ t('settings.gallery.order_desc') }}</option>
+                                    <option value="ascending">{{ t('settings.gallery.order_asc') }}</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 每頁項目數（6 選項：30/45/60/90/120/all） -->
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.gallery.items_per_page_label') }}</label>
+                            <select class="select select-bordered select-sm" id="avlistItemsPerPage"
+                                x-model.number="form.avlistItemsPerPage">
+                                <option value="30">30</option>
+                                <option value="45">45</option>
+                                <option value="60">60</option>
+                                <option value="90">90</option>
+                                <option value="120">120</option>
+                                <option value="0">{{ t('settings.gallery.all') }}</option>
+                            </select>
+                        </div>
+
+                        <!-- min size -->
+                        <div class="settings-form-row">
+                            <label class="row-label">{{ t('settings.gallery.min_size_label') }}</label>
+                            <div class="flex-1 flex flex-col gap-1">
+                                <div class="input-group-inline">
+                                    <input type="number" class="input input-bordered input-sm" id="avlistMinSize"
+                                        x-model.number="form.avlistMinSize" min="0">
+                                    <span class="input-suffix">MB</span>
+                                </div>
+                                <small class="settings-hint">{{ t('settings.gallery.min_size_hint') }}</small>
+                            </div>
+                        </div>
+
+                    </div><!-- /collapsible-content galleryAdvanced -->
+
+            </div>
+          </div>
+        </section><!-- /sec-gallery -->
+
+        <!-- ── Section 3: 系統設定 ── -->
+        <section id="sec-system" class="settings-section">
+          <div class="card mb-4">
+            <div class="settings-card-header"><i class="bi bi-sliders"></i> {{ t('settings.section.system') }}</div>
+            <div class="card-body">
+                    <div class="settings-form-row">
+                        <label class="row-label">{{ t('settings.system.default_page_label') }}</label>
+                        <select class="select select-bordered select-sm" id="defaultPage"
+                            x-model="form.defaultPage">
+                            <option value="search">{{ t('nav.search') }}</option>
+                            <option value="scanner">{{ t('nav.scanner') }}</option>
+                            <option value="showcase">{{ t('nav.showcase') }}</option>
+                        </select>
+                    </div>
+                    {% if is_windows_desktop %}
+                    <div class="settings-form-row">
+                        <label class="row-label">{{ t('settings.system.close_action_label') }}</label>
+                        <select class="select select-bordered select-sm" id="closeAction" x-model="form.closeAction">
+                            <option value="ask">{{ t('settings.system.close_action_ask') }}</option>
+                            <option value="tray">{{ t('settings.system.close_action_tray') }}</option>
+                            <option value="exit">{{ t('settings.system.close_action_exit') }}</option>
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="settings-form-row">
+                        <label class="row-label">{{ t('settings.system.player_label') }}</label>
+                        <div class="flex-1 flex flex-col gap-1">
+                            <input type="text" class="input input-bordered input-sm" id="viewerPlayer"
+                                x-model="form.viewerPlayer" placeholder="{{ t('settings.system.player_placeholder') }}">
+                            <small class="settings-hint">{{ t('settings.system.player_hint_prefix') }} C:\Program Files\DAUM\PotPlayer\PotPlayerMini64.exe</small>
+                        </div>
+                    </div>
+                    <hr class="my-3">
+
+                    <!-- 重置按鈕 -->
+                    <div class="settings-form-row">
+                        <label class="row-label text-error">
+                            {{ t('settings.system.reset_label') }}
+                            <small class="settings-hint">{{ t('settings.system.reset_hint') }}</small>
+                        </label>
+                        <button type="button" class="btn btn-sm btn-outline btn-error"
+                            @click="resetConfig()">
+                            <i class="bi bi-arrow-counterclockwise"></i> {{ t('settings.action.reset') }}
+                        </button>
+                    </div>
+            </div>
+          </div>
+        </section><!-- /sec-system -->
+
+        <!-- 儲存按鈕 -->
+        <div class="save-btn-wrapper">
+            <button type="submit" class="btn btn-primary save-btn" id="saveBtn">
+                <i class="bi bi-save"></i> {{ t('settings.action.save') }}
+            </button>
+        </div>
+    </form>
+
+    <!-- Dirty Check Modal -->
+    <dialog class="modal fluent-modal"
+        :class="{ 'modal-open': dirtyCheckModalOpen }"
+        @click.self="dirtyCheckCancel()"
+        @keydown.escape.window="dirtyCheckModalOpen && dirtyCheckCancel()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-exclamation-triangle"></i> {{ t('settings.dirty_modal.title') }}
+            </h3>
+            <p class="fluent-modal-body">
+                {{ t('settings.dirty_modal.body') }}
+            </p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="dirtyCheckCancel()">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button type="button" class="btn btn-outline btn-warning" @click="dirtyCheckDiscard()">
+                    <i class="bi bi-x-circle"></i> {{ t('settings.dirty_modal.discard') }}
+                </button>
+                <button type="button" class="btn btn-primary" @click="dirtyCheckSave()">
+                    <i class="bi bi-save"></i> {{ t('settings.dirty_modal.save') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- TASK-52.3.4: Reset Config Confirm Modal -->
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': resetConfigModalOpen }"
+            @click.self="cancelResetConfigModal()"
+            @keydown.escape.window="resetConfigModalOpen && cancelResetConfigModal()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-exclamation-triangle text-warning"></i>
+                {{ t('settings.reset_modal.title') }}
+            </h3>
+            <p class="fluent-modal-body">
+                {{ t('settings.reset_modal.body') }}
+            </p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="cancelResetConfigModal()">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button type="button" class="btn btn-error"
+                        @click="confirmResetConfig()"
+                        :disabled="_resetConfigLoading">
+                    <span x-show="_resetConfigLoading" class="loading loading-spinner loading-xs"></span>
+                    <span x-show="!_resetConfigLoading"><i class="bi bi-arrow-counterclockwise"></i></span>
+                    {{ t('settings.reset_modal.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- 71-T11: 開啟封面縮圖快取 Confirm Modal（非破壞性 + 動態估算 body）-->
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': thumbCacheConfirmOpen }"
+            @click.self="cancelThumbCacheConfirm()"
+            @keydown.escape.window="thumbCacheConfirmOpen && cancelThumbCacheConfirm()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-info-circle"></i>
+                {{ t('settings.thumbnail_cache.confirm_modal.title') }}
+            </h3>
+            <p class="fluent-modal-body"
+               x-text="window.t('settings.thumbnail_cache.confirm_modal.body').replace('{count}', videoCount).replace('{mb}', _thumbEstimateMb).replace('{min}', _thumbEstimateMin)"></p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="cancelThumbCacheConfirm()">
+                    {{ t('settings.thumbnail_cache.confirm_modal.cancel') }}
+                </button>
+                <button type="button" class="btn btn-primary" @click="confirmThumbCacheEnable()">
+                    {{ t('settings.thumbnail_cache.confirm_modal.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- 71b-T2: 關閉封面縮圖快取 Confirm Modal（warning 語氣 + 釋放估算 body）-->
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': thumbCacheDisableConfirmOpen }"
+            @click.self="cancelThumbCacheDisable()"
+            @keydown.escape.window="thumbCacheDisableConfirmOpen && cancelThumbCacheDisable()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-exclamation-triangle text-warning"></i>
+                {{ t('settings.thumbnail_cache.disable_modal.title') }}
+            </h3>
+            <p class="fluent-modal-body"
+               x-text="window.t('settings.thumbnail_cache.disable_modal.body').replace('{mb}', _thumbEstimateMb)"></p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="cancelThumbCacheDisable()">
+                    {{ t('settings.thumbnail_cache.disable_modal.cancel') }}
+                </button>
+                <button type="button" class="btn btn-error" @click="confirmThumbCacheDisable()">
+                    {{ t('settings.thumbnail_cache.disable_modal.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- T4: 伺服器模式切換 Confirm Modal -->
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': serverModeConfirmOpen }"
+            @click.self="cancelServerModeChange()"
+            @keydown.escape.window="serverModeConfirmOpen && cancelServerModeChange()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-wifi"></i>
+                <span x-text="serverModeConfirmValue
+                    ? window.t('settings.server_mode_confirm.title_on')
+                    : window.t('settings.server_mode_confirm.title')"></span>
+            </h3>
+            <p class="fluent-modal-body"
+               x-text="serverModeConfirmValue
+                   ? window.t('settings.server_mode_confirm.body_on')
+                   : window.t('settings.server_mode_confirm.body_off')"></p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="cancelServerModeChange()">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button type="button" class="btn btn-primary" @click="confirmServerModeChange()"
+                        x-text="serverModeConfirmValue
+                            ? window.t('settings.server_mode_confirm.confirm_on')
+                            : window.t('settings.server_mode_confirm.confirm')"></button>
+            </div>
+        </div>
+    </dialog>
+
+<!-- Toast 容器（Alpine controlled）-->
+<div class="toast toast-end toast-top z-[9999]" x-show="_toast.visible" x-cloak x-transition>
+    <div class="alert" :class="`alert-${_toast.type}`">
+        <span x-text="_toast.message"></span>
+        <button type="button" class="btn btn-sm btn-circle btn-ghost" @click="_toast.visible = false">
+            <i class="bi bi-x"></i>
+        </button>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block pre_alpine_module %}
+<script type="module" src="/static/js/pages/settings/main.js"></script>
+{% endblock %}
+{% block extra_js %}
+<script src="/static/js/pages/settings/theme-transition.js"></script>
+{% endblock %}

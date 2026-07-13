@@ -1,0 +1,1057 @@
+import { dirPath } from '@/shared/dir-path.js';
+
+export function stateScan() {
+    return {
+        dirPath,
+        // ===== Data State =====
+        directories: [],
+        config: {},
+        configDirty: false,
+
+        // ===== Toast State =====
+        _toast: {
+            message: '',
+            type: 'info',
+            visible: false
+        },
+        _toastTimer: null,
+
+        // ===== Folder Dirty Check =====
+        folderSnapshot: null,
+        pendingNavigationUrl: '',
+        dirtyCheckModalOpen: false,
+
+        readonlyConfirmModalOpen: false,
+        readonlyConfirmTargetIdx: null,
+
+        // ===== Drag-drop State =====
+        dragCounter: 0,
+        showDragOverlay: false,
+
+        // ===== Stats State =====
+        statsVisible: false,
+        statTotal: 0,
+        statLastRun: '',
+        clearCacheModalOpen: false,
+        clearCacheLoading: false,
+
+        // ===== Manual Input State =====
+        manualInputVisible: false,
+        manualPath: '',
+
+        // ===== T3.6: Copy Logs Fail Modal =====
+        copyFailModalOpen: false,
+        copyFailDump: '',
+
+        // ===== T7b: State Machine =====
+        state: 'idle',  // 'idle' | 'generating' | 'nfoUpdating' | 'done' | 'error'
+
+        // ===== T7b: Progress =====
+        progressStatus: '',
+        progressCurrent: 0,
+        progressTotal: 0,
+
+        // ===== T7b: Log System =====
+        logHtml: '',           // 日誌 HTML（用於 restoreLogs）
+        logBatch: [],          // 批次佇列
+        logTimer: null,        // 批次計時器
+
+        // ===== T7d: Log Terminal 增強 =====
+        logEntries: [],        // [{level, message, timestamp}] 結構化陣列
+        logFilter: 'all',      // 'all' | 'error' | 'warn' 篩選條件
+
+        // ===== T7b: Done Actions =====
+        outputPath: '',        // 輸出路徑（供複製）
+
+        // ===== T7b: NFO Update =====
+        nfoNeedUpdateCount: 0,
+        nfoUpdatePaths: [],
+        nfoUpdateVisible: false,
+
+        // ===== T6d: Jellyfin Image Update =====
+        jellyfinImageCount: 0,
+        jellyfinImageVisible: false,
+        showJellyfinHelp: false,
+        jellyfinCheckState: 'idle',   // T2(40c): 'idle' | 'checking' | 'done'
+        _jellyfinCheckController: null,
+
+        // ===== T7b: EventSource 管理 =====
+        eventSource: null,
+
+        // ===== Computed Properties =====
+        get isFolderDirty() {
+            if (!this.folderSnapshot) return false;
+            return JSON.stringify(this.directories) !== this.folderSnapshot;
+        },
+
+        get outputPathDisplay() {
+            const outputDir = this.config.gallery?.output_dir || 'output';
+            const outputFilename = this.config.gallery?.output_filename || 'gallery_output.html';
+            return `${outputDir}/${outputFilename}`;
+        },
+
+        // ===== T7b: Computed Properties =====
+        get progressPercent() {
+            if (this.progressTotal === 0) return 0;
+            return (this.progressCurrent / this.progressTotal) * 100;
+        },
+
+        get isGenerating() {
+            return this.state === 'generating' || this.state === 'nfoUpdating'
+                || this.state === 'jellyfinUpdating' || this.state === 'enriching';
+        },
+
+        get isBusy() {
+            // 用於按鈕 disabled：generating/nfoUpdating 時鎖定
+            return this.isGenerating;
+        },
+
+        get progressSectionVisible() {
+            // state 非 idle 時顯示，或有恢復的 logs 時也顯示
+            return this.state !== 'idle' || this.logHtml !== '';
+        },
+
+        get doneActionsVisible() {
+            return this.state === 'done' && this.outputPath !== '';
+        },
+
+        get generateButtonText() {
+            if (this.state === 'generating') {
+                return '<span class="loading loading-spinner loading-sm"></span> ' + window.t('scanner.stats.generate_loading');
+            }
+            return '<i class="bi bi-play-fill"></i> ' + window.t('scanner.stats.generate_idle');
+        },
+
+        get nfoUpdateButtonText() {
+            if (this.state === 'nfoUpdating') {
+                return '<span class="loading loading-spinner loading-sm"></span> ' + window.t('scanner.stats.nfo_loading');
+            }
+            if (this.nfoNeedUpdateCount > 0) {
+                return '<i class="bi bi-magic"></i> ' + window.t('scanner.stats.nfo_idle');
+            }
+            return '<i class="bi bi-check-lg"></i> ' + window.t('scanner.stats.btn_done');
+        },
+
+        get nfoUpdateButtonDisabled() {
+            // generating/nfoUpdating 時鎖定；idle/done/error 時看 nfoNeedUpdateCount
+            return this.isGenerating || this.nfoNeedUpdateCount === 0;
+        },
+
+        get jellyfinImageButtonText() {
+            if (this.state === 'jellyfinUpdating') {
+                return '<span class="loading loading-spinner loading-sm"></span> ' + window.t('scanner.stats.jellyfin_loading');
+            }
+            if (this.jellyfinImageCount > 0) {
+                return '<i class="bi bi-images"></i> ' + window.t('scanner.stats.jellyfin_idle');
+            }
+            return '<i class="bi bi-check-lg"></i> ' + window.t('scanner.stats.btn_done');
+        },
+
+        // ===== Lifecycle =====
+        async init() {
+            // 覆蓋全域函數為 Alpine 版本
+            const self = this;
+
+            // 暴露 PyWebView 回調
+            window.addScannerFolder = (path) => self.addFolderPath(path);
+
+            // 初始載入
+            await this.loadConfig();
+            this.loadStats();
+
+            // T7b: 恢復日誌（確保 DOM 已渲染）
+            await this.$nextTick();
+            this.restoreLogs();
+
+            // T10: 觸發 missing check（loadStats 後）
+            this.checkMissing();
+
+            // T10: restore pending enrich
+            const pending = localStorage.getItem('avlist_enrich_pending');
+            if (pending) {
+                try {
+                    const items = JSON.parse(pending);
+                    if (Array.isArray(items) && items.length > 0) {
+                        this.missingItems = items;
+                        this.resumePillVisible = true;
+                    }
+                } catch { localStorage.removeItem('avlist_enrich_pending'); }
+            }
+
+            // T5.1: 接入統一 page lifecycle
+            if (window.__registerPage) {
+                window.__registerPage({
+                    beforeLeave: (href) => {
+                        const guard = this.shouldWarnBeforeLeave();
+                        if (guard.shouldWarn) {
+                            if (guard.useModal) {
+                                this.pendingNavigationUrl = href;
+                                this.dirtyCheckModalOpen = true;
+                                return false;
+                            } else {
+                                // eslint-disable-next-line no-alert -- dirty-check page-leave confirm, backlog migration to fluent-modal, reviewed 2026-05-03
+                                const ok = confirm(window.t('scanner.leave_warning.confirm', { message: guard.message }));
+                                if (ok) {
+                                    // T2(40c): 離頁確認後 abort jellyfin check
+                                    if (this._jellyfinCheckController) {
+                                        this._jellyfinCheckController.abort();
+                                        this._jellyfinCheckController = null;
+                                    }
+                                    this.jellyfinCheckState = 'idle';
+                                }
+                                return ok;
+                            }
+                        }
+                        return true;
+                    },
+                    onBeforeUnload: () => {
+                        const guard = this.shouldWarnBeforeLeave();
+                        if (guard.shouldWarn) return guard.message;
+                        return null;
+                    },
+                    cleanup: () => {
+                        if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
+                        clearTimeout(this._toastTimer);
+                        clearTimeout(this.logTimer);
+                        // T2(40c): abort jellyfin check fetch
+                        if (this._jellyfinCheckController) {
+                            this._jellyfinCheckController.abort();
+                            this._jellyfinCheckController = null;
+                        }
+                        this.jellyfinCheckState = 'idle';
+                        // T10: save pending enrich items on leave
+                        if (this.state === 'enriching' && this.missingItems.length > this.missingEnrichOffset) {
+                            localStorage.setItem('avlist_enrich_pending', JSON.stringify(this.missingItems.slice(this.missingEnrichOffset)));
+                        }
+                        if (this._enrichAbortController) {
+                            this._enrichAbortController.abort();
+                            this._enrichAbortController = null;
+                        }
+                    }
+                });
+            }
+        },
+
+        // ===== Leave Guard =====
+        shouldWarnBeforeLeave() {
+            // T7b: 改為讀取 Alpine state，而非全域變數
+            if (this.isGenerating) {
+                return {
+                    shouldWarn: true,
+                    message: window.t('scanner.leave_warning.generating'),
+                    useModal: false
+                };
+            }
+            // T2(40c): Jellyfin check 進行中觸發離頁確認
+            if (this.jellyfinCheckState === 'checking') {
+                return {
+                    shouldWarn: true,
+                    message: window.t('scanner.leave_warning.image_check'),
+                    useModal: false
+                };
+            }
+            if (this.isFolderDirty) {
+                return {
+                    shouldWarn: true,
+                    message: window.t('scanner.leave_warning.folder_dirty'),
+                    useModal: true
+                };
+            }
+            return { shouldWarn: false };
+        },
+
+        // ===== Config Methods =====
+        async loadConfig() {
+            this.folderSnapshot = null;
+
+            try {
+                const resp = await fetch('/api/config');
+                const result = await resp.json();
+                if (result.success) {
+                    this.config = result.data;
+                    const rawDirectories = this.config.gallery?.directories || [];
+                    this.directories = rawDirectories
+                        .map((entry) => typeof entry === 'string'
+                            ? { path: entry, readonly: false, output_path: '' }
+                            : {
+                                path: entry?.path || '',
+                                readonly: entry?.readonly === true,
+                                output_path: entry?.output_path || '',
+                            })
+                        .filter((entry) => entry.path);
+
+                    // T7b: 不再需要同步全域變數（core.js 已刪除）
+
+                    // 建立快照
+                    this.folderSnapshot = JSON.stringify(this.directories);
+                }
+            } catch (e) {
+                console.error('載入設定失敗:', e);
+            }
+        },
+
+        async saveConfig() {
+            try {
+                this.config.gallery = this.config.gallery || {};
+                this.config.gallery.directories = this.directories.map((entry) => ({
+                    path: dirPath(entry),
+                    readonly: entry.readonly === true,
+                    output_path: entry.output_path || '',
+                }));
+
+                const resp = await fetch('/api/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.config)
+                });
+                const result = await resp.json();
+                if (result.success) {
+                    this.configDirty = false;
+                    this.folderSnapshot = JSON.stringify(this.directories);
+                    this.showToast('設定已儲存', 'success');
+                    return true;
+                } else {
+                    this.showToast('儲存失敗: ' + (result.error || '未知錯誤'), 'error');
+                    return false;
+                }
+            } catch (e) {
+                console.error('儲存失敗:', e);
+                this.showToast('儲存失敗: ' + e.message, 'error');
+                return false;
+            }
+        },
+
+        // ===== Stats Methods =====
+        async loadStats() {
+            try {
+                const resp = await fetch('/api/gallery/stats');
+                const result = await resp.json();
+                if (result.success && result.data) {
+                    const stats = result.data;
+                    if (stats.total > 0) {
+                        this.statsVisible = true;
+                        this.statTotal = stats.total;
+
+                        if (stats.last_run) {
+                            const lastRun = new Date(stats.last_run);
+                            const timeStr = lastRun.toLocaleString('zh-TW', {
+                                month: 'numeric',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                            let runInfo = window.t('scanner.stats.last_run_prefix') + timeStr;
+                            if (stats.last_added !== null && stats.last_added !== undefined) {
+                                runInfo += ' ' + window.t('scanner.stats.last_added', { count: stats.last_added });
+                            }
+                            this.statLastRun = runInfo;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('載入統計失敗:', e);
+            }
+        },
+
+        async clearCache() {
+            this.clearCacheLoading = true;
+            try {
+                const resp = await fetch('/api/gallery/cache', { method: 'DELETE' });
+                const result = await resp.json();
+                if (result.success) {
+                    this.showToast(`已清除 ${result.deleted} 部影片快取`, 'success');
+                    this.statTotal = 0;
+                    this.statsVisible = false;
+                    this.nfoUpdateVisible = false;
+                    this.jellyfinImageVisible = false;
+                    this.jellyfinCheckState = 'idle';
+                    this.clearCacheModalOpen = false;
+                    // T10: reset missing pill state
+                    this.missingPillVisible = false;
+                    this.resumePillVisible = false;
+                    this.missingItems = [];
+                    localStorage.removeItem('avlist_enrich_pending');
+                } else {
+                    this.showToast('清除失敗: ' + (result.error || '未知錯誤'), 'error');
+                }
+            } catch (e) {
+                this.showToast('清除失敗: ' + e.message, 'error');
+            } finally {
+                this.clearCacheLoading = false;
+            }
+        },
+
+        // ===== T6d: Jellyfin Image Check =====
+        async checkJellyfinImages() {
+            // 正向白名單（fail-closed）：config 未載入 / 載入失敗 / 缺 external_manager 時
+            // 一律不補圖（對應後端 _STEM_IMAGE_MODES）。勿改回 === 'off'（undefined 會 fail-open）。
+            if (!['jellyfin', 'emby', 'kodi'].includes(this.config?.scraper?.external_manager)) return;
+
+            // T2(40c): 取消上一次未完成的請求（防重複點擊）
+            if (this._jellyfinCheckController) {
+                this._jellyfinCheckController.abort();
+            }
+            const controller = new AbortController();
+            this._jellyfinCheckController = controller;
+            this.jellyfinCheckState = 'checking';
+
+            try {
+                const resp = await fetch('/api/gallery/jellyfin-check', {
+                    signal: controller.signal
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    console.error('Jellyfin check API error:', data.error);
+                    this.jellyfinCheckState = 'idle';
+                    return;
+                }
+                if (data.data.need_update > 0) {
+                    this.jellyfinImageCount = data.data.need_update;
+                    this.jellyfinImageVisible = true;
+                } else {
+                    this.jellyfinImageCount = 0;
+                    this.jellyfinImageVisible = false;
+                }
+                this.jellyfinCheckState = 'done';
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    this.jellyfinCheckState = 'idle';
+                    return;
+                }
+                console.error('Jellyfin check failed:', e);
+                this.jellyfinCheckState = 'idle';
+            } finally {
+                if (this._jellyfinCheckController === controller) {
+                    this._jellyfinCheckController = null;
+                }
+            }
+        },
+
+        // ===== Folder Management =====
+        async selectFolder() {
+            if (typeof window.pywebview === 'undefined' || !window.pywebview.api) {
+                this.toggleManualInput();
+                this.showToast(window.t('scanner.toast.desktop_only'), 'info');
+                return;
+            }
+
+            try {
+                const result = await window.pywebview.api.select_folder();
+
+                if (result && result.folder) {
+                    this.addFolderPath(result.folder);
+                } else if (Array.isArray(result) && result.length > 0) {
+                    const firstFile = result[0];
+                    const lastSep = Math.max(firstFile.lastIndexOf('\\'), firstFile.lastIndexOf('/'));
+                    const folderPath = lastSep > 0 ? firstFile.substring(0, lastSep) : null;
+                    if (folderPath) {
+                        this.addFolderPath(folderPath);
+                    }
+                }
+            } catch (e) {
+                console.error('[AVList] 選取資料夾失敗:', e);
+            }
+        },
+
+        addFolderPath(folderPath) {
+            if (!this.directories.some((entry) => dirPath(entry) === folderPath)) {
+                this.directories.push({ path: folderPath, readonly: false, output_path: '' });
+                this.configDirty = true;
+            } else {
+                this.showToast(window.t('scanner.toast.folder_already_added'), 'warning');
+            }
+        },
+
+        toggleManualInput() {
+            this.manualInputVisible = !this.manualInputVisible;
+            if (this.manualInputVisible) {
+                this.$nextTick(() => {
+                    this.$refs.manualPathInput.focus();
+                });
+            }
+        },
+
+        addManualPath() {
+            const path = this.manualPath.trim();
+            if (!path) return;
+
+            if (this.directories.some((entry) => dirPath(entry) === path)) {
+                this.showToast(window.t('scanner.toast.folder_already_added'), 'warning');
+                return;
+            }
+
+            this.directories.push({ path, readonly: false, output_path: '' });
+            this.configDirty = true;
+            this.manualPath = '';
+        },
+
+        removeDirectory(idx) {
+            this.directories.splice(idx, 1);
+            this.configDirty = true;
+        },
+
+        // ===== Drag-drop Methods =====
+        handleDragEnter(e) {
+            e.preventDefault();
+            this.dragCounter++;
+            if (this.dragCounter === 1) {
+                this.showDragOverlay = true;
+            }
+        },
+
+        handleDragLeave(e) {
+            e.preventDefault();
+            this.dragCounter--;
+            if (this.dragCounter === 0) {
+                this.showDragOverlay = false;
+            }
+        },
+
+        handleDrop(e) {
+            e.preventDefault();
+            this.dragCounter = 0;
+            this.showDragOverlay = false;
+        },
+
+        onReadonlyToggleClick(idx) {
+            const directory = this.directories[idx];
+            if (!directory) return;
+            if (directory.readonly) {
+                directory.readonly = false;
+                this.configDirty = true;
+                return;
+            }
+            this.readonlyConfirmTargetIdx = idx;
+            this.readonlyConfirmModalOpen = true;
+        },
+
+        readonlyConfirmAccept() {
+            const directory = this.directories[this.readonlyConfirmTargetIdx];
+            if (directory) {
+                directory.readonly = true;
+                this.configDirty = true;
+            }
+            this.readonlyConfirmModalOpen = false;
+            this.readonlyConfirmTargetIdx = null;
+        },
+
+        readonlyConfirmCancel() {
+            this.readonlyConfirmModalOpen = false;
+            this.readonlyConfirmTargetIdx = null;
+        },
+
+        // ===== Dirty Check Modal Actions =====
+        dirtyCheckCancel() {
+            this.dirtyCheckModalOpen = false;
+            this.pendingNavigationUrl = '';
+        },
+
+        async dirtyCheckDiscard() {
+            await this.loadConfig();
+            this.dirtyCheckModalOpen = false;
+            if (this.pendingNavigationUrl) {
+                const url = this.pendingNavigationUrl;
+                // dirty state cleared by loadConfig(); beforeLeave will now return true
+                // → __leavePage triggers _doCleanup (closes eventSource + clears timers)
+                if (window.__leavePage) {
+                    window.__leavePage(url);
+                }
+                window.location.href = url;
+            }
+        },
+
+        async dirtyCheckSave() {
+            const saved = await this.saveConfig();
+            if (saved) {
+                this.dirtyCheckModalOpen = false;
+                if (this.pendingNavigationUrl) {
+                    const url = this.pendingNavigationUrl;
+                    // dirty state cleared by saveConfig(); beforeLeave will now return true
+                    // → __leavePage triggers _doCleanup (closes eventSource + clears timers)
+                    if (window.__leavePage) {
+                        window.__leavePage(url);
+                    }
+                    window.location.href = url;
+                }
+            }
+            // If save failed, modal stays open, user sees toast error
+        },
+
+        // ===== Utility Methods =====
+        showToast(msg, type = 'info', duration = 2500) {
+            this._toast.message = msg;
+            this._toast.type = type;
+            this._toast.visible = true;
+
+            if (this._toastTimer) {
+                clearTimeout(this._toastTimer);
+            }
+
+            this._toastTimer = setTimeout(() => {
+                this._toast.visible = false;
+                this._toastTimer = null;
+            }, duration);
+        },
+
+        escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        },
+
+        // ===== T7b: Log System =====
+        /**
+         * Log 系統效能設計說明
+         *
+         * 使用 insertAdjacentHTML（而非 Alpine x-for）的原因：
+         * 1. Scanner 典型場景會產生 200-3000 條 log
+         * 2. Alpine x-for 重渲染在大量 log 時慢 10x（100-300ms vs 20-40ms）
+         * 3. 批次處理 + insertAdjacentHTML 可維持流暢體驗（< 40ms）
+         *
+         * 實作特性：
+         * - 100ms debounce 批次插入（減少 DOM 操作）
+         * - CSS-only 篩選（filter-all/error/warn class，零 JS 開銷）
+         * - 雙重儲存：logEntries（結構化）+ logHtml（快速恢復）
+         */
+        addLog(level, message) {
+            // T7d: 加入結構化陣列
+            this.logEntries.push({ level, message, timestamp: Date.now() });
+
+            const cls = level === 'error' ? 'log-error' :
+                        level === 'warn' ? 'log-warn' : 'log-info';
+            const escaped = this.escapeHtml(message);
+            this.logBatch.push(`<div class="${cls}" data-level="${level}">${escaped}</div>`);
+
+            if (!this.logTimer) {
+                this.logTimer = setTimeout(() => this.flushLogs(), 100);
+            }
+        },
+
+        flushLogs() {
+            if (this.logBatch.length === 0) {
+                this.logTimer = null;
+                return;
+            }
+
+            const logOutput = this.$refs.logOutput;
+            logOutput.insertAdjacentHTML('beforeend', this.logBatch.join(''));
+            logOutput.scrollTop = logOutput.scrollHeight;
+
+            // 更新 Alpine state（供 restoreLogs 使用）
+            this.logHtml = logOutput.innerHTML;
+
+            // 儲存到 localStorage
+            localStorage.setItem('avlist_logs', this.logHtml);
+
+            this.logBatch = [];
+            this.logTimer = null;
+        },
+
+        restoreLogs() {
+            const savedLogs = localStorage.getItem('avlist_logs');
+            const wasGenerating = localStorage.getItem('avlist_generating') === 'true';
+
+            if (savedLogs) {
+                const logOutput = this.$refs.logOutput;
+                logOutput.innerHTML = savedLogs;
+                this.logHtml = savedLogs;
+
+                // T7d: 解析 HTML，重建 logEntries（相容舊格式無 data-level）
+                this.logEntries = [];
+                const logDivs = logOutput.querySelectorAll('.log-info, .log-warn, .log-error');
+                logDivs.forEach(div => {
+                    let level = div.getAttribute('data-level');
+                    if (!level) {
+                        if (div.classList.contains('log-error')) level = 'error';
+                        else if (div.classList.contains('log-warn')) level = 'warn';
+                        else level = 'info';
+                    }
+                    this.logEntries.push({ level, message: div.textContent, timestamp: Date.now() });
+                });
+
+                if (wasGenerating) {
+                    this.addLog('warn', '⚠ 生成被中斷（離開頁面）');
+                    this.flushLogs();
+                    localStorage.setItem('avlist_generating', 'false');
+                }
+
+                const lastStatus = localStorage.getItem('avlist_last_status');
+                if (lastStatus) {
+                    this.progressStatus = lastStatus;
+                }
+
+                // 如果有未完成的任務，顯示 progress section
+                if (wasGenerating || savedLogs) {
+                    this.state = 'idle';  // 重置狀態為 idle（已中斷）
+                }
+            }
+        },
+
+        clearLogs() {
+            localStorage.removeItem('avlist_logs');
+            localStorage.removeItem('avlist_generating');
+            localStorage.removeItem('avlist_last_status');
+            this.logHtml = '';
+            this.logEntries = [];
+            this.$refs.logOutput.innerHTML = '';
+        },
+
+        // ===== T7d: Log Terminal 增強 =====
+        clearLogsDisplay() {
+            this.logHtml = '';
+            this.logEntries = [];
+            this.$refs.logOutput.innerHTML = '';
+        },
+
+        copyLogs() {
+            if (this.logEntries.length === 0) {
+                this.showToast('目前沒有日誌');
+                return;
+            }
+
+            const text = this.logEntries.map(entry => entry.message).join('\n');
+
+            // T3.6 P2 fix: guard against undefined navigator.clipboard (HTTP / older WebView)
+            // 若無 Clipboard API，直接走 fail modal fallback；
+            // 否則 .then/.catch chain 會在 sync property access 階段就 TypeError，.catch 不會跑。
+            if (!navigator.clipboard?.writeText) {
+                this.openCopyFailModal(text);
+                return;
+            }
+
+            navigator.clipboard.writeText(text).then(() => {
+                this.showToast(`已複製 ${this.logEntries.length} 筆日誌`, 'success');
+            }).catch(() => {
+                this.openCopyFailModal(text);
+            });
+        },
+
+        // T3.6: Copy Logs Fail Modal — fluent-modal <pre> dump fallback
+        openCopyFailModal(text) {
+            this.copyFailDump = text || '';
+            this.copyFailModalOpen = true;
+        },
+
+        closeCopyFailModal() {
+            this.copyFailModalOpen = false;
+            this.copyFailDump = '';
+        },
+
+        confirmClearAll() {
+            const hasLogs = this.logEntries.length > 0 || localStorage.getItem('avlist_logs');
+            if (!hasLogs) {
+                this.showToast('目前沒有日誌');
+                return;
+            }
+
+            // eslint-disable-next-line no-alert -- clearLogs confirm, backlog migration to fluent-modal, reviewed 2026-05-03
+            if (confirm('確定要清除所有日誌嗎？（包含歷史紀錄）')) {
+                this.clearLogs();
+                this.showToast('已清除所有日誌', 'success');
+            }
+        },
+
+        // ===== T7b: Generate Flow =====
+        async generate() {
+            // 互斥鎖定：generating/nfoUpdating 時不可再次執行
+            if (this.isGenerating) return;
+
+            if (this.directories.length === 0) {
+                this.showToast('請先加入至少一個資料夾');
+                return;
+            }
+
+            // 自動儲存設定
+            if (this.configDirty || this.isFolderDirty) {
+                const saved = await this.saveConfig();
+                if (!saved) return;
+            }
+
+            // 重置狀態
+            this.state = 'generating';
+            this.progressStatus = '準備中...';
+            this.progressCurrent = 0;
+            this.progressTotal = 0;
+            this.outputPath = '';
+            this.nfoUpdateVisible = false;
+            this.clearLogs();
+
+            // 設置 localStorage 標記
+            localStorage.setItem('avlist_generating', 'true');
+
+            try {
+                this.eventSource = new EventSource('/api/gallery/generate');
+
+                this.eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'progress') {
+                        this.progressStatus = data.status;
+                        this.progressCurrent = data.current;
+                        this.progressTotal = data.total;
+                        localStorage.setItem('avlist_last_status', data.status);
+                    } else if (data.type === 'log') {
+                        this.addLog(data.level, data.message);
+                    } else if (data.type === 'done') {
+                        this.eventSource.close();
+                        this.eventSource = null;
+                        this.state = 'done';
+                        this.progressStatus = `完成！${data.video_count} 部影片`;
+                        this.progressCurrent = this.progressTotal;
+                        this.outputPath = data.output_path;
+
+                        localStorage.setItem('avlist_generating', 'false');
+                        localStorage.setItem('avlist_last_status', '完成');
+                        localStorage.removeItem('avlist_state');  // 清除 viewer 狀態
+
+                        // 處理 NFO 更新提示
+                        if (data.session_update && data.session_update.count > 0) {
+                            this.nfoNeedUpdateCount = data.session_update.count;
+                            this.nfoUpdatePaths = data.session_update.paths;
+                            this.nfoUpdateVisible = true;
+                        } else {
+                            this.nfoNeedUpdateCount = 0;
+                            this.nfoUpdatePaths = [];
+                            this.nfoUpdateVisible = false;
+                        }
+
+                        const readonlyStats = data.readonly_stats || {};
+                        const readonlyWarnings = ['source_errors', 'failed', 'no_output', 'unreachable', 'partial']
+                            .some((key) => (readonlyStats[key] || 0) > 0);
+                        this.showToast(
+                            readonlyWarnings
+                                ? `已完成 ${data.video_count} 部影片，但部分只讀來源需要檢查日誌`
+                                : `成功產生 ${data.video_count} 部影片列表`,
+                            readonlyWarnings ? 'warning' : 'success'
+                        );
+
+                        // a5: Windows 長路徑警告
+                        if (data.long_paths && data.long_paths.length > 0) {
+                            this.showToast(
+                                `本次掃描發現 ${data.long_paths.length} 個路徑超過 260 字元，可能無法讀取，詳細清單見 debug.log`,
+                                'warn',
+                                6000
+                            );
+                        }
+
+                        this.flushLogs();
+
+                        // 刷新統計（不含 NFO 檢查）
+                        this.loadStats();
+
+                        // T10: 掃描完成後檢查缺失 NFO/封面
+                        this.checkMissing();
+
+                        // 更新資料夾快照（generate 成功視為儲存）
+                        this.folderSnapshot = JSON.stringify(this.directories);
+                    } else if (data.type === 'error') {
+                        this.eventSource.close();
+                        this.eventSource = null;
+                        this.state = 'error';
+                        this.addLog('error', '錯誤: ' + data.message);
+                        this.flushLogs();
+                        localStorage.setItem('avlist_generating', 'false');
+                    }
+                };
+
+                this.eventSource.onerror = () => {
+                    if (this.state === 'done') return;
+                    this.eventSource.close();
+                    this.eventSource = null;
+                    this.state = 'error';
+                    this.addLog('error', '連線中斷');
+                    this.flushLogs();
+                    localStorage.setItem('avlist_generating', 'false');
+                };
+            } catch (e) {
+                this.state = 'error';
+                localStorage.setItem('avlist_generating', 'false');
+                console.error('[Scanner] generate error:', e);
+                this.showToast(window.t('scanner.toast.generate_error'), 'error', 4000);
+            }
+        },
+
+        // ===== T7b: NFO Update Flow =====
+        async runNfoUpdate() {
+            // 互斥鎖定
+            if (this.isGenerating) return;
+
+            if (this.nfoNeedUpdateCount === 0) {
+                this.showToast('沒有需要更新的影片');
+                return;
+            }
+
+            // 重置狀態
+            this.state = 'nfoUpdating';
+            this.progressStatus = '準備中...';
+            this.progressCurrent = 0;
+            this.progressTotal = 0;
+            this.clearLogs();
+
+            localStorage.setItem('avlist_generating', 'true');
+
+            try {
+                this.eventSource = new EventSource('/api/gallery/update');
+
+                this.eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'progress') {
+                        this.progressStatus = data.status;
+                        this.progressCurrent = data.current;
+                        this.progressTotal = data.total;
+                        localStorage.setItem('avlist_last_status', data.status);
+                    } else if (data.type === 'log') {
+                        this.addLog(data.level, data.message);
+                    } else if (data.type === 'done') {
+                        this.eventSource.close();
+                        this.eventSource = null;
+                        this.state = 'done';
+                        this.progressStatus = data.message || '完成';
+                        this.progressCurrent = this.progressTotal;
+
+                        localStorage.setItem('avlist_generating', 'false');
+                        localStorage.setItem('avlist_last_status', data.message || '完成');
+
+                        this.showToast('補全完成！請重新產生列表以更新', 'success');
+                        if (data.message) {
+                            this.addLog('info', data.message);
+                        }
+                        this.flushLogs();
+
+                        // 隱藏 NFO 更新按鈕（已完成）
+                        this.nfoNeedUpdateCount = 0;
+                        this.nfoUpdateVisible = false;
+                    } else if (data.type === 'error') {
+                        this.eventSource.close();
+                        this.eventSource = null;
+                        this.state = 'error';
+                        this.addLog('error', '錯誤: ' + data.message);
+                        this.flushLogs();
+                        localStorage.setItem('avlist_generating', 'false');
+                    }
+                };
+
+                this.eventSource.onerror = () => {
+                    if (this.state === 'done') return;
+                    this.eventSource.close();
+                    this.eventSource = null;
+                    this.state = 'error';
+                    this.addLog('error', '連線中斷');
+                    this.flushLogs();
+                    localStorage.setItem('avlist_generating', 'false');
+                };
+            } catch (e) {
+                this.state = 'error';
+                localStorage.setItem('avlist_generating', 'false');
+                console.error('[Scanner] runNfoUpdate error:', e);
+                this.showToast(window.t('scanner.toast.nfo_update_error'), 'error', 4000);
+            }
+        },
+
+        // ===== T6d: Jellyfin Image Update Flow =====
+        async runJellyfinImageUpdate() {
+            if (this.isGenerating) return;
+
+            if (this.jellyfinImageCount === 0) {
+                this.showToast('沒有需要補齊的影片');
+                return;
+            }
+
+            this.state = 'jellyfinUpdating';
+            this.progressStatus = '準備中...';
+            this.progressCurrent = 0;
+            this.progressTotal = 0;
+            this.clearLogs();
+
+            localStorage.setItem('avlist_generating', 'true');
+
+            try {
+                this.eventSource = new EventSource('/api/gallery/jellyfin-update');
+
+                this.eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'progress') {
+                        this.progressStatus = data.status;
+                        this.progressCurrent = data.current;
+                        this.progressTotal = data.total;
+                        localStorage.setItem('avlist_last_status', data.status);
+                    } else if (data.type === 'log') {
+                        this.addLog(data.level, data.message);
+                    } else if (data.type === 'done') {
+                        this.eventSource.close();
+                        this.eventSource = null;
+                        this.state = 'done';
+                        this.progressStatus = data.message || '完成';
+                        this.progressCurrent = this.progressTotal;
+
+                        localStorage.setItem('avlist_generating', 'false');
+                        localStorage.setItem('avlist_last_status', data.message || '完成');
+
+                        // T3(40c) Codex fix: update 完成後重設 jellyfin check 狀態，讓觸發列重新出現
+                        this.jellyfinImageVisible = false;
+                        this.jellyfinImageCount = 0;
+                        this.jellyfinCheckState = 'idle';
+
+                        this.showToast('補齊完成！', 'success');
+                        if (data.message) {
+                            this.addLog('info', data.message);
+                        }
+                        this.flushLogs();
+                    } else if (data.type === 'error') {
+                        this.eventSource.close();
+                        this.eventSource = null;
+                        this.state = 'error';
+                        this.addLog('error', '錯誤: ' + data.message);
+                        this.flushLogs();
+                        localStorage.setItem('avlist_generating', 'false');
+                    }
+                };
+
+                this.eventSource.onerror = () => {
+                    if (this.state === 'done') return;
+                    this.eventSource.close();
+                    this.eventSource = null;
+                    this.state = 'error';
+                    this.addLog('error', '連線中斷');
+                    this.flushLogs();
+                    localStorage.setItem('avlist_generating', 'false');
+                };
+            } catch (e) {
+                this.state = 'error';
+                localStorage.setItem('avlist_generating', 'false');
+                console.error('[Scanner] runJellyfinImageUpdate error:', e);
+                this.showToast(window.t('scanner.toast.jellyfin_update_error'), 'error', 4000);
+            }
+        },
+
+        // ===== T7b: Utility =====
+        copyOutputPath() {
+            if (!this.outputPath) return;
+
+            // T3.6 P2 fix: guard against undefined navigator.clipboard
+            // sync property access on undefined 會 throw TypeError，.catch 不會跑。
+            const showFailToast = () => {
+                this.showToast(
+                    window.t('scanner.toast.copy_path_failed').replace('{path}', this.outputPath),
+                    'error',
+                    4000
+                );
+            };
+
+            if (!navigator.clipboard?.writeText) {
+                showFailToast();
+                return;
+            }
+
+            navigator.clipboard.writeText(this.outputPath).then(() => {
+                this.showToast('已複製: ' + this.outputPath, 'success');
+            }).catch(() => {
+                showFailToast();
+            });
+        },
+    };
+}

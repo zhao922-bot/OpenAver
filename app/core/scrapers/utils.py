@@ -1,0 +1,400 @@
+"""爬蟲共用工具"""
+import re
+import time
+import requests
+from typing import Optional
+
+from core.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+# 全域設定
+DEFAULT_TIMEOUT = 15
+DEFAULT_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept-Language': 'ja-JP,ja;q=0.9,zh-TW;q=0.8,zh;q=0.7,en;q=0.6',
+}
+
+
+def get_html(url: str, timeout: int = DEFAULT_TIMEOUT,
+             headers: Optional[dict[str, str]] = None, cookies: Optional[dict[str, str]] = None) -> Optional[str]:
+    """
+    GET 請求獲取 HTML
+
+    Args:
+        url: 目標 URL
+        timeout: 超時秒數
+        headers: 自訂 headers
+        cookies: Cookies
+
+    Returns:
+        HTML 文本，失敗返回 None
+    """
+    try:
+        h = DEFAULT_HEADERS.copy()
+        if headers:
+            h.update(headers)
+
+        resp = requests.get(url, headers=h, cookies=cookies, timeout=timeout)
+        resp.encoding = resp.apparent_encoding
+
+        if resp.status_code == 200:
+            return resp.text
+    except Exception as e:
+        logger.debug(f"GET {url} failed: {e}")
+    return None
+
+
+def post_html(url: str, data: Optional[dict[str, object]] = None, timeout: int = DEFAULT_TIMEOUT,
+              headers: Optional[dict[str, str]] = None) -> Optional[str]:
+    """
+    POST 請求獲取 HTML
+
+    Args:
+        url: 目標 URL
+        data: POST 資料
+        timeout: 超時秒數
+        headers: 自訂 headers
+
+    Returns:
+        HTML 文本，失敗返回 None
+    """
+    try:
+        h = DEFAULT_HEADERS.copy()
+        if headers:
+            h.update(headers)
+
+        resp = requests.post(url, data=data, headers=h, timeout=timeout)
+        resp.encoding = resp.apparent_encoding
+
+        if resp.status_code == 200:
+            return resp.text
+    except Exception as e:
+        logger.debug(f"POST {url} failed: {e}")
+    return None
+
+
+def extract_number(filename: str) -> Optional[str]:
+    """
+    從檔名中提取番號
+
+    Args:
+        filename: 檔案名稱或路徑
+
+    Returns:
+        提取的番號（如 SONE-205），找不到返回 None
+
+    Examples:
+        >>> extract_number("SONE-205.mp4")
+        'SONE-205'
+        >>> extract_number("[JavBus] ABC-123 標題.mp4")
+        'ABC-123'
+        >>> extract_number("T28-103.mp4")
+        'T28-103'
+    """
+    from pathlib import Path
+    basename = Path(filename).stem
+
+    # 預處理 - 清理常見後綴（需有分隔符，避免誤刪 JUC-123 等合法前綴）
+    basename = re.sub(
+        r'[-_](UC|UNCEN|UNCENSORED|LEAK|LEAKED)(?=[-_.\s]|$)',
+        '', basename, flags=re.IGNORECASE
+    )
+
+    patterns = [
+        r'(FC2-PPV-\d+)',               # FC2-PPV-1234567
+        r'(\d{6}-\d{2,})',              # 041417-413 日期-編號格式（無碼）
+        r'(\d{6}_\d{2,})',             # 120415_201 / 082912_01 底線格式（無碼）
+        r'([A-Za-z]+\d+-\d+)',          # T28-103 混合格式
+        r'\[([A-Za-z]{1,7}-\d{3,5})\]', # [ABC-123] 方括號
+        r'([A-Za-z]{1,7}-\d{3,5})',     # ABC-123 帶橫線
+        r'([A-Za-z]{2,7})(\d{3,5})',    # ABC12345 不帶橫線（index 6，兩 group → 插 hyphen）
+        r'([nkcmsNKCMS]\d{4})(?!\d)',      # n0762 單字母 + 恰 4 位（Tokyo Hot 無碼，前綴限 n/k/c/m/s（spec-73 US2 權威模型），右側無更多數字）
+        r'(\d{3}[A-Za-z]{3,4}-?\d{3,4})', # 123ABC-456 或 123ABC456
+    ]
+
+    for i, pattern in enumerate(patterns):
+        match = re.search(pattern, basename, re.IGNORECASE)
+        if match:
+            if i == 6:  # 不帶橫線需重組（ABC12345）
+                number = f"{match.group(1).upper()}-{match.group(2)}"
+            else:
+                number = match.group(1).upper()
+            return number
+    return None
+
+
+def rate_limit(delay: float = 0.3) -> None:
+    """請求節流（避免被封禁）"""
+    time.sleep(delay)
+
+
+# ============================================================
+# 文字檢測函數
+# ============================================================
+
+def has_japanese(text: str) -> bool:
+    """
+    檢測文字是否包含日文（平假名或片假名）
+
+    Args:
+        text: 待檢測的文字
+
+    Returns:
+        True 如果包含日文字符，否則 False
+
+    Examples:
+        >>> has_japanese("これはテスト")
+        True
+        >>> has_japanese("中文標題")
+        False
+    """
+    if not text:
+        return False
+    for char in text:
+        if '\u3040' <= char <= '\u309f':  # 平假名
+            return True
+        if '\u30a0' <= char <= '\u30ff':  # 片假名
+            return True
+    return False
+
+
+def has_chinese(text: str) -> bool:
+    """
+    檢測文字是否包含中文
+
+    Args:
+        text: 待檢測的文字
+
+    Returns:
+        True 如果包含中文字符，否則 False
+
+    Examples:
+        >>> has_chinese("標題")
+        True
+        >>> has_chinese("Title")
+        False
+    """
+    if not text:
+        return False
+    for char in text:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+    return False
+
+
+# 字幕 pattern 常數（單一真理來源，供 check_subtitle / strip_subtitle_markers 共用）
+_SUBTITLE_PATTERNS_UPPER = ['-C', '_C']
+_SUBTITLE_PATTERNS_CHINESE = ['中文字幕', '字幕', '中字', '[中字]', '【中字】']
+
+
+def check_subtitle(filename: str) -> bool:
+    """
+    檢查檔名是否包含字幕標記
+
+    支援的標記：
+    - -C, -c, _C（常見字幕標記）
+    - 中文字幕, 字幕, 中字, [中字], 【中字】
+
+    Args:
+        filename: 檔案名稱
+
+    Returns:
+        True 如果包含字幕標記，否則 False
+
+    Examples:
+        >>> check_subtitle("ABC-123-C.mp4")
+        True
+        >>> check_subtitle("[中文字幕] ABC-123.mp4")
+        True
+        >>> check_subtitle("ABC-123.mp4")
+        False
+    """
+    if not filename:
+        return False
+
+    upper = filename.upper()
+
+    for p in _SUBTITLE_PATTERNS_UPPER:
+        idx = upper.find(p)
+        if idx != -1:
+            next_idx = idx + len(p)
+            if next_idx >= len(upper) or not upper[next_idx].isalnum():
+                return True
+
+    for p in _SUBTITLE_PATTERNS_CHINESE:
+        if p in filename:
+            return True
+
+    return False
+
+
+def strip_subtitle_markers(name: Optional[str]) -> Optional[str]:
+    """
+    剝除片名中的字幕標記（bracket 形式、純文字形式、後綴形式）。
+
+    剝除順序：
+    1. Bracket 形式（先長後短，避免殘留括號）：[中文字幕]、【中文字幕】、[中字]、【中字】
+    2. 純文字形式（詞根邊界 regex，避免誤剝「幕後」「字幕員」等複合詞）：
+       中文字幕、中字、字幕（長 pattern 先）
+    3. 後綴形式：[-_][Cc] 後接非英數邊界
+    4. strip() 頭尾空白（不 collapse 中間空格）
+
+    Args:
+        name: 原始片名（可為 None 或空字串）
+
+    Returns:
+        剝除字幕標記後的片名。None / "" passthrough。
+
+    Examples:
+        >>> strip_subtitle_markers("[中字] ABC-123")
+        'ABC-123'
+        >>> strip_subtitle_markers("ABC-123-C")
+        'ABC-123'
+        >>> strip_subtitle_markers("字幕員特典")
+        '字幕員特典'
+    """
+    if not name:
+        return name
+
+    # 1. Bracket 形式（長 pattern 先）
+    for bracket in ['[中文字幕]', '【中文字幕】', '[中字]', '【中字】']:
+        name = name.replace(bracket, '')
+
+    # 2. 純文字形式（長 pattern 先，詞根邊界避免複合詞誤剝）
+    for marker in ['中文字幕', '中字', '字幕']:
+        name = re.sub(rf'(?<![^\W_]){re.escape(marker)}(?![^\W_])', '', name)
+
+    # 2.5 marker 剝除後，清掉頭尾 orphan 的 -/_ 分隔符
+    # 例如「正妹の中文版-中字」剝「中字」後留「正妹の中文版-」，尾端 `-` 是 orphan
+    # 不動「-C/_C」組合 — 尾端 C 不匹配 [-_]+$
+    name = re.sub(r'^[-_]+|[-_]+$', '', name)
+
+    # 3. 後綴 -C / _C（後接非英數或字串結尾）
+    name = re.sub(r'[-_][Cc](?=[^A-Za-z0-9]|$)', '', name)
+
+    return name.strip()
+
+
+def strip_number_prefix(title: str, number: str) -> str:
+    """
+    剝除片名開頭的番號前綴。
+
+    Args:
+        title: 原始片名（可能帶番號前綴，如 "START-424 市役所の..."）
+        number: 番號（如 "START-424"）
+
+    Returns:
+        剝除番號前綴後的片名。title 為 None/空 → ""；number 為空 → 原 title。
+
+    Examples:
+        >>> strip_number_prefix("START-424 市役所の窓口勤務の...", "START-424")
+        '市役所の窓口勤務の...'
+        >>> strip_number_prefix("START424 市役所の窓口勤務の...", "START-424")
+        '市役所の窓口勤務の...'
+    """
+    if not title:
+        return ""
+    if not number:
+        return title
+
+    # 先嘗試有 dash 形式（精確匹配），再嘗試無 dash 形式（備用）
+    for candidate in (number, number.replace('-', '')):
+        pattern = r'^\s*' + re.escape(candidate) + r'(?![A-Za-z0-9])\s*'
+        result = re.sub(pattern, '', title, flags=re.IGNORECASE)
+        if result != title:
+            return result
+
+    return title
+
+
+def format_number(number: str) -> str:
+    """
+    格式化番號為標準格式
+
+    Args:
+        number: 原始番號
+
+    Returns:
+        標準化的番號（大寫、去空白）
+
+    Examples:
+        >>> format_number("sone-205")
+        'SONE-205'
+        >>> format_number("  ABC-123  ")
+        'ABC-123'
+    """
+    if not number:
+        return number
+    return number.upper().strip()
+
+
+# ============================================================
+# 來源配置常數
+# ============================================================
+
+# 分群常數（供 scraper.py / settings UI 使用）
+CENSORED_SOURCES = ['dmm', 'javbus', 'jav321', 'javdb']
+UNCENSORED_SOURCES = ['d2pass', 'heyzo', 'fc2', 'avsox']
+PROXY_SOURCES = {'dmm'}  # 需要 proxy 才能使用的來源
+
+# 模糊候選池白名單（CL-1 / CD-plan-65-4 / TASK-65g）：javbus + dmm 兩源。
+# 排除：AVSOX（無碼專用）、FC2/HEYZO/D2Pass（keyword=番號，非真模糊）、
+# jav321（keyword 恆回空）、javdb（重複呼叫觸發 Cloudflare ban）。
+FUZZY_SEARCH_SOURCES = ['javbus', 'dmm']
+
+SOURCE_ORDER = CENSORED_SOURCES + UNCENSORED_SOURCES
+
+# CD-70b-10：javlibrary 有碼 manual_only BETA。
+# - 加入 CENSORED_SOURCES 讓 SourceConfig.is_censored（builtin 分支）查到，避免 L77 warning。
+# - 不加入 SOURCE_ORDER（manual_only 不進 fan-out 排序；SOURCE_ORDER = 8-elem fan-out 順序）。
+# - 不加入 FUZZY_SEARCH_SOURCES（CD-70b：exact-only）。
+# - 必須在 SOURCE_ORDER 建立後才 append，否則 SOURCE_ORDER tuple 已含 javlibrary（污染 fan-out）。
+CENSORED_SOURCES.append('javlibrary')
+
+SOURCE_NAMES = {
+    'dmm': 'DMM',
+    'javbus': 'JavBus',
+    'jav321': 'Jav321',
+    'javdb': 'JavDB',
+    'd2pass': 'D2Pass',
+    'heyzo': 'HEYZO',
+    'fc2': 'FC2',
+    'avsox': 'AVSOX',
+    'javlibrary': 'JavLibrary',
+}
+
+# ============================================================
+# Metatube 30-provider 分類常數（CD-63a-4）
+# key 對齊 /v1/providers 原字串（大小寫敏感）
+# ============================================================
+
+METATUBE_CENSORED: set[str] = {  # 15 有碼
+    'JavBus', 'FANZA', 'JAV321', 'DUGA', 'MGS', 'SOD', 'DAHLIA', 'FALENO',
+    'TOKYO-HOT', 'AVE', 'HeyDouga', 'JAVFREE', 'Gcolle', 'Getchu', 'Pcolle',
+}
+
+METATUBE_UNCENSORED: set[str] = {  # 15 無碼
+    'HEYZO', '1Pondo', 'Caribbeancom', 'CaribbeancomPR', 'FC2', 'FC2PPVDB', 'fc2hub',
+    '10musume', 'C0930', 'H0930', 'H4610', 'MURAMURA', 'MYWIFE', 'PACOPACOMAMA', 'KIN8',
+}
+
+# 日期型無碼 provider（11 個）：METATUBE_UNCENSORED 去掉 HEYZO / FC2 / FC2PPVDB / fc2hub
+# （後四者由 _get_uncensored_sources 的 fc2 / heyzo 前綴分支各自處理）。
+# 用於 spec US4 staged promotion：日期型番號（d2pass 格式）prepend 這些 metatube 源（CD-63c-8）。
+METATUBE_DATE_UNCENSORED: frozenset[str] = frozenset({
+    'Caribbeancom', 'CaribbeancomPR', '1Pondo', '10musume',
+    'C0930', 'H0930', 'H4610', 'MURAMURA', 'MYWIFE', 'PACOPACOMAMA', 'KIN8',
+})
+
+# 固定 canonical 順序：有碼 15（依序）+ 無碼 15（依序）= 30（CD-63a-5）
+# JAV321/SOD/FC2PPVDB/KIN8 為已知失敗源，仍列入 order 使 builder 能正確排序
+METATUBE_PROVIDER_ORDER: list[str] = [
+    # 有碼 15
+    'JavBus', 'FANZA', 'JAV321', 'DUGA', 'MGS', 'SOD', 'DAHLIA', 'FALENO',
+    'TOKYO-HOT', 'AVE', 'HeyDouga', 'JAVFREE', 'Gcolle', 'Getchu', 'Pcolle',
+    # 無碼 15
+    'HEYZO', '1Pondo', 'Caribbeancom', 'CaribbeancomPR', 'FC2', 'FC2PPVDB', 'fc2hub',
+    '10musume', 'C0930', 'H0930', 'H4610', 'MURAMURA', 'MYWIFE', 'PACOPACOMAMA', 'KIN8',
+]

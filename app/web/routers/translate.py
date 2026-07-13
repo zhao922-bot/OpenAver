@@ -1,0 +1,380 @@
+"""
+翻譯 API 路由
+
+端點：
+- POST /api/translate        — 翻譯或優化單一標題（日文→中文 或 清理中文，支援 Ollama/Gemini）
+- POST /api/translate-batch  — 批次翻譯多個標題（自動跳過非日文，支援 Ollama/Gemini）
+"""
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from typing import Optional, List
+import asyncio
+import re
+import threading
+import httpx
+
+from core.config import load_config
+from core.database import AliasRepository
+from core.translate_service import create_translate_service
+from core.scrapers.utils import has_japanese
+from core.logger import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/api", tags=["translate"])
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    mode: str = "translate"  # "translate" (日文→中文) 或 "optimize" (清理中文)
+    actors: Optional[List[str]] = None
+    number: Optional[str] = None
+
+
+class BatchTranslateRequest(BaseModel):
+    """批次翻譯請求模型"""
+    titles: List[str] = Field(default=[], max_length=100)
+    batch_size: int = Field(default=10, ge=1, le=20)
+
+
+
+# 全局翻譯服務實例（單例模式）
+_translate_service = None
+# CD-66b-5：get_translate_service 現經 await asyncio.to_thread(...) 在 threadpool
+# thread 上呼叫（66 async-offload），cold-start init 失去 event loop 隱式互斥，
+# 兩個並發冷啟動可同時看到 None → double-init。用 Lock 包 init + reset 消窗口。
+# 鎖只保護 init / reset 兩個 critical section，不鎖 service 物件的使用期。
+_translate_service_lock = threading.Lock()
+
+
+def get_translate_service():
+    """
+    獲取翻譯服務實例（單例）
+
+    locale 變更時由 config router 呼叫 reset_translate_service() 重建。
+
+    Double-checked locking（CD-66b-5）：fast-path 無鎖讀，僅 None 時進鎖
+    再 re-check，確保 threadpool 並發 cold-start 只 init 一次。
+
+    Returns:
+        TranslateService 實例
+    """
+    global _translate_service
+    if _translate_service is None:                    # fast path, no lock
+        with _translate_service_lock:
+            if _translate_service is None:            # double-check under lock
+                config = load_config()
+                translate_config = config.get("translate", {})
+                locale = config.get("general", {}).get("locale", "zh-TW")
+                _translate_service = create_translate_service(translate_config, locale)
+    return _translate_service
+
+
+def reset_translate_service():
+    """重置翻譯服務實例（配置改變時調用）
+
+    在 _translate_service_lock 內設 None（CD-66b-5），避免 reset×get 交錯回半建狀態。
+    """
+    global _translate_service
+    with _translate_service_lock:
+        _translate_service = None
+
+
+def _load_actress_alias_groups() -> list[tuple[str, list[str]]]:
+    """Return (display_name, known_names) groups from actress_aliases."""
+    groups = []
+    try:
+        for record in AliasRepository().get_all():
+            names = []
+            for name in [record.primary_name] + (record.aliases or []):
+                name = (name or "").strip()
+                if name and name not in names:
+                    names.append(name)
+            if names:
+                groups.append((record.primary_name, names))
+    except Exception as exc:
+        logger.warning("load actress aliases for translation failed: %s", exc)
+    return groups
+
+
+def _protect_actress_names(text: str, actors: Optional[List[str]] = None) -> tuple[str, list[tuple[str, str]]]:
+    """Replace known actress names with stable tokens before model translation."""
+    if not text:
+        return text, []
+
+    actor_set = {(a or "").strip() for a in (actors or []) if (a or "").strip()}
+    candidates = []
+
+    for display_name, names in _load_actress_alias_groups():
+        group_matches_context = bool(actor_set.intersection(names) or display_name in actor_set)
+        for name in names:
+            if name and (name in text or group_matches_context):
+                candidates.append((name, display_name))
+
+    # Also protect actor names passed by callers even if they are not in alias DB yet.
+    for actor in actor_set:
+        if actor and actor in text:
+            candidates.append((actor, actor))
+
+    protected = text
+    replacements = []
+    used_names = set()
+    token_index = 1
+    for source_name, display_name in sorted(candidates, key=lambda item: len(item[0]), reverse=True):
+        if not source_name or source_name in used_names or source_name not in protected:
+            continue
+        token = f"ZXACT{token_index:03d}ZX"
+        protected = protected.replace(source_name, token)
+        replacements.append((token, display_name))
+        used_names.add(source_name)
+        token_index += 1
+
+    return protected, replacements
+
+
+def _restore_actress_names(text: str, replacements: list[tuple[str, str]]) -> str:
+    """Restore protected actress tokens to common Chinese display names."""
+    if not text or not replacements:
+        return text
+
+    restored = text
+    display_names = []
+    for token, display_name in replacements:
+        display_names.append(display_name)
+        token_number = token.removeprefix("ZXACT").removesuffix("ZX")
+        pattern = re.compile(
+            rf"Z[\s_-]*X[\s_-]*ACT[\s_-]*0*{int(token_number)}[\s_-]*Z[\s_-]*X",
+            re.IGNORECASE,
+        )
+        restored = pattern.sub(lambda _match: display_name, restored)
+
+    # If the model dropped a token, keep the known name instead of losing/corrupting it.
+    for display_name in dict.fromkeys(display_names):
+        if display_name and display_name not in restored:
+            restored = f"{restored} {display_name}".strip()
+
+    # Never leak a damaged protection token into a saved title.
+    restored = re.sub(r"Z[\s_-]*X[\s_-]*ACT[^\s]{0,12}", "", restored, flags=re.IGNORECASE).strip()
+
+    return restored
+
+
+@router.post("/translate")
+async def translate_title(request: TranslateRequest) -> dict:
+    """翻譯或優化標題（支援 Ollama/Gemini）"""
+    import re
+
+    config = await asyncio.to_thread(load_config)
+    translate_config = config.get("translate", {})
+
+    if not translate_config.get("enabled", False):
+        return {"success": False, "error": "翻譯功能未啟用"}
+
+    # === 新增：日文檢測，只對 translate 模式生效 ===
+    if request.mode == "translate" and not has_japanese(request.text):
+        return {
+            "skipped": True,
+            "success": True,  # 新增：API 成功執行跳過邏輯
+            "reason": "no_japanese",
+            "original": request.text
+        }
+
+    # === translate 模式：使用 translate service（支援 Ollama/Gemini）===
+    if request.mode == "translate":
+        try:
+            # 66 Codex P2：get_translate_service 冷啟動會同步 load_config → to_thread
+            translate_service = await asyncio.to_thread(get_translate_service)
+            context = {
+                "actors": request.actors or [],
+                "number": request.number or ""
+            }
+            protected_text, actress_replacements = _protect_actress_names(request.text, request.actors)
+            result = await translate_service.translate_single(protected_text, context)
+            result = _restore_actress_names(result, actress_replacements)
+
+            if not result:
+                return {"success": False, "error": "翻譯結果為空"}
+
+            return {
+                "success": True,
+                "result": result,
+                "mode": request.mode
+            }
+
+        except ValueError as e:
+            # API Key 未設定等配置錯誤
+            logger.exception("翻譯設定錯誤: %s", e)
+            return {"success": False, "error": "翻譯設定錯誤，請檢查 API Key 設定"}
+        except Exception as e:
+            logger.exception("翻譯失敗: %s", e)
+            return {"success": False, "error": "翻譯失敗"}
+
+    # === optimize 模式：使用 Ollama 清理標題 ===
+    # 兼容嵌套結構和舊扁平結構
+    ollama_config = translate_config.get("ollama", {})
+    ollama_url = ollama_config.get("url", translate_config.get("ollama_url", "http://localhost:11434")).rstrip("/")
+    ollama_model = ollama_config.get("model", translate_config.get("ollama_model", "qwen3:8b"))
+
+    # 建構需要移除的內容提示
+    remove_hints = []
+    if request.actors:
+        remove_hints.append(f"女優名：{', '.join(request.actors)}")
+    if request.number:
+        remove_hints.append(f"番號：{request.number}")
+    hints_text = "、".join(remove_hints) if remove_hints else ""
+
+    system_prompt = """你是標題編輯，專門清理影片標題。
+規則：
+1. 移除來源標記（如 Hayav, Jable, MissAV, FC2, Streaming Free 等）
+2. 移除女優名稱和番號
+3. 移除「中文字幕」等標記
+4. 保留核心片名
+5. 只輸出結果，不要解釋"""
+    user_prompt = f"清理以下標題，移除{hints_text}及來源標記，保留核心片名：\n{request.text}"
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{ollama_url}/api/chat",
+                json={
+                    "model": ollama_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "stream": False,
+                    "options": {
+                        "thinking": False  # 禁用 Qwen3 thinking 模式，加速回應
+                    }
+                }
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            # 提取回應內容
+            result = data.get("message", {}).get("content", "").strip()
+
+            if not result:
+                return {"success": False, "error": "翻譯結果為空"}
+
+            # 清理輸出
+            result = result.strip().strip('"').strip("'")
+            result = re.sub(r'^翻譯[：:]\s*', '', result)
+            result = re.sub(r'^中文[：:]\s*', '', result)
+            result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL)
+            result = result.strip()
+
+            return {
+                "success": True,
+                "result": result,
+                "mode": request.mode
+            }
+
+    except httpx.TimeoutException:
+        return {"success": False, "error": "Ollama 連線逾時"}
+    except httpx.ConnectError:
+        return {"success": False, "error": "無法連線到 Ollama"}
+    except Exception as e:
+        logger.exception("標題優化失敗: %s", e)
+        return {"success": False, "error": "標題優化失敗"}
+
+
+@router.post("/translate-batch")
+async def translate_batch(request: BatchTranslateRequest):
+    """
+    批次翻譯多個標題
+
+    使用抽象層，支援 Ollama/Gemini 提供商
+    一次翻譯最多 10-20 個標題
+
+    實驗數據（Ollama translategemma:12b）：
+    - Batch=10: 5.35 秒，對齊率 100%
+    - Batch=15: 7.60 秒，對齊率 100%
+
+    Request Body:
+        {
+            "titles": ["日文標題1", "日文標題2", ...],
+            "batch_size": 10  // 可選，默認 10
+        }
+
+    Response:
+        {
+            "translations": ["繁中翻譯1", "繁中翻譯2", ...],
+            "count": 10,       // 成功翻譯數量
+            "errors": []       // 失敗的索引列表
+        }
+
+    Example:
+        curl -X POST http://localhost:8080/api/translate-batch \\
+             -H "Content-Type: application/json" \\
+             -d '{"titles": ["痴漢願望の女", "芸能人 白石茉莉奈"]}'
+    """
+    try:
+        # 獲取翻譯服務（單例）
+        # 66 Codex P2：get_translate_service 冷啟動會同步 load_config → to_thread
+        translate_service = await asyncio.to_thread(get_translate_service)
+
+        # 獲取配置的批次大小（預留：可從 config 讀取默認值）
+        config = await asyncio.to_thread(load_config)
+        default_batch_size = config.get("translate", {}).get("batch_size", 10)
+
+        # 限制批次大小（防止超時），優先使用請求參數
+        batch_size = min(request.batch_size or default_batch_size, 20)
+
+        # 過濾出包含日文的標題
+        japanese_indices = []
+        japanese_titles = []
+        for i, title in enumerate(request.titles):
+            if has_japanese(title):
+                japanese_indices.append(i)
+                japanese_titles.append(title)
+
+        # 初始化結果列表（預設為原文）
+        results = list(request.titles)
+
+        # 只翻譯日文標題
+        success_indices = []  # 新增：追蹤成功的索引
+        if japanese_titles:
+            translations = []
+            for i in range(0, len(japanese_titles), batch_size):
+                batch = japanese_titles[i:i+batch_size]
+                protected_batch = []
+                replacements_batch = []
+                for title in batch:
+                    protected_title, actress_replacements = _protect_actress_names(title)
+                    protected_batch.append(protected_title)
+                    replacements_batch.append(actress_replacements)
+                batch_results = await translate_service.translate_batch(protected_batch)
+                for result, actress_replacements in zip(batch_results, replacements_batch, strict=False):
+                    translations.append(_restore_actress_names(result, actress_replacements))
+
+            # 將翻譯結果放回對應位置，同時追蹤成功的
+            for idx, trans in zip(japanese_indices, translations, strict=False):  # lengths may differ if translate_batch returns fewer items than input
+                if trans:  # trans 非空表示翻譯成功
+                    results[idx] = trans
+                    success_indices.append(idx)  # 記錄成功的索引
+
+        # 統計 - 修正邏輯
+        success_count = len(success_indices)  # 基於成功執行，而非結果差異
+        skipped_count = len(request.titles) - len(japanese_indices)
+        error_indices = [i for i in japanese_indices if i not in success_indices]  # 失敗 = 日文但未成功翻譯
+
+        return {
+            "translations": results,
+            "count": success_count,
+            "skipped": skipped_count,
+            "errors": error_indices
+        }
+
+    except Exception as e:
+        logger.exception("批次翻譯失敗: %s", e)
+
+        # 返回錯誤響應（不拋出異常，避免前端報錯）
+        return {
+            "translations": list(request.titles),
+            "count": 0,
+            "skipped": 0,
+            "errors": list(range(len(request.titles))),
+            "error_message": "批次翻譯失敗"
+        }

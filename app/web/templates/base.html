@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="{{ locale|default('zh-TW') }}"
+      data-theme="{{ theme|default('light') }}"
+      style="font-size: {{ font_size_px|default(16) }}px"
+      x-data="{ theme: '{{ theme|default('light') }}', fontSize: '{{ font_size|default('md') }}' }"
+      x-init="$watch('theme', configSync('theme')); $watch('theme', v => { document.querySelector('meta[name=&quot;theme-color&quot;]').content = (v === 'dim' ? '#2a303c' : '#ffffff'); }); $watch('fontSize', configSync('font_size'))"
+      :data-theme="theme"
+      :style="'font-size:' + {xs:'13px',sm:'14px',md:'16px',lg:'18px',xl:'20px'}[fontSize]">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}OpenAver{% endblock %}</title>
+
+    <!-- issue-#66 client diagnostics beacon: classic parser-blocking script,
+         MUST run first so the error-capture listener is installed before any
+         CDN / module / Alpine / i18n code runs (and may fail). No vendor deps,
+         no window.t, all strings hardcoded English, wrapped in try/catch so it
+         never throws and blocks parsing. Beacon target is ALWAYS the relative
+         '/api/client-log' (zero egress). -->
+    <script>
+      try {
+        var _errCount = 0, _MAX_ERR = 20, _postAlpineSent = false;
+        function _clog(p) {
+          try {
+            var body = JSON.stringify(p);
+            var sent = false;
+            if (navigator.sendBeacon) {
+              sent = navigator.sendBeacon('/api/client-log', new Blob([body], {type:'application/json'}));
+            }
+            if (!sent) {
+              fetch('/api/client-log', {method:'POST', keepalive:true, headers:{'Content-Type':'application/json'}, body:body}).catch(function(){});
+            }
+          } catch (e) {}
+        }
+        window.addEventListener('error', function(e){
+          if (_errCount >= _MAX_ERR) return;
+          _errCount++;
+          _clog({phase:'error', kind: e.error ? 'js':'resource', message: e.message || (e.target && e.target.src) || 'unknown error', source: e.filename || (e.target && (e.target.src||e.target.href)) || null, lineno: e.lineno||null, colno: e.colno||null, stack: (e.error && e.error.stack) || null, path: location.pathname});
+        }, true);
+        window.addEventListener('unhandledrejection', function(e){
+          if (_errCount >= _MAX_ERR) return;
+          _errCount++;
+          var r = e.reason;
+          _clog({phase:'error', kind:'promise', message: r ? (r.message || String(r)) : 'unhandled rejection', stack: (r && r.stack) || null, path: location.pathname});
+        });
+        _clog({phase:'boot', message:'boot', user_agent: navigator.userAgent, importmap_supported: (typeof HTMLScriptElement !== 'undefined' && typeof HTMLScriptElement.supports === 'function') ? HTMLScriptElement.supports('importmap') : null, path: location.pathname});
+        function _sendPostAlpine(){
+          if (_postAlpineSent) return;
+          _postAlpineSent = true;
+          _clog({phase:'post_alpine', message:'post_alpine', alpine_version: (window.Alpine && window.Alpine.version) || null, pywebview_api: !!(window.pywebview && window.pywebview.api), path: location.pathname});
+        }
+        document.addEventListener('alpine:init', _sendPostAlpine);
+        setTimeout(_sendPostAlpine, 5000);
+      } catch (e) {}
+    </script>
+
+    <!-- Config sync: debounce + keepalive + abort previous -->
+    <script>
+      function configSync(field) {
+        var tid, ctrl;
+        return function(val) {
+          clearTimeout(tid);
+          if (ctrl) ctrl.abort();
+          tid = setTimeout(function() {
+            ctrl = new AbortController();
+            fetch('/api/config/general/' + field, {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({value: val}),
+              keepalive: true,
+              signal: ctrl.signal
+            }).catch(function() {});
+          }, 150);
+        };
+      }
+    </script>
+
+    <!-- feature/76 T-showcase（CD-11）：showcase 退出跨頁轉場、硬切。
+         pagereveal 在新頁 first rendering opportunity 之前觸發 → 此 listener 必須是
+         <head> 內 parser-blocking classic script（非 module/defer/async），否則漏接。
+         URL gate：導航任一端為 /showcase 即 skipTransition()（即時完成動畫＝硬切）。
+         全站共用點：離 showcase 走 pageswap（舊頁端）、進 showcase 走 pagereveal（新頁端），
+         兩方向各自在其端點 skip——showcase-only module 掛不到「他頁→showcase」的 pageswap。 -->
+    <script>
+      (function () {
+        function pathOf(u) { try { return new URL(u, location.href).pathname; } catch (e) { return ''; } }
+        function involvesShowcase(a, b) { return a === '/showcase' || b === '/showcase'; }
+        // 離開頁（舊文件）：from = 目前頁、to = 目的頁
+        window.addEventListener('pageswap', function (e) {
+          if (!e.viewTransition) return;
+          var act = e.activation;
+          var from = act && act.from ? pathOf(act.from.url) : location.pathname;
+          var to = act && act.entry ? pathOf(act.entry.url) : '';
+          if (involvesShowcase(from, to)) e.viewTransition.skipTransition();
+        });
+        // 到達頁（新文件）：from = 來源頁、to = 目前頁
+        window.addEventListener('pagereveal', function (e) {
+          if (!e.viewTransition) return;
+          var act = (window.navigation && window.navigation.activation) || null;
+          var from = act && act.from ? pathOf(act.from.url) : '';
+          var to = act && act.entry ? pathOf(act.entry.url) : location.pathname;
+          if (involvesShowcase(from, to)) e.viewTransition.skipTransition();
+        });
+      })();
+    </script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+
+    <!-- iOS add-to-home-screen icon + 動態狀態列色（隨 theme dim/light 切換，見 x-init $watch） -->
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <meta name="theme-color" content="{{ '#2a303c' if theme == 'dim' else '#ffffff' }}">
+
+    <!-- Theme CSS -->
+    <link href="/static/css/theme.css" rel="stylesheet">
+    <!-- Tailwind + DaisyUI CSS -->
+    <link href="/static/css/tailwind.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="/static/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+    <!-- Tutorial CSS -->
+    <link href="/static/css/components/tutorial.css" rel="stylesheet">
+    <!-- Rotating Border Effect -->
+    <link href="/static/css/components/rotating-border.css" rel="stylesheet">
+    <!-- Help Popover -->
+    <link href="/static/css/components/help-popover.css" rel="stylesheet">
+    <!-- Source Pill (cross-page shared component, CD-62-13) -->
+    <link href="/static/css/components/source-pill.css" rel="stylesheet">
+    <!-- Advanced Rescrape Modal (62a-2; cross-page: Showcase + Search) -->
+    <link href="/static/css/components/rescrape-modal.css" rel="stylesheet">
+
+    <style>
+        /* 啟用文字選取（PyWebView 預設禁用）*/
+        * {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+        }
+
+        :root {
+            --sidebar-width: 200px;
+            --sidebar-collapsed-width: 60px;
+        }
+
+        body {
+            min-height: 100vh;
+        }
+
+        /* 側邊欄 */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background-color: color-mix(in oklch, var(--color-base-200) 75%, transparent);
+            backdrop-filter: blur(var(--fluent-blur)) saturate(var(--fluent-saturate));
+            -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--fluent-saturate));
+            border-right: 1px solid var(--stroke-subtle);
+            z-index: 1000;
+            transition: width var(--fluent-duration-normal) var(--fluent-ease-standard), background-color 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        [data-theme="dim"] .sidebar {
+            background-color: color-mix(in oklch, var(--color-base-300) 75%, transparent);
+        }
+
+        .sidebar.collapsed {
+            width: var(--sidebar-collapsed-width);
+        }
+
+        /* 預先套用 body class 時也要同步影響 sidebar 本體，避免首屏展開閃爍 */
+        body.sidebar-collapsed .sidebar {
+            width: var(--sidebar-collapsed-width);
+        }
+
+        /* 側邊欄頂部（toggle + logo） */
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--stroke-subtle);
+        }
+
+        /* 使用 Fluent Design 毛玻璃效果的 Sidebar Header（可選） */
+        .sidebar-header.fluent-acrylic {
+            border-bottom: 1px solid var(--stroke-default);
+        }
+
+        .sidebar-toggle {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: color var(--fluent-duration-normal) var(--fluent-ease-standard);
+        }
+
+        .sidebar-toggle:hover {
+            color: var(--text-primary);
+        }
+
+        .sidebar-brand {
+            margin-left: 0.5rem;
+            display: flex;
+            align-items: center;
+        }
+
+        /* 導航連結 */
+        .sidebar .nav-link {
+            color: var(--text-secondary);
+            padding: 0.75rem;
+            border-radius: var(--fluent-radius-md);
+            margin: 0.25rem 0.5rem;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            transition: color var(--fluent-duration-normal) var(--fluent-ease-standard), background-color var(--fluent-duration-normal) var(--fluent-ease-standard);
+        }
+
+        .sidebar .nav-link:hover {
+            color: var(--text-primary);
+            background-color: var(--bg-overlay);
+        }
+
+        .sidebar .nav-link.active {
+            color: var(--color-primary-content);
+            background-color: var(--accent);
+        }
+
+        .sidebar .nav-link i {
+            width: 24px;
+            flex-shrink: 0;
+            text-align: center;
+        }
+
+        .sidebar .nav-link .nav-text {
+            margin-left: 0.5rem;
+            overflow: hidden;
+            transition: opacity 0.2s;
+        }
+
+        .sidebar.collapsed .nav-link .nav-text,
+        body.sidebar-collapsed .sidebar .nav-link .nav-text {
+            opacity: 0;
+            width: 0;
+            margin-left: 0;
+        }
+
+        .sidebar.collapsed .nav-link,
+        body.sidebar-collapsed .sidebar .nav-link {
+            justify-content: center;
+        }
+
+        /* 主內容區 */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 1.5rem;
+            min-height: 100vh;
+            background-color: var(--surface-0);
+            transition: margin-left 0.2s ease, background-color 0.3s ease;
+        }
+
+        body.sidebar-collapsed .main-content {
+            margin-left: var(--sidebar-collapsed-width);
+        }
+
+        /* 卡片樣式 - 使用 Fluent Design tokens */
+        .card {
+            border: none;
+            border-radius: var(--fluent-radius-xl);
+            box-shadow: var(--fluent-shadow-4);
+            transition: box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+        }
+
+        .card:hover {
+            box-shadow: var(--fluent-shadow-8);
+        }
+
+        /* 響應式 - Desktop */
+        @media (min-width: 992px) {
+            .sidebar {
+                display: flex !important;
+            }
+
+            .main-content {
+                margin-left: var(--sidebar-width);
+            }
+
+            body.sidebar-collapsed .main-content {
+                margin-left: var(--sidebar-collapsed-width);
+            }
+        }
+
+        /* 響應式 - Tablet & Mobile */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                display: none !important;
+            }
+
+            .main-content {
+                margin-left: 0 !important;
+                padding-top: 3.5rem;
+                /* 頂部導航列高度（rem，與 h-14 同步縮放） */
+            }
+        }
+
+        /* 頂部導航列 */
+        .top-navbar {
+            height: 3.5rem;
+        }
+
+        /* Offcanvas 選單連結 */
+        .offcanvas {
+            background-color: var(--surface-1) !important;
+            transition: background-color 0.3s ease;
+        }
+
+        [data-theme="dim"] .offcanvas {
+            background-color: var(--surface-2) !important;
+        }
+
+        .offcanvas-nav .nav-link {
+            color: var(--text-secondary);
+            padding: 0.75rem 1rem;
+            border-radius: var(--fluent-radius-md);
+            margin: 0.25rem 0.5rem;
+            display: flex;
+            align-items: center;
+            transition: color var(--fluent-duration-normal) var(--fluent-ease-standard), background-color var(--fluent-duration-normal) var(--fluent-ease-standard);
+        }
+
+        .offcanvas-nav .nav-link:hover {
+            color: var(--text-primary);
+            background-color: var(--bg-overlay);
+        }
+
+        .offcanvas-nav .nav-link.active {
+            color: var(--color-primary-content);
+            background-color: var(--accent);
+        }
+
+        .offcanvas-nav .nav-link i {
+            width: 24px;
+            margin-right: 0.5rem;
+        }
+
+        /* 53b-T7: sidebar 通知鈴鐺：只保留 button reset，版面對齊繼承 .nav-link */
+        .sidebar .nav-link--bell {
+            appearance: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font: inherit;
+            text-align: left;
+            width: -webkit-fill-available; /* 讓 button 像 <a> 撐滿 <li> 可用寬，消除 icon 右偏 */
+            width: stretch;                /* 標準草案等效值（Chromium 已支援） */
+        }
+        .sidebar .nav-link--bell:hover {
+            background: var(--fluent-subtle-fill-secondary, rgba(0,0,0,0.04));
+        }
+        .sidebar .nav-link--bell.is-open {
+            background: var(--fluent-subtle-fill-secondary, rgba(0,0,0,0.06));
+        }
+        /* 紅點：絕對定位於 icon 右上，sidebar collapsed 時仍可見 */
+        .sidebar .nav-link__unread-dot {
+            position: absolute;
+            top: 8px;
+            left: 28px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 1.5px solid var(--sidebar-bg, transparent);
+        }
+        .sidebar .nav-link__unread-dot.is-info    { background: var(--color-info); }
+        .sidebar .nav-link__unread-dot.is-success { background: var(--color-success); }
+        .sidebar .nav-link__unread-dot.is-warn    { background: var(--color-warning); }
+        .sidebar .nav-link__unread-dot.is-error   { background: var(--color-error); }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+    <!-- Fluent Material Token System (77a-T1): must be LAST stylesheet site-wide.
+         Placed after extra_css expansion so source-order beats page-specific CSS (CD-A2).
+         Do NOT move into the component link block above — it would be overridden. -->
+    <link href="/static/css/components/fluent-materials.css" rel="stylesheet">
+
+    <!-- i18n: 注入合併後的完整字典 + window.t() -->
+    <script>
+      window.__locale = {{ locale|default('zh-TW')|tojson }};
+      window.__i18n = {{ merged_translations|default({})|tojson }};
+      window.t = function(key, params) {
+          params = params || {};
+          var keys = key.split('.');
+          var val = window.__i18n;
+          for (var i = 0; i < keys.length; i++) {
+              if (val == null) break;
+              val = val[keys[i]];
+          }
+          if (typeof val !== 'string') return '[' + key + ']';
+          return val.replace(/\{(\w+)\}/g, function(_, k) {
+              return Object.prototype.hasOwnProperty.call(params, k) ? params[k] : '{' + k + '}';
+          });
+      };
+    </script>
+</head>
+
+<body x-data="{
+    sidebarCollapsed: {{ sidebar_collapsed|default(false)|tojson }},
+    mobileMenuOpen: false,
+    handleNavClick(event, href) {
+        // 開新分頁（Ctrl/Cmd-click, 中鍵）不觸發清理
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+        if (window.__leavePage && !window.__leavePage(href)) {
+            event.preventDefault();
+        }
+    },
+    sampleGalleryOpen: false, sampleGalleryImages: [], sampleGalleryIndex: 0,
+    notifBell: {
+        items: [],
+        unreadCount: 0,
+        highestLevel: null,
+        drawerOpen: false,
+        _pollTimer: null,
+        _FAST_INTERVAL: 2000,
+        _SLOW_INTERVAL: 5000,
+        _anchorEl: null,
+        _mediaQuery: null,
+    },
+    init() {
+        this.notifBell._pollTimer = setInterval(() => { this._pollNotifications(); }, this.notifBell._SLOW_INTERVAL);
+        this._pollNotifications();
+        this.notifBell._mediaQuery = window.matchMedia('(min-width: 1024px)');
+        const mqHandler = () => { if (this.notifBell.drawerOpen) this.closeDrawer(); };
+        if (this.notifBell._mediaQuery.addEventListener) {
+            this.notifBell._mediaQuery.addEventListener('change', mqHandler);
+        } else {
+            this.notifBell._mediaQuery.addListener(mqHandler);
+        }
+        window.addEventListener('beforeunload', () => { clearInterval(this.notifBell._pollTimer); });
+    },
+    async _pollNotifications() {
+        try {
+            const res = await fetch('/api/notifications');
+            if (!res.ok) return;
+            const data = await res.json();
+            this.notifBell.items = data.items ?? [];
+            this.notifBell.unreadCount = data.unread_count ?? 0;
+            this.notifBell.highestLevel = data.highest_unread_level ?? null;
+        } catch (_) {}
+    },
+    async toggleDrawer(anchorEl) {
+        if (this.notifBell.drawerOpen) { return this.closeDrawer(); }
+        this.notifBell._anchorEl = anchorEl;
+        this.notifBell.drawerOpen = true;
+        clearInterval(this.notifBell._pollTimer);
+        this.notifBell._pollTimer = setInterval(() => { this._pollNotifications(); }, this.notifBell._FAST_INTERVAL);
+        await fetch('/api/notifications/read', { method: 'POST' });
+        await this._pollNotifications();
+    },
+    closeDrawer() {
+        this.notifBell.drawerOpen = false;
+        clearInterval(this.notifBell._pollTimer);
+        this.notifBell._pollTimer = setInterval(() => { this._pollNotifications(); }, this.notifBell._SLOW_INTERVAL);
+    },
+    async clearNotifications() {
+        await fetch('/api/notifications', { method: 'DELETE' });
+        await this._pollNotifications();
+    },
+    formatTimestamp(ts) {
+        return new Date(ts * 1000).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+}"
+     x-init="$watch('sidebarCollapsed', configSync('sidebar_collapsed'))"
+     :class="{ 'sidebar-collapsed': sidebarCollapsed }"
+     class="{% if page in ['design-system', 'showcase'] %}ds-page{% endif %} fluent-canvas page-{{ page }}">
+    <!-- Sidebar: Jinja 直接渲染 class 防止閃爍（不依賴 localStorage） -->
+    <script>
+      if ({{ sidebar_collapsed|default(false)|tojson }}) {
+        document.body.classList.add('sidebar-collapsed');
+      }
+    </script>
+    <!-- 頂部導航列（僅小螢幕顯示）-->
+    <nav class="navbar bg-base-200 lg:hidden fixed top-0 left-0 right-0 z-50 h-14 top-navbar fluent-acrylic border-b border-base-300" x-show="!mobileMenuOpen">
+        <div class="navbar-start">
+            <button class="btn btn-ghost btn-square" type="button" @click="mobileMenuOpen = true">
+                <i class="bi bi-list text-2xl"></i>
+            </button>
+        </div>
+        <div class="navbar-center">
+            <span class="text-lg font-semibold">
+                <i class="bi bi-film"></i> OpenAver
+            </span>
+        </div>
+        <div class="navbar-end">
+            {% if page == 'showcase' %}
+            <!-- 81-T2: mobile 搜尋 icon（僅 showcase）→ toggle toolbar；search 頁 Spotlight 中央輸入維持原樣（owner 2026-06-22 拍板，spec §3.1 末句優先） -->
+            <button type="button" class="navbar-search-btn lg:hidden"
+                    @click="$store.ui.showcaseHasSearch
+                        ? $dispatch('showcase:clear-search')
+                        : ($store.ui.toolbarOpen = !$store.ui.toolbarOpen)">
+                <i :class="$store.ui.showcaseHasSearch ? 'bi bi-x-lg' : 'bi bi-search'"></i>
+            </button>
+            {% endif %}
+            <!-- 53b-T4: mobile 鈴鐺 -->
+            <button x-ref="mobileBellBtn"
+                    @click.stop="toggleDrawer($refs.mobileBellBtn)"
+                    type="button"
+                    class="btn btn-ghost btn-sm relative"
+                    :aria-label="notifBell.drawerOpen ? (window.t ? window.t('notif.close') : '關閉通知') : (window.t ? window.t('notif.open') : '開啟通知')"
+                    aria-haspopup="true"
+                    :aria-expanded="notifBell.drawerOpen.toString()">
+                <i :class="notifBell.unreadCount > 0 ? 'bi bi-bell-fill' : 'bi bi-bell'" class="text-xl"></i>
+                <template x-if="notifBell.highestLevel">
+                    <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
+                          :class="{
+                            'bg-info': notifBell.highestLevel === 'info',
+                            'bg-success': notifBell.highestLevel === 'success',
+                            'bg-warning': notifBell.highestLevel === 'warn',
+                            'bg-error': notifBell.highestLevel === 'error'
+                          }"></span>
+                </template>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Offcanvas Backdrop（小螢幕）-->
+    <div x-show="mobileMenuOpen"
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         @click="mobileMenuOpen = false"
+         class="fixed inset-0 bg-black/50 z-[200] lg:hidden">
+    </div>
+
+    <!-- Offcanvas 側邊選單（小螢幕）-->
+    <div x-show="mobileMenuOpen"
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 -translate-x-full"
+         x-transition:enter-end="opacity-100 translate-x-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100 translate-x-0"
+         x-transition:leave-end="opacity-0 -translate-x-full"
+         class="fixed inset-y-0 left-0 w-64 shadow-xl z-[210] lg:hidden fluent-acrylic"
+         tabindex="-1">
+        <div class="flex items-center justify-between p-4 border-b border-base-300">
+            <h5 class="text-lg font-semibold">
+                <i class="bi bi-film"></i> OpenAver
+            </h5>
+            <button type="button"
+                    class="btn btn-sm btn-circle btn-ghost"
+                    @click="mobileMenuOpen = false"
+                    aria-label="Close">
+                <i class="bi bi-x text-xl"></i>
+            </button>
+        </div>
+        <div class="p-0">
+            <ul class="flex flex-col offcanvas-nav">
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'search' %}active{% endif %}" href="/search"
+                       @click="handleNavClick($event, $el.href)">
+                        <i class="bi bi-search"></i> {{ t('nav.search') }}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'scanner' %}active{% endif %}" href="/scanner"
+                       @click="handleNavClick($event, $el.href)">
+                        <i class="bi bi-list-ul"></i> {{ t('nav.scanner') }}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'showcase' %}active{% endif %}" href="/showcase"
+                       @click="handleNavClick($event, $el.href)">
+                        <i class="bi bi-collection-play"></i> {{ t('nav.showcase') }}
+                    </a>
+                </li>
+                <li class="nav-item mt-3">
+                    <a class="nav-link {% if page == 'maintenance' %}active{% endif %}" href="/maintenance"
+                       @click="handleNavClick($event, $el.href)">
+                        <i class="bi bi-activity"></i> {{ t('nav.maintenance') }}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'help' %}active{% endif %}" href="/help"
+                       @click="handleNavClick($event, $el.href)">
+                        <i class="bi bi-question-circle"></i> {{ t('nav.help') }}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings"
+                       @click="handleNavClick($event, $el.href)">
+                        <i class="bi bi-gear"></i> {{ t('nav.settings') }}
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 側邊欄（Desktop）-->
+    <nav class="sidebar hidden lg:flex"
+         id="sidebar"
+         :class="{ 'collapsed': sidebarCollapsed }"
+         x-ref="sidebar">
+        <div class="sidebar-header">
+            <button class="sidebar-toggle"
+                    @click="sidebarCollapsed = !sidebarCollapsed"
+                    title="{{ t('nav.toggle_sidebar') }}">
+                <i class="bi bi-list"></i>
+            </button>
+            <span class="sidebar-brand"><img src="/static/favicon.svg" alt="Logo" style="width: 20px; height: 20px;"></span>
+        </div>
+        <ul class="flex flex-col flex-grow">
+            <li class="nav-item">
+                <a class="nav-link {% if page == 'search' %}active{% endif %}" href="/search" title="{{ t('nav.search') }}"
+                   @click="handleNavClick($event, $el.href)">
+                    <i class="bi bi-search"></i>
+                    <span class="nav-text">{{ t('nav.search') }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if page == 'scanner' %}active{% endif %}" href="/scanner" title="{{ t('nav.scanner') }}"
+                   @click="handleNavClick($event, $el.href)">
+                    <i class="bi bi-list-ul"></i>
+                    <span class="nav-text">{{ t('nav.scanner') }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a id="sidebar-showcase-link" class="nav-link rotating-border-spotlight {% if page == 'showcase' %}active{% endif %} {% if showcase_has_content %}active{% endif %}" href="/showcase" title="{{ t('nav.showcase') }}"
+                   @search:local-match.window="
+                       $el.classList.remove('pulse-once');
+                       void $el.offsetWidth;  // force reflow to replay animation
+                       $el.classList.add('pulse-once');
+                   "
+                   @animationend.self="
+                       if ($el.classList.contains('pulse-once')) {
+                           $el.classList.remove('pulse-once');
+                       }
+                   "
+                   @click="handleNavClick($event, $el.href)">
+                    <i class="bi bi-collection-play"></i>
+                    <span class="nav-text">{{ t('nav.showcase') }}</span>
+                </a>
+            </li>
+            <!-- 53b-T7: desktop 鈴鐺在底部組最上方（mt-auto 推至底，Bell → Help → Settings） -->
+            <li class="nav-item mt-auto">
+                <button x-ref="desktopBellBtn"
+                        @click.stop="toggleDrawer($refs.desktopBellBtn)"
+                        type="button"
+                        class="nav-link nav-link--bell relative"
+                        :class="{ 'is-open': notifBell.drawerOpen }"
+                        :title="notifBell.unreadCount > 0 ? ((window.t ? window.t('notif.title') : '通知') + ' (' + notifBell.unreadCount + ')') : (window.t ? window.t('notif.title') : '通知')"
+                        :aria-label="notifBell.drawerOpen ? (window.t ? window.t('notif.close') : '關閉通知') : (window.t ? window.t('notif.open') : '開啟通知')"
+                        aria-haspopup="dialog"
+                        :aria-expanded="notifBell.drawerOpen.toString()">
+                    <i :class="notifBell.unreadCount > 0 ? 'bi bi-bell-fill' : 'bi bi-bell'"></i>
+                    <span class="nav-text" x-text="window.t ? window.t('notif.title') : '通知'"></span>
+                    <template x-if="notifBell.highestLevel">
+                        <span class="nav-link__unread-dot"
+                              :class="{
+                                'is-info':    notifBell.highestLevel === 'info',
+                                'is-success': notifBell.highestLevel === 'success',
+                                'is-warn':    notifBell.highestLevel === 'warn',
+                                'is-error':   notifBell.highestLevel === 'error'
+                              }"
+                              aria-hidden="true"></span>
+                    </template>
+                </button>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if page == 'maintenance' %}active{% endif %}" href="/maintenance" title="{{ t('nav.maintenance') }}"
+                   @click="handleNavClick($event, $el.href)">
+                    <i class="bi bi-activity"></i>
+                    <span class="nav-text">{{ t('nav.maintenance') }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if page == 'help' %}active{% endif %}" href="/help" title="{{ t('nav.help_title') }}"
+                   @click="handleNavClick($event, $el.href)">
+                    <i class="bi bi-question-circle"></i>
+                    <span class="nav-text">{{ t('nav.help') }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings" title="{{ t('nav.settings') }}"
+                   @click="handleNavClick($event, $el.href)">
+                    <i class="bi bi-gear"></i>
+                    <span class="nav-text">{{ t('nav.settings') }}</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- 主內容區 -->
+    <main id="main-content" class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- ESM Import Maps (54a) — must appear before all type="module" scripts -->
+    <script type="importmap">
+    {
+      "imports": {
+        "@/shared/":     "/static/js/shared/",
+        "@/components/": "/static/js/components/",
+        "@/showcase/":   "/static/js/pages/showcase/",
+        "@/scanner/":    "/static/js/pages/scanner/",
+        "@/settings/":   "/static/js/pages/settings/",
+        "@/search/":     "/static/js/pages/search/"
+      }
+    }
+    </script>
+
+    <!-- GSAP Core (Phase E) — defer 保序：GSAP → prefs → adapter → Alpine -->
+    <script defer src="/static/vendor/gsap/gsap.min.js"></script>
+    <!-- GSAP Plugins (全站共用) -->
+    <script defer src="/static/vendor/gsap/Flip.min.js"></script>
+    <script defer src="/static/vendor/gsap/Physics2DPlugin.min.js"></script>
+    <script defer src="/static/vendor/gsap/CustomEase.min.js"></script>
+    <script defer src="/static/vendor/gsap/CustomBounce.min.js"></script>
+    <!-- DrawSVGPlugin（56b-T1，DrawSVG free since GSAP 3.12+ / Webflow sponsorship）-->
+    <script defer src="/static/vendor/gsap/DrawSVGPlugin.min.js"></script>
+    <!-- Path Display Utilities (T7d) -->
+    <script type="module" src="/static/js/components/path-utils.js"></script>
+    <!-- Motion Preferences Bridge (T4) -->
+    <script type="module" src="/static/js/components/motion-prefs.js"></script>
+    <!-- Motion Adapter — shared GSAP wrappers (T5) -->
+    <script type="module" src="/static/js/components/motion-adapter.js"></script>
+    <!-- Page Lifecycle Manager (T2.1) -->
+    <script type="module" src="/static/js/components/page-lifecycle.js"></script>
+    <!-- Ghost Fly — shared lightbox transition helper (T8) -->
+    <script type="module" src="/static/js/shared/ghost-fly.js"></script>
+    <!-- Burst Picker — shared photo-picker animation module (49b-T4a) -->
+    <script type="module" src="/static/js/shared/burst-picker.js"></script>
+
+    {% block pre_alpine_module %}{% endblock %}
+
+    <!-- 81-T2: 行動搜尋 toolbar 跨 component 共享狀態（navbar icon ↔ page toolbar）。
+         非 defer，掛 alpine:init（早於任何 x-data init）→ store 必先於 page component 求值 -->
+    <script>
+      document.addEventListener('alpine:init', () => { Alpine.store('ui', { toolbarOpen: false, showcaseHasSearch: false }); });
+    </script>
+    <!-- Alpine Plugins (must load before Alpine Core) — 53a: 釘版 3.15.12，新增 focus + intersect -->
+    <script defer src="/static/vendor/alpine/persist.min.js"></script>
+    <script defer src="/static/vendor/alpine/collapse.min.js"></script>
+    <script defer src="/static/vendor/alpine/focus.min.js"></script>
+    <script defer src="/static/vendor/alpine/intersect.min.js"></script>
+    <script defer src="/static/vendor/alpine/anchor.min.js"></script>
+    <!-- Alpine Core -->
+    <script defer src="/static/vendor/alpine/alpine.min.js"></script>
+    <!-- Tutorial JS -->
+    <script src="/static/js/components/tutorial.js"></script>
+
+    {% block extra_js %}{% endblock %}
+
+    <!-- 53b-T4: 通知抽屜（單例，fixed 浮動，anchor 由 toggleDrawer 決定） -->
+    <div x-show="notifBell.drawerOpen"
+         x-cloak
+         x-anchor.right-start.offset.8="notifBell._anchorEl || $el"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 -translate-x-2"
+         x-transition:enter-end="opacity-100 translate-x-0"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 translate-x-0"
+         x-transition:leave-end="opacity-0 -translate-x-2"
+         x-trap.inert="notifBell.drawerOpen"
+         @click.outside="closeDrawer()"
+         @keydown.escape.window="if (notifBell.drawerOpen) closeDrawer()"
+         class="w-80 bg-base-100 border border-base-300 rounded-xl shadow-lg notification-drawer"
+         style="z-index: 1010; position: fixed;"
+         role="dialog"
+         :aria-label="window.t ? window.t('notif.dialog_label') : '通知中心'">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-base-300">
+            <span class="font-semibold text-sm" x-text="window.t ? window.t('notif.title') : '通知'"></span>
+            <button @click="clearNotifications()"
+                    class="btn btn-ghost btn-xs text-base-content/60"
+                    x-text="window.t ? window.t('notif.clear_all') : '全部清空'"></button>
+        </div>
+        <div class="max-h-80 overflow-y-auto">
+            <template x-if="notifBell.items.length === 0">
+                <div class="px-4 py-6 text-center text-base-content/40 text-sm"
+                     x-text="window.t ? window.t('notif.empty') : '目前沒有通知'"></div>
+            </template>
+            <template x-for="item in notifBell.items" :key="item.id">
+                <div class="px-4 py-3 border-b border-base-200"
+                     :class="item.is_read ? 'opacity-60' : ''">
+                    <div class="flex items-start gap-2">
+                        <span class="text-xs mt-0.5 flex-shrink-0"
+                              :class="{
+                                'text-info': item.level === 'info',
+                                'text-success': item.level === 'success',
+                                'text-warning': item.level === 'warn',
+                                'text-error': item.level === 'error'
+                              }">●</span>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium leading-tight"
+                                 x-text="window.t ? window.t(item.title_key) : item.title_key"></div>
+                            <template x-if="item.message">
+                                <div class="text-xs text-base-content/60 mt-0.5" x-text="item.message"></div>
+                            </template>
+                            <div class="text-xs text-base-content/40 mt-0.5"
+                                 x-text="formatTimestamp(item.timestamp)"></div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</body>
+
+</html>

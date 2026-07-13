@@ -1,0 +1,952 @@
+/* fluent-materials.css — Fluent Material Token System (77a-T1)
+ *
+ * PURPOSE: Declares all 6 Fluent material role tokens for the dim theme.
+ * LOAD ORDER: This file is linked LAST site-wide in base.html (after the
+ *   {% block extra_css %} expansion) to achieve source-order override (CD-A2).
+ *   Do NOT move this link into the component CSS block (L76–L84) — that placement
+ *   would be overridden by extra_css page stylesheets (e.g. design-system.css).
+ *
+ * SCOPE RULE (iron): ALL declarations are inside [data-theme="dim"].
+ *   These tokens are undefined in light theme. Any unscoped application of
+ *   --mica-canvas / --glass-shell-fill etc. in light would trigger IACVT
+ *   (Invalid At Computed Value Time) → property reverts to initial → bg disappears.
+ *
+ * TOKEN ONLY (A-T1): This file declares tokens only. Surface application rules
+ *   (body.fluent-canvas, .sidebar, .showcase-container, etc.) are in A-T2/T3/T5.
+ *
+ * DO NOT redefine: --fluent-blur / --fluent-blur-light / --fluent-blur-heavy /
+ *   --fluent-shadow-{8,16,28,64} / --color-primary — all exist in input.css / theme.css.
+ *
+ * Token source: feature/77-fluent-materials/token-spec-77.md §1
+ *   Values extracted from poc-settings-glass-v3.css (S3) / poc-showcase-glass-v5.css (S5).
+ *   canvas/shell configurations are 100% identical between S3 and S5 (true shared tokens).
+ */
+
+[data-theme="dim"] {
+  /* ── Mica canvas (body background; fixed; no blur) ── S3=S5 identical ── */
+  --mica-canvas:
+    radial-gradient(ellipse 95% 72% at 5% -8%,  oklch(0.52 0.075 238 / 0.46), transparent 68%),
+    radial-gradient(ellipse 80% 70% at 105% 32%, oklch(0.43 0.065 276 / 0.34), transparent 66%),
+    linear-gradient(138deg, oklch(0.31 0.045 244) 0%, oklch(0.21 0.03 258) 48%, oklch(0.115 0.018 272) 100%);
+  /* grain: fine-grain ::before, opacity ~0.03, mix-blend-mode:soft-light (premium invisible-grade) */
+
+  /* ── Glass shell (sidebar / header / toolbar / footer / mobile nav·drawer) ── S3=S5 identical ── */
+  --glass-shell-gradient: linear-gradient(110deg,
+      color-mix(in oklch, white 7%, transparent) 0%, transparent 34%,
+      color-mix(in oklch, black 10%, transparent) 100%);
+  --glass-shell-fill: oklch(0.17 0.018 258 / 0.48);
+  --glass-shell-saturate: 130%;                 /* backdrop-filter: blur(var(--fluent-blur-light)) saturate(130%) */
+  --glass-shell-edge-top:    color-mix(in oklch, white 11%, transparent);
+  --glass-shell-edge-left:   color-mix(in oklch, white 6%,  transparent);
+  --glass-shell-edge-bottom: color-mix(in oklch, black 16%, transparent);
+  --glass-shell-border:      color-mix(in oklch, white 14%, transparent);
+  /* shadow: sidebar=--fluent-shadow-16; header/toolbar=--fluent-shadow-8 */
+
+  /* ── Glass shell — mobile (top-navbar / offcanvas; slightly thicker) ── S3=S5 identical ── */
+  --glass-shell-mobile-gradient: linear-gradient(145deg,
+      color-mix(in oklch, white 8%, transparent), transparent 42%,
+      color-mix(in oklch, black 9%, transparent));
+  --glass-shell-mobile-fill: oklch(0.17 0.018 258 / 0.52);
+  --glass-shell-mobile-edge-top:    color-mix(in oklch, white 10%, transparent);
+  --glass-shell-mobile-edge-bottom: color-mix(in oklch, black 14%, transparent);
+  --glass-shell-mobile-border:      color-mix(in oklch, white 14%, transparent);
+
+  /* ── Glass panel (Settings/Help/Scanner/Search reading pane) ── S3 ── */
+  --glass-panel-gradient: linear-gradient(145deg,
+      color-mix(in oklch, white 8%, transparent) 0%, color-mix(in oklch, white 2%, transparent) 28%,
+      transparent 52%, color-mix(in oklch, black 11%, transparent) 100%);
+  --glass-panel-fill: oklch(0.17 0.016 258 / 0.48);
+  --glass-panel-saturate: 125%;                 /* backdrop-filter: blur(var(--fluent-blur)) saturate(125%) */
+  --glass-panel-edge-top:    color-mix(in oklch, white 12%, transparent);
+  --glass-panel-edge-left:   color-mix(in oklch, white 7%,  transparent);
+  --glass-panel-edge-bottom: color-mix(in oklch, black 18%, transparent);
+  --glass-panel-border:      color-mix(in oklch, white 15%, transparent);
+  --glass-panel-header-tint:   color-mix(in oklch, white 4%,  transparent);
+  --glass-panel-header-border: color-mix(in oklch, white 10%, transparent);
+  /* shadow: --fluent-shadow-16 */
+
+  /* ── Glass caption (grid card title bar; 77b) ── S5 ── */
+  --glass-caption-gradient: linear-gradient(150deg,
+      color-mix(in oklch, white 16%, transparent) 0%, color-mix(in oklch, var(--color-primary) 8%, transparent) 36%,
+      transparent 58%, color-mix(in oklch, black 18%, transparent) 100%);
+  --glass-caption-fill: oklch(0.16 0.026 252 / 0.46);
+  --glass-caption-fill-hover: oklch(0.15 0.024 252 / 0.62);   /* hover raises opacity */
+  --glass-caption-border-top: color-mix(in oklch, white 24%, transparent);
+  --glass-caption-edge-top:    color-mix(in oklch, white 15%, transparent);
+  --glass-caption-edge-bottom: color-mix(in oklch, black 24%, transparent);
+  /* card shell is transparent; no per-card backdrop-filter; card border white22% + outer black24% + shadow-16 */
+
+  /* ── Glass overlay (lightbox/modal/popover/drawer; 77b) ── S5 ── */
+  --glass-overlay-fill-gradient: linear-gradient(155deg,
+      oklch(0.29 0.035 244 / 0.68) 0%, oklch(0.18 0.025 258 / 0.72) 65%, oklch(0.11 0.018 272 / 0.92) 100%);
+  --glass-overlay-border-gradient: linear-gradient(135deg,
+      color-mix(in oklch, white 34%, transparent) 0%, color-mix(in oklch, white 11%, transparent) 38%,
+      color-mix(in oklch, black 30%, transparent) 100%);   /* padding-box/border-box technique */
+  --glass-overlay-saturate: 130%;
+  --glass-overlay-edge-top:    color-mix(in oklch, white 22%, transparent);
+  --glass-overlay-edge-bottom: color-mix(in oklch, black 28%, transparent);
+  --glass-overlay-divider:     color-mix(in oklch, white 13%, transparent);   /* metadata hairline (no card-in-card) */
+  --glass-overlay-modal-fill: oklch(0.18 0.025 258 / 0.9);   /* uniform high-opacity fill for modal box (dense text protection, §2.5) */
+  /* modal box = overlay glass but with high opacity end (≈0.9 fill) to protect dense text (spec §2.5) */
+
+  /* ── Media frame (star space; 77b) ── POC §6 ── */
+  --media-frame-stroke: color-mix(in oklch, white 22%, transparent);   /* + box-sizing:border-box, no new transition:transform */
+
+  /* ── Shared edge steps (combinatorial use; avoids repeating raw color-mix) ── */
+  --glass-edge-highlight-strong: color-mix(in oklch, white 22%, transparent);
+  --glass-edge-highlight-mid:    color-mix(in oklch, white 12%, transparent);
+  --glass-edge-highlight-soft:   color-mix(in oklch, white 7%,  transparent);
+  --glass-edge-lowlight-strong:  color-mix(in oklch, black 24%, transparent);
+  --glass-edge-lowlight-mid:     color-mix(in oklch, black 16%, transparent);
+  --glass-edge-lowlight-soft:    color-mix(in oklch, black 10%, transparent);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 77d-T2: Light shell tokens — chrome top-bars ONLY (CD-D2)
+ *
+ * FIRST light-scoped block in this file. light theme renders data-theme="light"
+ *   explicitly (base.html L3 default + Alpine :data-theme binding) → this selector
+ *   matches; the tokens below are consumed by the shell APPLICATION rules (Rule
+ *   10/11/12/13a + desktop 45/47) once those are unscoped (same task).
+ *
+ * SCOPE (D-夾1, iron): ONLY the 6 shell tokens consumed by the chrome top-bars
+ *   (search bar / settings·scanner headers / showcase toolbar). The other shell
+ *   faces (sidebar/offcanvas/top-navbar/footer — Rule 6-9) stay dim-only, so NO
+ *   --glass-shell-edge-left and NO --glass-shell-mobile-* here. The other 4 roles
+ *   (panel/caption/overlay/media-frame) stay dim-only (S-2) — NOT redeclared here.
+ *
+ * DERIVE (D-夾3 → CP-D1 more-glass pass): invert lightness (dark fill → near-white
+ *   fill) + swap highlight↔lowlight logic (white bloom → faint dark hairline). This is
+ *   the frostier-acrylic tuning past the conservative first cut — the glass-strength
+ *   knobs are FILL OPACITY (lowered 70%→55% so the blurred background tints through) and
+ *   SATURATE (120%→140% acrylic vibrancy). White-dominant fill + the --fluent-blur-light
+ *   backdrop keep dark text/icons legible over the blurred wash. Dial fill opacity UP if
+ *   text floats; that is the single legibility lever.
+ *   Theme-aware: built from the DaisyUI base palette (--color-base-100 / -content),
+ *   no hardcoded oklch literal → tracks the light theme automatically.
+ * ────────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --glass-shell-gradient: linear-gradient(110deg,
+      color-mix(in oklch, white 55%, transparent) 0%, transparent 40%,
+      color-mix(in oklch, var(--color-base-content) 6%, transparent) 100%);
+  --glass-shell-fill: color-mix(in oklch, var(--color-base-100) 55%, transparent);
+  --glass-shell-saturate: 140%;
+  --glass-shell-edge-top:    color-mix(in oklch, white 75%, transparent);
+  --glass-shell-edge-bottom: color-mix(in oklch, var(--color-base-content) 9%, transparent);
+  --glass-shell-border:      color-mix(in oklch, var(--color-base-content) 13%, transparent);
+}
+
+/* ==========================================================================
+ * A-T2: Mica canvas — dim-scoped surface application (CD-A3 / CD-A4)
+ *
+ * ALL rules below are [data-theme="dim"]-scoped.
+ * --mica-canvas is only defined inside [data-theme="dim"] (A-T1 token block).
+ * Any unscoped application in light would trigger IACVT → background: initial
+ * (transparent) → light body bg disappears. Iron rule: no unscoped canvas rules.
+ *
+ * Load order: fluent-materials.css is the last stylesheet site-wide (base.html
+ * L342, after {% block extra_css %}). Source order wins all same-specificity ties.
+ * ========================================================================== */
+
+/* Rule 1 — Body canvas (dim-scoped; duplicate-class specificity boost)
+ * Selector: [data-theme="dim"] body.fluent-canvas.fluent-canvas → (0,3,1)
+ * Ties the old theme.css:2369 [data-theme="dim"] body.fluent-canvas:not(.ds-page)
+ * rule at (0,3,1); source-order wins (this file loads last).
+ * NO :not(.ds-page) — intentionally covers showcase/design-system bodies (CD-A4).
+ * showcase/DS bodies carry .ds-page so the old :not(.ds-page) rule never hit them;
+ * this rule fills the gap. --mica-canvas value: see token-spec-77.md §1 / A-T1. */
+[data-theme="dim"] body.fluent-canvas.fluent-canvas {
+    background: var(--mica-canvas);
+    background-attachment: fixed;
+}
+
+/* Rule 2 — main-content transparent (dim-scoped)
+ * Overrides base.html inline <style> L213: .main-content { background-color: var(--surface-0); }
+ * specificity (0,1,0). Our rule (0,4,1) wins easily in dim; in light this rule
+ * does not exist (dim-scoped) so inline style stays active. */
+[data-theme="dim"] body.fluent-canvas.fluent-canvas .main-content {
+    background-color: transparent;
+}
+
+/* Rule 3 — Premium grain ::before (dim-scoped; reuses existing SVG from theme.css:2358)
+ * Source: theme.css L2362 body.fluent-canvas:not(.ds-page)::before
+ *   position: fixed; inset: 0; pointer-events: none; z-index: 0
+ *   SVG: fractalNoise baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"
+ * Reused verbatim — same texture ensures light/dim grain consistency (Opus instruction #1).
+ * Override ONLY: scope to dim, opacity 0.025→0.03, add mix-blend-mode: soft-light.
+ * Specificity: (0,3,2) > light grain (0,2,2) — dim-scoped rule wins in dim;
+ * light-mode grain (theme.css:2358, unscoped) continues unaffected. */
+[data-theme="dim"] body.fluent-canvas.fluent-canvas::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Rule 4 — Showcase container transparent (dim-scoped)
+ * showcase.css:1658 [data-theme="dim"] .showcase-container { background: radial-gradient(…) }
+ * specificity (0,2,0). Same selector here → source-order wins (this file loads last).
+ * Makes body Mica canvas visible through the showcase container in dim. */
+[data-theme="dim"] .showcase-container {
+    background: transparent;
+}
+
+/* Rule 5 — Suppress showcase container noise layer (dim-scoped; Opus Q1 → Option B)
+ * showcase.css:1895 .showcase-container::before has opacity:0.02, NO mix-blend-mode
+ * (unscoped, always active). When .showcase-container turns transparent (Rule 4),
+ * this ::before layer stacks on top of the body Mica grain (Rule 3: opacity 0.03
+ * soft-light). Two noise layers from different sources/blend-modes would read as
+ * a "hard" double-carpet noise — violating spec D3 "feel it, don't see it" and
+ * attempt-1's rejected texture feel.
+ * Single-grain-source principle (D1/D3): dim showcase grain comes exclusively from
+ * body Mica ::before. Suppress the container-level noise with display:none (preferred
+ * over opacity:0 — avoids unnecessary paint on this performance-sensitive page). */
+[data-theme="dim"] .showcase-container::before {
+    display: none;
+}
+
+/* ==========================================================================
+ * A-T3: Glass shell chrome — dim-scoped surface overrides (CD-A5 / CD-A8)
+ *
+ * Technique: owner-approved poc-settings-glass-v3.css recipe, tokenized.
+ * - background: gradient + fill (direction-light over translucent fill)
+ * - backdrop-filter: blur(--fluent-blur-light) saturate(--glass-shell-saturate)
+ *   always double-written with -webkit-backdrop-filter (macOS WebKit / PyWebView)
+ * - border edges: recolor existing hard border to --glass-shell-border (soft hairline)
+ * - edge highlights: box-shadow inset ONLY (no ::after, no position:relative,
+ *   no background-image edge gradients) — orientation-appropriate:
+ *     vertical surfaces  → inset ±1px on left/right
+ *     horizontal surfaces → inset ±1px on top/bottom
+ * - elevation: sidebar/offcanvas = --fluent-shadow-16; headers/toolbar/footer = --fluent-shadow-8
+ * ALL rules are [data-theme="dim"]-scoped (IACVT iron rule).
+ * Opus 審核決議: Q2 → box-shadow inset; Q1 → no flex-wrap change; Q3 → light untouched.
+ * ========================================================================== */
+
+/* Rule 6 — Sidebar: vertical glass shell (dim)
+ * base.html:119 inline <style> sets background-color + base .sidebar backdrop 30px.
+ * Source-order override (fluent-materials.css loads last, same (0,2,0) specificity).
+ * backdrop-filter MUST be explicit to override base .sidebar blur(--fluent-blur) 30px → 12px.
+ * Vertical surface: left+right insets (matching POC sidebar recipe). */
+[data-theme="dim"] .sidebar {
+    background: var(--glass-shell-gradient), var(--glass-shell-fill);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-right-color: var(--glass-shell-border);
+    box-shadow:
+        inset 1px 0 0 var(--glass-shell-edge-left),
+        inset -1px 0 0 var(--glass-shell-edge-left),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 7 — Offcanvas: mobile glass drawer (dim)
+ * base.html:276–277 forces background-color with !important — must counter with !important.
+ * Uses mobile tokens (0.52 fill, 145deg gradient) — slightly thicker for mobile legibility.
+ * Mobile shell: top/bottom insets (matches POC mobile recipe regardless of drawer orientation).
+ * border !important: defensive symmetry with this surface's !important-forced background. */
+[data-theme="dim"] .offcanvas {
+    background: var(--glass-shell-mobile-gradient), var(--glass-shell-mobile-fill) !important;
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate)) !important;
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate)) !important;
+    border-right-color: var(--glass-shell-mobile-border) !important;
+    box-shadow:
+        inset 0 1px 0 var(--glass-shell-mobile-edge-top),
+        inset 0 -1px 0 var(--glass-shell-mobile-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 8 — Mobile top-navbar: glass shell + CSS-only inset (dim; CD-A8 / E1)
+ * Tailwind left-0/right-0 are (0,0,0); DaisyUI .navbar width:100% is (0,1,0).
+ * Our (0,2,0) dim-scoped rule overrides both via source-order.
+ * left/right: 1rem + width: auto → navbar insets 1rem from viewport edges.
+ * body padding-top: 3.5rem (base.html:259) is height-based, unaffected by inset.
+ * Mobile shell uses mobile tokens (145deg, 0.52 fill). */
+[data-theme="dim"] .top-navbar {
+    background: var(--glass-shell-mobile-gradient), var(--glass-shell-mobile-fill);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-bottom-color: var(--glass-shell-mobile-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-shell-mobile-edge-top),
+        inset 0 -1px 0 var(--glass-shell-mobile-edge-bottom),
+        var(--fluent-shadow-8);
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+}
+
+/* Rule 9 — Showcase footer: horizontal glass shell (dim)
+ * showcase.css:1668 .showcase-footer specificity (0,1,0) — source-order override.
+ * Horizontal surface: top/bottom insets. Do NOT touch position/left/right (sidebar-width linked).
+ * Replaces hard border-top with glass hairline recolor. */
+[data-theme="dim"] .showcase-footer {
+    background: var(--glass-shell-gradient), var(--glass-shell-fill);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-top-color: var(--glass-shell-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-shell-edge-top),
+        inset 0 -1px 0 var(--glass-shell-edge-bottom),
+        var(--fluent-shadow-8);
+}
+
+/* Rule 10 — Settings header: A full-width shelf (dim)
+ * settings.css:211 .settings-header (0,1,0) — source-order override.
+ * padding: 1rem 0 — fixes padding-top: 0 bug (was only padding-bottom: 1rem).
+ * border-bottom recolored to glass hairline (replaces hard --stroke-subtle line).
+ * Q1 resolution: padding is vertical-only; controls flex/gap/font-size untouched.
+ * Horizontal surface: top/bottom insets.
+ * 77d-T2: theme-agnostic (was [data-theme="dim"]). Consumes shell tokens which now
+ *   have light values too (77d-T2 light block) → glass material in both themes.
+ *   (0,2,0)→(0,1,0), tying settings.css:211 → source order wins (fluent loads last). */
+.settings-header {
+    background: var(--glass-shell-gradient), var(--glass-shell-fill);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-bottom-color: var(--glass-shell-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-shell-edge-top),
+        inset 0 -1px 0 var(--glass-shell-edge-bottom),
+        var(--fluent-shadow-8);
+    padding: 1rem 0;
+}
+
+/* Rule 11 — Scanner header (.avlist-header): A full-width shelf (dim)
+ * scanner.css:13 .avlist-header (0,1,0) — source-order override.
+ * padding: 1rem 0 — fixes padding-top: 0 bug (was only padding-bottom: 1rem).
+ * border-bottom recolored to glass hairline (replaces hard --stroke-subtle line).
+ * Horizontal surface: top/bottom insets.
+ * 77d-T2: theme-agnostic (was [data-theme="dim"]). Shell tokens have light values now
+ *   → glass material in both themes. (0,2,0)→(0,1,0), tying scanner.css:13 → source order. */
+.avlist-header {
+    background: var(--glass-shell-gradient), var(--glass-shell-fill);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-bottom-color: var(--glass-shell-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-shell-edge-top),
+        inset 0 -1px 0 var(--glass-shell-edge-bottom),
+        var(--fluent-shadow-8);
+    padding: 1rem 0;
+}
+
+/* Rule 12 — Search bar: A full-width shelf (dim; CD-A7)
+ * search.css:12 .search-bar (0,1,0) — source-order override.
+ * backdrop changed from --fluent-blur (30px) to --fluent-blur-light (12px) — A shelf role.
+ * border-bottom recolored to glass hairline (was hard --border-light line).
+ * NO position:relative, NO ::after (Q2 resolution — box-shadow inset only).
+ * search-bar is NOT sticky (CD-A7); no scroll-under needed.
+ * Horizontal surface: top/bottom insets.
+ * 77d-T2: theme-agnostic (was [data-theme="dim"]). Shell tokens have light values now
+ *   → glass material in both themes. (0,2,0)→(0,1,0), tying search.css:12 → source order
+ *   (fluent loads last); overrides native bg-header/border-light + blur(--fluent-blur). */
+.search-bar {
+    background: var(--glass-shell-gradient), var(--glass-shell-fill);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-bottom-color: var(--glass-shell-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-shell-edge-top),
+        inset 0 -1px 0 var(--glass-shell-edge-bottom),
+        var(--fluent-shadow-8);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * A-T4: showcase toolbar — B floating glass bar (dim; CD-A6)
+ * showcase.css:21 .showcase-toolbar (0,1,0) — source-order override via (0,2,0).
+ * Two-rule pattern (Opus 審核決議 Q2 breakpoint-gating):
+ *   Rule 13a — base dim (ALL widths): glass material only (full-width shelf).
+ *              NO margin / NO border-radius / NO grid-template-columns here.
+ *              Mobile (≤768) and tablet (769–1023) responsive grids in showcase.css
+ *              are untouched — base rule adds material; desktop B-floating is
+ *              gated in Rule 13b (≥1024px) so phone/tablet grids never drift.
+ *   Rule 13b — desktop (≥1024px): B floating treatment — margin inset, radius,
+ *              full 4-side border, fluid central column.
+ * backdrop changed from --fluent-blur (30px) to --fluent-blur-light (12px) — shelf role.
+ * box-shadow: inset only for edges (top + bottom horizontal surface).
+ * NO ::after, NO position added (toolbar is already position:sticky in showcase.css).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* Rule 13a — base (ALL widths): glass material only
+ * 77d-T2: theme-agnostic (was [data-theme="dim"]). Shell tokens have light values now
+ *   → glass material in both themes. (0,2,0)→(0,1,0), tying showcase.css:21 → source order. */
+.showcase-toolbar {
+    background: var(--glass-shell-gradient), var(--glass-shell-fill);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-bottom-color: var(--glass-shell-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-shell-edge-top),
+        inset 0 -1px 0 var(--glass-shell-edge-bottom),
+        var(--fluent-shadow-8);
+}
+
+/* Rule 13b — desktop only (≥1024px): B floating treatment
+ * 77d-T1: theme-agnostic (was [data-theme="dim"]). Float geometry carries no
+ *   light/dark value diff (margin/radius/border-token/grid are identical in both
+ *   themes) → unscoped so light gets the same shape. Specificity (0,2,0)→(0,1,0),
+ *   tying showcase.css:21 .showcase-toolbar (0,1,0) → fluent-materials.css loads
+ *   last → source order wins. Material (Rule 13a) stays dim-scoped until 77d-T2.
+ *   grid-template-columns kept (central-column layout, theme-agnostic). */
+@media (min-width: 1024px) {
+    .showcase-toolbar {
+        margin: 0 1rem;
+        border-radius: var(--fluent-radius-xl);
+        border: 1px solid var(--glass-shell-border);
+        grid-template-columns: 1fr min(var(--spotlight-width), 100% - 30rem) 1fr;
+    }
+}
+
+/* ==========================================================================
+   A-T5: Glass panel — dim-scoped override
+   Panel role: large reading surfaces (Settings / Help / Scanner / Search).
+   Uses --fluent-blur (30px) — heavier than shell's --fluent-blur-light (12px).
+   Exclusions NOT touched: semantic-color states, terminals/code, modal, popover,
+   dropdown, drag-overlay, staging-anchor, row dividers, grid cards, shell surfaces.
+   Sub-panels inside a glass card use sub-tint ONLY (no backdrop-filter) to avoid
+   double-blur (muddy + GPU cost). Q1/Q2/Q3/Q4 decided by Opus → adopted below.
+   ========================================================================== */
+
+/* ── Full panel glass (9 selectors) ──────────────────────────────────────── */
+
+/* Rule 14 — Settings: main card panel */
+[data-theme="dim"] #settings-components .card {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 15 — Help: help-card panel (×15) */
+[data-theme="dim"] .help-card {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 16 — Scanner: avlist-card panel */
+[data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .avlist-card {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 17 — Scanner: stats-card panel */
+[data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .stats-card {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 18 — Scanner: actress-alias-card panel (×2 instances in scanner.html) */
+[data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .actress-alias-card {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 19 — Search: state-page panel (empty + error states) */
+[data-theme="dim"] .search-container .state-page {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 20 — Search: progress-container panel (Q3→A: glass; overrides search.css:361 solid bg) */
+[data-theme="dim"] .progress-container {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 21 — Search: av-card-full detail panel (Q4→A: search-scoped only) */
+[data-theme="dim"] .search-container .av-card-full {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 22 — Search: file-list-section panel */
+[data-theme="dim"] .file-list-section {
+    background: var(--glass-panel-gradient), var(--glass-panel-fill);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+    box-shadow:
+        inset 0 1px 0 var(--glass-panel-edge-top),
+        inset 1px 0 0 var(--glass-panel-edge-left),
+        inset 0 -1px 0 var(--glass-panel-edge-bottom),
+        var(--fluent-shadow-16);
+}
+
+/* ── Sub-tint ONLY — in-card sub-panels (Q1→A: no backdrop-filter) ────────
+   These elements are nested inside a .card that already carries backdrop-filter.
+   Adding a second backdrop-filter would blur-on-blur (muddy + GPU waste).
+   Pattern: POC .settings-card-header — sub-tint + border only, no elevation.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Rule 23 — Settings: card header sub-tint */
+[data-theme="dim"] #settings-components .settings-card-header {
+    background: var(--glass-panel-header-tint);
+    border-bottom-color: var(--glass-panel-header-border);
+}
+
+/* Rule 24 — Settings: sources batchbar sub-tint (nested in .card → no backdrop-filter) */
+[data-theme="dim"] #settings-components .settings-sources-batchbar {
+    background: var(--glass-panel-header-tint);
+    border-color: var(--glass-panel-header-border);
+}
+
+/* Rule 25 — Settings: metatube connect form sub-tint (nested in .card → no backdrop-filter)
+ * Border intentionally NOT overridden: settings.css:634 uses `border: 1px dashed` as a
+ * deliberate drop-zone/form cue — recoloring it to the glass hairline would dilute that cue. */
+[data-theme="dim"] #settings-components .settings-mt-connect-form {
+    background: var(--glass-panel-header-tint);
+}
+
+/* Rule 26 — Settings: collapsible content sub-tint (nested in .card → no backdrop-filter) */
+[data-theme="dim"] :is(#settings-components, #ds-settings-components) .collapsible-content {
+    background: var(--glass-panel-header-tint);
+    border-color: var(--glass-panel-header-border);
+}
+
+/* ============================================================
+ * B-T1 Glass caption — 底部標題條玻璃（dim-only）
+ * All rules: [data-theme="dim"]-scoped.
+ * No backdrop-filter on caption (90-card perf, spec §7.4 #3).
+ * CD-B1/B2/B3/B4 per plan-77b.
+ * ============================================================ */
+
+/* Rule 27 — CD-B1: av-card-preview shell transparent + glass border (dim override)
+ * Specificity (1,3,0) — beats theme.css:1006 (1,1,0) via :is(#id,...).
+ * :not(.hero-card) preserves hero-card's existing overlay rules. */
+[data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .av-card-preview:not(.hero-card) {
+    background: transparent;
+    border: 1px solid var(--glass-edge-highlight-strong);
+    box-shadow:
+        inset 0 1px 0 var(--glass-caption-edge-top),
+        0 0 0 1px var(--glass-edge-lowlight-strong),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 28 — CD-B1: av-card-preview footer glass base layer (no backdrop-filter)
+ * Specificity (1,4,0) — beats showcase.css:509 (.showcase-grid .av-card-preview-footer, (0,2,0))
+ * and theme.css:1085 (:is(#ds-gallery-components,...) .av-card-preview-footer, (1,1,0)).
+ * Absolutely no backdrop-filter here: 90-card perf constraint. */
+[data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .av-card-preview:not(.hero-card) > .av-card-preview-footer {
+    background: var(--glass-caption-gradient), var(--glass-caption-fill);
+    border-top: 1px solid var(--glass-caption-border-top);
+    box-shadow:
+        inset 0 1px 0 var(--glass-caption-edge-top),
+        inset 0 -1px 0 var(--glass-caption-edge-bottom);
+}
+
+/* Rule 29 — CD-B1: footer-hover glass (raised opacity on hover entry)
+ * Only overrides background — transform/opacity/transition managed by showcase.css:L532–L534.
+ * Beats showcase.css:L530 (var(--surface-1) solid fill). */
+[data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .av-card-preview:not(.hero-card) > .av-card-preview-footer .footer-hover {
+    background: var(--glass-caption-gradient), var(--glass-caption-fill-hover);
+}
+
+/* Rule 30 — CD-B2: av-card-preview hover dim override — neutralise accent glow
+ * Specificity (1,4,0) — must beat theme.css:1036 (1,2,0) which sets accent ring + glow-primary.
+ * Converged transform values (from POC -4px/1.012 → -2px/1.006).
+ * No new transition — reuses theme.css:L1013 (transform, box-shadow, border-color).
+ * No var(--accent) ring, no var(--glow-primary) glow. */
+[data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .av-card-preview:not(.hero-card):hover {
+    transform: translateY(-2px) scale(1.006);
+    border-color: var(--glass-caption-border-top);
+    box-shadow:
+        inset 0 1px 0 var(--glass-caption-edge-top),
+        0 0 0 1px var(--glass-edge-highlight-soft),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 31 — CD-B1 + CD-B2: actress-card hover converged (flat dim-scoped)
+ * Specificity (0,3,0) — beats showcase.css:L382 (.actress-card:hover, (0,2,0)).
+ * Keeps fluent-shadow-8 (actress hover has no accent glow, only transform convergence). */
+[data-theme="dim"] .actress-card:hover {
+    transform: translateY(-2px) scale(1.006);
+    box-shadow: var(--fluent-shadow-8);
+}
+
+/* Rule 32 — CD-B1: actress-card footer glass base (flat dim-scoped, no backdrop-filter)
+ * Same glass caption recipe as Rule 28. */
+[data-theme="dim"] .actress-card > .actress-card-footer {
+    background: var(--glass-caption-gradient), var(--glass-caption-fill);
+    border-top: 1px solid var(--glass-caption-border-top);
+    box-shadow:
+        inset 0 1px 0 var(--glass-caption-edge-top),
+        inset 0 -1px 0 var(--glass-caption-edge-bottom);
+}
+
+/* Rule 33 — CD-B1: actress-card footer-hover glass (raised opacity on hover entry)
+ * Base-state selector (no :hover on ancestor) — symmetric with Rule 29 for av-card;
+ * footer-hover is opacity:0/translateY(100%) until shown, so glassing it in both
+ * states is visually identical to hover-only but keeps the pattern consistent. */
+[data-theme="dim"] .actress-card > .actress-card-footer .footer-hover {
+    background: var(--glass-caption-gradient), var(--glass-caption-fill-hover);
+}
+
+/* Rule 34 — CD-B4: reduced-motion — suppress hover displacement (dim-only)
+ * border-color + box-shadow transitions remain active (only motion/scale is suppressed).
+ * av-card: ID-matched to guarantee (1,4,0) beats theme.css:1036 hover rule.
+ * actress: flat (0,3,0) beats showcase.css:L382 (0,2,0). */
+@media (prefers-reduced-motion: reduce) {
+    [data-theme="dim"] :is(#ds-gallery-components, .ds-gallery-composition) .av-card-preview:not(.hero-card):is(:hover, :focus-within) {
+        transform: none;
+    }
+
+    [data-theme="dim"] .actress-card:is(:hover, :focus-within) {
+        transform: none;
+    }
+}
+
+/* ==========================================================================
+ * B-T2: Glass overlay — lightbox / modal / popover / drawer (dim-only)
+ *
+ * All rules [data-theme="dim"]-scoped (IACVT iron rule).
+ * Technique: padding-box/border-box dual background + transparent border.
+ *   EVERY rule using this technique MUST have `border: 1px solid transparent`
+ *   otherwise the border-box area does not exist and border gradient is invisible.
+ * backdrop-filter ALWAYS double-written with -webkit-backdrop-filter (macOS
+ *   PyWebView WKWebView requires -webkit- prefix).
+ * !important ONLY on .scanner-dir-dropdown (inline style override).
+ * Source: TASK-77b-T2.md T2–T9.
+ * ========================================================================== */
+
+/* Rule 35 — CD-B5: .lightbox-content overlay glass shell (dim)
+ * Specificity: (0,2,0) > showcase.css .lightbox-content (0,1,0); source-order wins.
+ * padding-box/border-box technique: transparent border required.
+ * NO transform / transition — scale 0.95→1 pop-in in showcase.css:L615–L620 preserved. */
+[data-theme="dim"] .lightbox-content {
+    border: 1px solid transparent;
+    background:
+        var(--glass-overlay-fill-gradient) padding-box,
+        var(--glass-overlay-border-gradient) border-box;
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    box-shadow:
+        inset 0 1px 0 var(--glass-overlay-edge-top),
+        inset 0 -1px 0 var(--glass-overlay-edge-bottom),
+        var(--fluent-shadow-64);
+}
+
+/* Rule 36 — CD-B5: .lightbox-metadata hairline — no card-in-card (dim)
+ * Specificity: (0,2,0) > showcase.css:L721 .lightbox-metadata (0,1,0).
+ * Clears any background to keep metadata as part of the shell, not an inner card.
+ * border-top recolored to glass overlay hairline token. */
+[data-theme="dim"] .lightbox-metadata {
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--glass-overlay-divider);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Rule 37 — CD-B5: lightbox controls floating-glass upgrade (dim)
+ * Selector: (0,3,0) — ancestor .showcase-lightbox + :is() — beats showcase.css
+ *   .lightbox-close (0,1,0) and .lightbox-similar-btn (0,1,0).
+ * Upgrades border/background from raw rgba literals to overlay tokens.
+ * Re-declares backdrop-filter (self-contained; does not rely on showcase.css values). */
+[data-theme="dim"] .showcase-lightbox :is(.lightbox-close, .lightbox-similar-btn) {
+    background: var(--glass-edge-highlight-mid);
+    border: 1px solid var(--glass-edge-highlight-strong);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-overlay-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-overlay-saturate));
+    box-shadow: var(--fluent-shadow-8);
+}
+
+/* Rule 38 — CD-B7: .fluent-modal-box overlay glass (dim)
+ * Specificity: (0,2,0) > theme.css:L2141 .fluent-modal-box (0,1,0); source-order wins.
+ * theme.css:L2147 !important is on border-radius ONLY — background needs no !important.
+ * Uses uniform --glass-overlay-modal-fill (0.9 alpha) for dense text protection.
+ * Do NOT set border-radius (avoids touching !important chain in theme.css). */
+[data-theme="dim"] .fluent-modal-box {
+    border: 1px solid transparent;
+    background:
+        var(--glass-overlay-modal-fill) padding-box,
+        var(--glass-overlay-border-gradient) border-box;
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    box-shadow:
+        inset 0 1px 0 var(--glass-overlay-edge-top),
+        inset 0 -1px 0 var(--glass-overlay-edge-bottom),
+        var(--fluent-shadow-28);
+}
+
+/* Rule 39 — CD-B8: .help-popover micro-glass (dim)
+ * Specificity: (0,2,0) > help-popover.css:L28 .help-popover (0,1,0); source-order wins.
+ * Adds backdrop-filter (popover had none upstream). */
+[data-theme="dim"] .help-popover {
+    border: 1px solid transparent;
+    background:
+        var(--glass-overlay-fill-gradient) padding-box,
+        var(--glass-overlay-border-gradient) border-box;
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    box-shadow:
+        inset 0 1px 0 var(--glass-overlay-edge-top),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 40 — CD-B8: .variable-menu micro-glass (dim; ID scope preserved)
+ * Specificity: (1,2,0) > theme.css:L1878 :is(#settings-components, #ds-settings-components)
+ *   .variable-menu (1,1,0). ID ancestor required to win specificity. */
+[data-theme="dim"] :is(#settings-components, #ds-settings-components) .variable-menu {
+    border: 1px solid transparent;
+    background:
+        var(--glass-overlay-fill-gradient) padding-box,
+        var(--glass-overlay-border-gradient) border-box;
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    box-shadow:
+        inset 0 1px 0 var(--glass-overlay-edge-top),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 41 — CD-B8: .scanner-dir-dropdown overlay glass (dim)
+ * Specificity: (0,2,0) — but inline style wins over any CSS class.
+ * !important on background, border AND box-shadow (the inline style sets all three:
+ * background:var(--surface-2); border:...; box-shadow:var(--shadow-md) — each must be
+ * countered with !important or the inline value wins regardless of specificity). */
+[data-theme="dim"] .scanner-dir-dropdown {
+    border: 1px solid transparent !important;
+    background:
+        var(--glass-overlay-fill-gradient) padding-box,
+        var(--glass-overlay-border-gradient) border-box !important;
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    box-shadow:
+        inset 0 1px 0 var(--glass-overlay-edge-top),
+        var(--fluent-shadow-16) !important;
+}
+
+/* Rule 42 — CD-B8: .notification-drawer overlay glass (dim)
+ * Specificity: (0,2,0) > Tailwind utilities bg-base-100/border/border-base-300/
+ *   rounded-xl/shadow-lg each (0,1,0). (0,2,0) beats all.
+ * No !important needed. base.html L701: class appended with "notification-drawer" (B-T2 HTML hook). */
+[data-theme="dim"] .notification-drawer {
+    border: 1px solid transparent;
+    background:
+        var(--glass-overlay-fill-gradient) padding-box,
+        var(--glass-overlay-border-gradient) border-box;
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    box-shadow:
+        inset 0 1px 0 var(--glass-overlay-edge-top),
+        var(--fluent-shadow-16);
+}
+
+/* Rule 42b — 81c-T6 / US-12: .notification-drawer mobile full-width sheet (≤480px)
+ * WHAT: below 480px, convert the bell drawer from the Alpine-Anchor right-top 320px
+ *   floating card into a navbar-bottom full-width fixed sheet, and switch from glass
+ *   to a SOLID fill (backdrop-filter removed).
+ * WHY (G2): the drawer is global (base.html) and opens on pages whose #main-content
+ *   keeps view-transition-name (e.g. /search, /settings). A fixed element with
+ *   backdrop-filter inside a VT backdrop-root samples per-frame → "逐格模糊" bug.
+ *   Removing backdrop-filter (vs. the 0.10.4 :has() de-name trick) roots out the
+ *   sampling source entirely — no #main-content vt-name change, no :has() rule.
+ * SPECIFICITY / !important: x-anchor (Floating UI) writes left/top as INLINE style
+ *   on every reposition (highest specificity), and Tailwind w-80 sets width. Only
+ *   !important can override inline. The solid background + backdrop-filter:none must
+ *   also beat the dim Rule 42 (0,2,0) above; this @media .notification-drawer is
+ *   (0,1,0) so background/backdrop-filter need !important to win (Rule 42 has none).
+ * THEME-AGNOSTIC: deliberately NOT [data-theme] scoped — the sheet is identical in
+ *   light (overrides bg-base-100) and dim (overrides the glass), so a single
+ *   !important background:var(--surface-2) covers both. NOTE: this is a guarded
+ *   exception to the dim-scope backdrop-filter rule — backdrop-filter:none is the
+ *   safe direction (it REMOVES filter, the very thing IACVT would do anyway), so it
+ *   carries zero "silently drop glass in light" risk. */
+@media (max-width: 480px) {
+    .notification-drawer {
+        position: fixed !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: 3.5rem !important;     /* navbar height (.top-navbar / .main-content inset) */
+        width: 100% !important;     /* override Tailwind w-80 (20rem) */
+        border-radius: 0 !important;    /* full-bleed sheet edge-to-edge */
+        background: var(--surface-2) !important;    /* solid dropdown/modal token; beats dim glass */
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * B-T3: Media frame — 星空中央封面 + slot 共用 neutral hairline (dim-only)
+ * Token: --media-frame-stroke (white 22%) — declared in the A-T1 dim token block.
+ * .similar-main-static: adds a border (none in showcase.css) + box-sizing so the
+ *   178×250 external size is preserved (1px-per-side inner shrink on the replaced
+ *   <img> is acceptable per CD-B9 / DoD §4.6).
+ * .similar-slot: only recolors the existing content-tinted border to the shared
+ *   neutral stroke — width/style/transition/layout untouched.
+ * CSS-only: no coordinate / z-index / GSAP / DOM changes.
+ * NO transition:transform (showcase.css:2978 C21 guard — slot hover scale is GSAP).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* Rule 43 — CD-B9: .similar-main-static dim border (no competing border upstream)
+ * Specificity (0,2,0) — unopposed (showcase.css:3073 .similar-main-static has no border). */
+[data-theme="dim"] .similar-main-static {
+    border: 1px solid var(--media-frame-stroke);
+    box-sizing: border-box;
+}
+
+/* Rule 44 — CD-B9: .similar-slot dim border-color unification
+ * Specificity (0,2,0) — beats showcase.css:2994 .similar-slot (0,1,0).
+ * Only border-color recolored; the 1px solid width/style stays from showcase.css. */
+[data-theme="dim"] .similar-slot {
+    border-color: var(--media-frame-stroke);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 77c-T1: Search bar — B floating glass bar (dim; desktop-gated ≥1024px)
+ * Mirrors showcase toolbar Rule 13b (margin/radius/border) MINUS grid-template-columns
+ * (search-bar is flex, not a grid). Base material (glass + backdrop-filter + bottom
+ * border + inset shadow) is provided by Rule 12 (.search-bar A shelf); this rule adds
+ * desktop floating geometry only. The 4-side `border` overrides Rule 12's
+ * border-bottom-color via source order (same selector (0,2,0), appended later).
+ * Mobile (<1024px): no rule → full-width A shelf preserved (feature/75 compat).
+ * search-bar is NOT sticky (CD-A7) — the float bar scrolls with the page. (CD-C1)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* Rule 45 — CD-C1 / 77d-T1: .search-bar B floating treatment (desktop ≥1024px)
+ * 77d-T1: theme-agnostic (was [data-theme="dim"]). Float geometry is theme-independent
+ *   → unscoped so light gets the same shape. Specificity (0,2,0)→(0,1,0), tying
+ *   search.css:12 .search-bar (0,1,0) → source order wins (fluent-materials.css last).
+ *   In dim the border-bottom-color is still pinned by the dim-scoped Rule 12 (0,2,0) to
+ *   the SAME var(--glass-shell-border) → zero dim regression. Rule 12 material unscoped
+ *   in 77d-T2; until then the light border color is IACVT (T1+T2 ship together). */
+@media (min-width: 1024px) {
+    .search-bar {
+        margin: 0 1rem;
+        border-radius: var(--fluent-radius-xl);
+        border: 1px solid var(--glass-shell-border);
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 77c-T2: Settings / Scanner headers — flush-left fix + B floating (dim)
+ * Base material (glass + backdrop-filter + box-shadow) provided by Rule 10/11;
+ * this section only adds: padding fix (all widths) + radius/4-side border (desktop).
+ * Position untouched: settings-header stays sticky (settings.css:224); avlist-header
+ *   stays non-sticky (no position in scanner.css or Rule 11).
+ * NO margin (C-夾4: column-width alignment for the centered 900/800px columns —
+ *   a side inset would make the header narrower than the full-width content cards).
+ * :is(.settings-header, .avlist-header) = (0,1,0); with [data-theme="dim"] = (0,2,0),
+ *   tying Rule 10/11 — appended later → source order wins.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* Rule 46 — CD-C2 / 77d-T1: flush-left padding fix (all widths)
+ * padding shorthand fully overrides Rule 10/11 `padding: 1rem 0` (horizontal 0).
+ * 77d-T1: theme-agnostic (was [data-theme="dim"]). Padding carries no theme value diff
+ *   → unscoped so light headers also get flush-left padding. (0,2,0)→(0,1,0), tying
+ *   settings.css:211 / scanner.css:13 (0,1,0) → source order wins. */
+:is(.settings-header, .avlist-header) {
+    padding: 1rem 1.5rem;
+}
+
+/* Rule 47 — CD-C2 / 77d-T1: B floating treatment (desktop ≥1024px)
+ * 4-side border overrides Rule 10/11 border-bottom-color via source order. NO margin
+ *   (C-夾4: column-width alignment for centered 900/800px columns).
+ * 77d-T1: theme-agnostic (was [data-theme="dim"]). Float geometry is theme-independent
+ *   → unscoped so light headers float too. (0,2,0)→(0,1,0); in dim the bottom border
+ *   color stays pinned by dim-scoped Rule 10/11 (0,2,0) to the same var(--glass-shell-border)
+ *   → zero dim regression. Light border color IACVT until Rule 10/11 unscoped in 77d-T2. */
+@media (min-width: 1024px) {
+    :is(.settings-header, .avlist-header) {
+        border-radius: var(--fluent-radius-xl);
+        border: 1px solid var(--glass-shell-border);
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 77c-T3: Search lightbox — uniform background blur (remove rejected per-card look)
+ *
+ * NOT dim-scoped — this is a theme-independent rendering fix (the lightbox exists
+ * in both themes). Placed here (last-loaded) rather than theme.css to avoid the
+ * Tailwind recompile footgun (theme.css is raw-linked AND @import-ed into tailwind.css).
+ *
+ * Bug: on /search, opening the lightbox blurred each grid cover individually with
+ * sharp footers, instead of the uniform background blur seen on /showcase.
+ * Root cause: feature/76 gives #main-content `view-transition-name: main-content`
+ * (theme.css:2433) for the cross-page crossfade. A non-`none` view-transition-name
+ * makes the element a backdrop root even at rest, so the position:fixed lightbox
+ * scrim's `backdrop-filter` (showcase.css:565) cannot sample the grid behind it →
+ * each cover paints sharp; 77b footers (no backdrop-filter) stay sharp too.
+ * Showcase strips the name unconditionally (theme.css:2442) AND hard-cuts its
+ * transition, so it never crossfades; search DOES crossfade, so we must NOT strip
+ * the name unconditionally (that would downgrade search's nav crossfade from the
+ * custom Fluent fade at theme.css:2434-2435 to the default root fade).
+ *
+ * Fix: release the backdrop root while the lightbox is open, gated purely on the
+ * Alpine open-state class (`:class="{ 'show': lightboxOpen }"`, search.html:23) via
+ * `:has()` — zero JS. Specificity (1,3,0) beats base #main-content (1,0,0); last-loaded too.
+ *
+ * Scope of the nav-crossfade guarantee (honest): for normal in-page use the lightbox
+ * is closed before any deliberate page change (the fixed scrim covers the sidebar, so
+ * sidebar navigation isn't reachable while it's open) → #main-content keeps its name
+ * during navigation and feature/76's custom Fluent crossfade (theme.css:2434-2435) is
+ * preserved. The ONE edge that loses it: navigating away (browser back / programmatic
+ * location change) WHILE the lightbox is still open — then the pageswap snapshot sees
+ * `.show`, so the outgoing #main-content falls to the root snapshot for that single
+ * transition (still a crossfade — momentarily showcase's own transition model — never
+ * broken). We accept that over closing the lightbox on every leave (JS lifecycle cost +
+ * symmetry risk) since the delta is an easing difference on one rare transition.
+ *
+ * Graceful degradation: if :has() were unsupported, the rule simply no-ops (current
+ * behaviour), never breaks. Does NOT touch the .showcase-lightbox backdrop rule or
+ * the approved 77b caption glass (Rules 27–30).
+ * ───────────────────────────────────────────────────────────────────────────── */
+.page-search #main-content:has(.showcase-lightbox.show) {
+    view-transition-name: none;
+}

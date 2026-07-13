@@ -1,0 +1,2872 @@
+/* ==================== Design System Page ==================== */
+/* Frosted Glass + Light Vignette - Fluent Design 2 Enhanced */
+
+/* ==================== Page Background & Atmosphere ==================== */
+/* 必修 1：背景層次（加在 body.ds-page 上） */
+.ds-page {
+    background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(var(--ds-glow-rgb), 0.15), transparent),
+        radial-gradient(ellipse 60% 40% at 80% 100%, oklch(55% 0.15 250 / 0.08), transparent),
+        var(--bg-body);
+}
+
+/* 必修 1：讓 main-content 透明，露出頁面背景 */
+.ds-page .main-content {
+    background: transparent;
+}
+
+[data-theme="dim"] .ds-page {
+    background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(var(--ds-glow-rgb), 0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 80% 100%, oklch(55% 0.2 280 / 0.06), transparent),
+        var(--bg-body);
+}
+
+/* ==================== Layout: TOC Sidebar + Content ==================== */
+.ds-layout {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 2rem;
+    width: min(1400px, 100%);
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* TOC 固定側欄 */
+.ds-toc {
+    position: sticky;
+    top: 2rem;
+    height: fit-content;
+    padding: 1.5rem;
+    background: var(--bg-card);
+    border-radius: var(--fluent-radius-xl);
+    border: 1px solid var(--border-light);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+.ds-toc-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.ds-toc a {
+    display: block;
+    padding: 0.5rem 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    padding-left: 0.75rem;
+    margin-left: -0.75rem;
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard), border-left-color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-toc a:hover,
+.ds-toc a.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+}
+
+/* RWD: 小螢幕隱藏側欄 */
+@media (max-width: 1024px) {
+    .ds-layout {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+    }
+    .ds-toc {
+        display: none;
+    }
+}
+
+/* ==================== Content Area ==================== */
+.ds-content {
+    min-width: 0; /* Prevent grid blowout */
+    position: relative;
+    z-index: 0; /* 建立 stacking context，讓 ::before 不會被壓到 body 下 */
+}
+
+/* 必修 3：Noise Pattern Overlay */
+.ds-content::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.02;
+    pointer-events: none;
+    z-index: 0; /* 在 stacking context 內，0 就能顯示在背景上 */
+}
+
+/* ==================== Hero Header ==================== */
+.ds-header {
+    text-align: center;
+    margin-bottom: 3rem;
+    padding: 4rem 2rem;
+    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+    border-radius: var(--fluent-radius-xl);
+    border: 1px solid var(--border-light);
+    box-shadow:
+        0 0 0 1px color-mix(in oklch, var(--color-base-content) 5%, transparent) inset,
+        var(--fluent-shadow-4);
+    position: relative;
+    z-index: 1; /* 提升到噪點層之上 */
+    overflow: hidden;
+}
+
+[data-theme="dim"] .ds-header {
+    background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+    border: 1px solid var(--border-light);
+}
+
+.ds-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(var(--ds-glow-rgb), 0.2) 0%, transparent 70%);
+    pointer-events: none;
+    animation: ds-float 6s ease-in-out infinite;
+}
+
+.ds-header::after {
+    content: '';
+    position: absolute;
+    bottom: -30%;
+    left: -10%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, oklch(55% 0.15 250 / 0.15) 0%, transparent 70%);
+    pointer-events: none;
+    animation: ds-float 8s ease-in-out infinite reverse;
+}
+
+/* Typography: Display Font H1 */
+.ds-header h1 {
+    font-family: var(--font-display);
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 50%, var(--gradient-indigo) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    position: relative;
+    z-index: 1;
+}
+
+[data-theme="dim"] .ds-header h1 {
+    background: linear-gradient(135deg, var(--gradient-cyan) 0%, var(--gradient-cyan-light) 50%, var(--gradient-purple) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.ds-subtitle {
+    color: var(--text-secondary);
+    margin-top: 0.75rem;
+    font-size: 1.1rem;
+    font-weight: 500;
+    position: relative;
+    z-index: 1;
+}
+
+/* ==================== Section Cards ==================== */
+.ds-section {
+    margin-bottom: 2.5rem;
+    padding: 2rem;
+    border-radius: var(--fluent-radius-xl);
+    transition: box-shadow var(--fluent-duration-normal) var(--fluent-ease-standard);
+    position: relative;
+    z-index: 1; /* 提升到噪點層之上 */
+}
+
+/* 樣式 A：透明玻璃 + 細描邊 */
+.ds-section.glass {
+    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+    border: 1px solid var(--border-light);
+    box-shadow:
+        0 0 0 1px color-mix(in oklch, var(--color-base-content) 5%, transparent) inset,
+        var(--fluent-shadow-4);
+}
+
+[data-theme="dim"] .ds-section.glass {
+    background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+    border: 1px solid var(--border-light);
+}
+
+/* 樣式 B：微色塊 + 左側強色條 */
+.ds-section.accent-bar {
+    background: var(--bg-card);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 var(--fluent-radius-xl) var(--fluent-radius-xl) 0;
+    box-shadow: var(--fluent-shadow-4);
+}
+
+/* Section Hover：發光邊 */
+.ds-section:hover {
+    box-shadow:
+        0 0 0 1px var(--glow-subtle),
+        0 0 30px color-mix(in oklch, var(--accent) 10%, transparent),
+        var(--fluent-shadow-8);
+}
+
+/* Typography: Display Font H2 */
+.ds-section h2 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1.75rem;
+    padding-bottom: 1rem;
+    position: relative;
+    display: inline-block;
+}
+
+.ds-section h2::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-secondary) 60%, transparent 100%);
+    border-radius: var(--fluent-radius-sm);
+}
+
+[data-theme="dim"] .ds-section h2::after {
+    background: linear-gradient(90deg, var(--gradient-cyan) 0%, var(--gradient-cyan-light) 60%, transparent 100%);
+}
+
+/* ==================== Subsections ==================== */
+.ds-subsection {
+    margin-bottom: 2.5rem;
+}
+
+.ds-subsection:last-child {
+    margin-bottom: 0;
+}
+
+/* H3：小字級 + letter-spacing（不用 uppercase，中文無效） */
+.ds-subsection h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+}
+
+.ds-subsection h3::before {
+    content: '//';
+    margin-right: 0.5rem;
+    opacity: 0.5;
+}
+
+/* Group / Section Labels */
+.ds-group-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin: 1.5rem 0 0.75rem 0;
+    letter-spacing: 0.05em;
+}
+
+.ds-variant-label {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.ds-desc {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 1.25rem;
+    line-height: 1.6;
+}
+
+.ds-note {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface-0);
+    border-left: 3px solid var(--color-primary);
+    border-radius: var(--fluent-radius-md);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* ==================== Color Palette Grid (Token 儀表板) ==================== */
+.ds-color-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 200px));
+    gap: 1rem;
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+    justify-content: center;
+    justify-items: center;
+}
+
+.ds-color-swatch {
+    height: 120px;
+    width: 100%;
+    max-width: 200px;
+    border-radius: var(--fluent-radius-xl);
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    box-shadow: var(--fluent-shadow-4);
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard), box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.ds-color-swatch::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, oklch(0% 0 0 / 0.4) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-color-swatch:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow:
+        0 0 0 2px var(--accent),
+        0 0 20px rgba(var(--ds-glow-rgb), 0.2),
+        var(--fluent-shadow-16);
+}
+
+.ds-color-swatch:hover::before {
+    opacity: 1;
+}
+
+/* Color Info Panel */
+.ds-color-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: oklch(0% 0 0 / 0.75);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--fluent-radius-md);
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    align-items: center;
+}
+
+.ds-color-name {
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: oklch(100% 0 0);
+}
+
+.ds-color-hex {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.7rem;
+    color: oklch(100% 0 0 / 0.8);
+}
+
+.ds-color-usage {
+    font-size: 0.65rem;
+    color: oklch(100% 0 0 / 0.6);
+}
+
+/* Legacy swatch label (fallback) */
+.ds-color-swatch > span:not(.ds-color-name) {
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: oklch(0% 0 0 / 0.75);
+    color: oklch(100% 0 0);
+    padding: 4px 8px;
+    border-radius: var(--fluent-radius-md);
+    position: relative;
+    z-index: 1;
+}
+
+/* ==================== Text Samples ==================== */
+.ds-text-samples {
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+.ds-text-samples p {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.ds-text-samples p:last-child {
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+/* ==================== Typography Scale ==================== */
+.ds-typography {
+    line-height: 1.8;
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+/* CRITICAL: Force typography visibility in both modes */
+.ds-typography h1,
+.ds-typography h2,
+.ds-typography h3,
+.ds-typography h4,
+.ds-typography p,
+.ds-typography small {
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    background: none !important;
+    margin-bottom: 1rem;
+}
+
+.ds-typography h1 {
+    font-family: var(--font-display);
+    font-size: 2.25rem;
+    font-weight: 700;
+}
+
+.ds-typography h2 {
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    font-weight: 600;
+    border-bottom: none;
+}
+
+.ds-typography h2::after {
+    display: none;
+}
+
+.ds-typography h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.ds-typography h4 {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.ds-typography p {
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.ds-typography small {
+    font-size: 0.875rem;
+    display: block;
+}
+
+/* ==================== Border Radius Grid ==================== */
+.ds-radius-grid {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+.ds-radius-item {
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: oklch(100% 0 0);
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard), box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    cursor: pointer;
+}
+
+.ds-radius-item:hover {
+    transform: scale(1.08);
+    box-shadow: var(--fluent-shadow-16), 0 0 16px var(--glow-primary);
+}
+
+[data-theme="dim"] .ds-radius-item {
+    background: linear-gradient(135deg, var(--gradient-cyan) 0%, var(--accent-secondary) 100%);
+}
+
+/* ==================== Shadow Grid ==================== */
+.ds-shadow-grid {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+.ds-shadow-item {
+    width: 120px;
+    height: 80px;
+    background: var(--bg-card);
+    border-radius: var(--fluent-radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard), color var(--fluent-duration-fast) var(--fluent-ease-standard);
+    cursor: pointer;
+}
+
+.ds-shadow-item:hover {
+    transform: translateY(-4px);
+    color: var(--text-primary);
+}
+
+/* ==================== Acrylic Demo ==================== */
+.ds-acrylic-demo {
+    position: relative;
+    height: 220px;
+    border-radius: var(--fluent-radius-xl);
+    overflow: hidden;
+    box-shadow: var(--fluent-shadow-8);
+}
+
+.ds-acrylic-bg {
+    position: absolute;
+    inset: 0;
+}
+
+.ds-acrylic-bg img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.ds-acrylic-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ds-acrylic-overlay span {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: oklch(100% 0 0);
+    text-shadow: 0 1px 3px oklch(0% 0 0 / 0.5);
+}
+
+.ds-acrylic-overlay code {
+    font-size: 0.85rem;
+    color: oklch(100% 0 0 / 0.8);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    text-shadow: 0 1px 3px oklch(0% 0 0 / 0.5);
+}
+
+/* ==================== Duration List ==================== */
+.ds-duration-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+}
+
+.ds-duration-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+    transition: border-color var(--fluent-duration-fast) var(--fluent-ease-standard), background var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-duration-item:hover {
+    border-color: var(--accent);
+    background: rgba(var(--ds-glow-rgb), 0.05);
+}
+
+.ds-duration-name {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.ds-duration-value {
+    color: var(--accent);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* ==================== Button Showcase ==================== */
+.ds-button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    align-items: center;
+}
+
+.ds-button-row-dark {
+    background: linear-gradient(135deg, var(--color-base-300) 0%, var(--color-base-200) 100%);
+    padding: 1.25rem;
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+/* ==================== Form Grid ==================== */
+.ds-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.25rem;
+}
+
+.ds-form-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ds-form-row {
+    display: flex;
+    gap: 2.5rem;
+    align-items: center;
+}
+
+/* ==================== Card Demo Container ==================== */
+.ds-card-demo {
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+/* Demo panel — rotating-border-spotlight 等 demo 容器使用 */
+.ds-demo-panel {
+    padding: 1rem 1.5rem;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+}
+
+.ds-demo-panel--lg {
+    padding: 1.5rem 2rem;
+}
+
+/* ==================== AV Cards 拼貼佈局 (Mosaic) ==================== */
+.ds-card-mosaic {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: auto auto;
+    align-content: start;
+    gap: 1rem;
+}
+
+.ds-card-mosaic .featured {
+    grid-row: span 2;
+}
+
+.ds-card-mosaic .av-card-preview.featured .av-card-preview-img {
+    aspect-ratio: 4/3;
+}
+
+/* RWD：小螢幕單欄 */
+@media (max-width: 768px) {
+    .ds-card-mosaic {
+        grid-template-columns: 1fr;
+    }
+    .ds-card-mosaic .featured {
+        grid-row: auto;
+    }
+    .ds-card-mosaic .av-card-preview.featured .av-card-preview-img {
+        aspect-ratio: 3/2;
+    }
+}
+
+/* AV Card Full base styles → theme.css (全域可用) */
+
+/* AV Card Full: Demo-specific adjustments */
+.ds-page .av-card-full-header {
+    align-items: center;
+}
+
+.ds-page .av-card-full-header .av-num {
+    flex: 1;
+}
+
+/* Tag badges in Full card body */
+.ds-page .av-card-full-body .info-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* ==================== 必修 4：Gallery Card Hover（僅限 design-system 頁面）==================== */
+.ds-gallery-card:hover .gallery-card-actions {
+    opacity: 1;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: linear-gradient(to top, oklch(0% 0 0 / 0.7), transparent);
+}
+
+.ds-gallery-card:hover {
+    box-shadow:
+        0 0 0 2px var(--accent),
+        0 0 20px rgba(var(--ds-glow-rgb), 0.15),
+        var(--fluent-shadow-8);
+}
+
+/* ==================== 右側聚焦效果（僅限 design-system 頁面）==================== */
+.ds-page .gallery-card-img img,
+.ds-gallery-card .gallery-card-img img {
+    transform-origin: 65% center; /* 聚焦右側（AV 封面主體區域） */
+}
+
+.ds-page .av-card-preview:hover .av-card-preview-img img,
+.ds-page .gallery-card:hover .gallery-card-img img,
+.ds-gallery-card:hover .gallery-card-img img {
+    transform: scale(1.12) translateX(-2%); /* 更明顯的右側聚焦效果 */
+}
+
+/* ==================== Code Block ==================== */
+.ds-code {
+    background: linear-gradient(135deg, var(--color-base-300) 0%, var(--color-base-200) 100%);
+    border-radius: var(--fluent-radius-lg);
+    padding: 1.25rem;
+    overflow-x: auto;
+    margin-top: 1.25rem;
+    border: 1px solid var(--border-light);
+}
+
+.ds-code code {
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85rem;
+    white-space: pre;
+    line-height: 1.6;
+}
+
+/* ==================== Sidebar Demo ==================== */
+.ds-sidebar-demo {
+    background: linear-gradient(180deg, var(--color-base-300) 0%, var(--color-base-200) 100%);
+    border-radius: var(--fluent-radius-xl);
+    padding: 0.75rem;
+    max-width: 220px;
+    box-shadow: var(--fluent-shadow-8);
+    border: 1px solid var(--border-light);
+}
+
+.ds-sidebar-mini .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+    text-decoration: none;
+    border-radius: var(--fluent-radius-lg);
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard), color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-sidebar-mini .nav-link:hover {
+    background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    color: var(--color-base-content);
+}
+
+.ds-sidebar-mini .nav-link.active {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+    color: oklch(100% 0 0);
+    box-shadow: 0 4px 12px rgba(var(--ds-glow-rgb), 0.3);
+}
+
+[data-theme="dim"] .ds-sidebar-mini .nav-link.active {
+    background: linear-gradient(135deg, var(--gradient-cyan) 0%, var(--accent-secondary) 100%);
+}
+
+/* ==================== Feedback Components ==================== */
+.ds-feedback-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+}
+
+.ds-progress-demo {
+    max-width: 400px;
+    margin-bottom: 1.25rem;
+}
+
+/* ==================== Responsive Design ==================== */
+@media (max-width: 768px) {
+    .ds-header {
+        padding: 2rem 1.5rem;
+    }
+
+    .ds-header h1 {
+        font-size: 2rem;
+    }
+
+    .ds-section {
+        padding: 1.25rem;
+    }
+
+    .ds-section h2 {
+        font-size: 1.5rem;
+    }
+
+    .av-card-full {
+        flex-direction: column;
+    }
+
+    .av-card-full-cover {
+        flex: none;
+        height: 200px;
+    }
+
+    .av-card-full-info {
+        flex: none;
+        min-width: auto;
+    }
+}
+
+/* ==================== 圓角 Token 應用（封面/縮圖略小於卡片）==================== */
+/* 層級原則：容器 12px > 封面 8px > badge 4px */
+.av-card-preview-img,
+.gallery-card-img {
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0; /* 頂部 8px，底部直角（接觸 footer）*/
+    overflow: hidden;
+}
+
+/* ==================== Navigation Rail Demo ==================== */
+.ds-nav-rail {
+    width: 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 6px;
+    background: var(--bg-card);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+    box-sizing: border-box;
+}
+
+.ds-nav-rail-link {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--fluent-radius-md);
+    color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard), color var(--fluent-duration-fast) var(--fluent-ease-standard);
+    cursor: pointer;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.ds-nav-rail-link i {
+    font-size: 24px;
+}
+
+.ds-nav-rail-link:hover {
+    background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    color: var(--color-base-content);
+}
+
+.ds-nav-rail-link.active {
+    background: color-mix(in oklch, var(--accent) 15%, transparent);
+    color: var(--color-primary-content);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-pill);
+    box-shadow: 0 0 16px var(--glow-primary);
+}
+
+/* ==================== Animation Keyframes ==================== */
+@keyframes ds-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes ds-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+/* ==================== Spacing Grid ==================== */
+.ds-spacing-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.ds-spacing-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.ds-spacing-bar {
+    height: 32px;
+    background: var(--color-primary);
+    border-radius: var(--fluent-radius-md);
+    transition: width var(--duration-normal) var(--fluent-ease-standard);
+}
+
+.ds-spacing-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.ds-spacing-size {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.ds-spacing-usage {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* ==================== Elevation Grid ==================== */
+.ds-elevation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.ds-elevation-item {
+    background: var(--surface-1);
+    border-radius: var(--fluent-radius-xl);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: transform var(--duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-elevation-item:hover {
+    transform: translateY(-4px);
+}
+
+.ds-elevation-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.ds-elevation-semantic {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.ds-elevation-usage {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+/* ==================== State Matrix Section ==================== */
+.ds-state-matrix {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+.ds-state-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.ds-state-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* 強制 Hover 狀態（按鈕）*/
+.btn.state-hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--glow-primary);
+}
+
+/* 強制 Active 狀態（按鈕）*/
+.btn.state-active {
+    transform: translateY(0) scale(0.98);
+    /* §2 dual-layer: inset 改符合 Fluent dual-layer 規格 */
+    box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.08), inset 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* 強制 Focus 狀態（輸入框）*/
+.form-control.state-focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--glow-subtle);
+    outline: none;
+}
+
+/* 強制 Error 狀態（輸入框）*/
+.form-control.state-error {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 3px var(--glow-error);
+}
+
+/* 強制 Hover 狀態（卡片）- 與 theme.css .gallery-card:hover 一致 */
+.gallery-card.state-hover {
+    transform: translateY(-4px) scale(1.01);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 12%, transparent),
+        var(--shadow-card-hover);
+    z-index: 10;
+}
+
+/* State Matrix: 強制顯示 hover overlay actions */
+.gallery-card.state-hover .gallery-card-actions {
+    opacity: 1;
+}
+
+/* 強制 Selected 狀態（卡片）*/
+.gallery-card.state-selected {
+    border: 2px solid var(--accent);
+    background: color-mix(in oklch, var(--accent) 5%, transparent);
+}
+
+/* ==================== Additional Component Styles for Design System ==================== */
+
+/* File list header */
+.file-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px; /* §4 layout 8pt grid */
+}
+
+/* Collapse toggle */
+.collapse-toggle {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.collapse-toggle:hover {
+    color: var(--accent);
+}
+
+.collapse-toggle i {
+    transition: transform var(--duration-fast) var(--fluent-ease-standard);
+}
+
+.collapse-toggle[aria-expanded="true"] i,
+.collapse-toggle i.rotate-180 {
+    transform: rotate(180deg);
+}
+
+/* ==================== Progress Indicator Demo ==================== */
+/* 從 search.css 提取的最小樣式，供 design-system 展示用 */
+/*
+ * ⚠️ 注意：這些 .progress-* 樣式僅限 /design-system 頁面使用
+ * 實際的 Progress Indicator 樣式定義在 search.css
+ * 若此 CSS 被其他頁面載入，可能會覆蓋 search.css 的樣式
+ *
+ * 最佳實踐：確保 design-system.css 只在 design-system.html 載入
+ */
+
+.ds-page .progress-container {
+    background: var(--color-base-200);
+    border-radius: var(--radius-md);
+    padding: 1.5rem 2rem;
+    box-shadow: var(--fluent-shadow-4);
+    border: 1px solid var(--border-light);
+    transition: background-color var(--duration-normal) var(--fluent-ease-standard);
+}
+
+[data-theme="dim"] .ds-page .progress-container {
+    background: var(--color-base-300);
+}
+
+.ds-page .progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid color-mix(in oklch, var(--color-base-content) 10%, transparent);
+}
+
+.ds-page .progress-status {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--color-base-content);
+}
+
+.ds-page .progress-log {
+    font-size: 0.9rem;
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+/* ==================== Progress Indicator Demo - Spinner Animation ==================== */
+/* 補充 v0.2.3 的旋轉動畫，確保 Loading State 展示完整 */
+
+.ds-page .progress-log::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border: 2px solid color-mix(in oklch, var(--color-base-content) 30%, transparent);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+
+.ds-page .detail-progress {
+    display: none;
+    background: color-mix(in oklch, var(--color-base-100) 50%, transparent);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem;
+    position: relative;
+}
+
+.ds-page .detail-progress.show {
+    display: block;
+}
+
+.ds-page .detail-bar {
+    height: 6px;
+    background: var(--color-primary);
+    border-radius: var(--fluent-radius-sm);
+    transition: width var(--duration-normal) var(--fluent-ease-standard);
+}
+
+.ds-page .detail-text {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-base-content);
+}
+
+/* ==================== Theme Toggle Button ==================== */
+/* 必須放在 ds-header 相關樣式之後（第 119 行之後）*/
+
+/* Header 內容佈局（包裹文字 + 按鈕）*/
+.ds-header-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
+}
+
+.ds-header-text {
+    flex: 1;
+    text-align: center;
+}
+
+/* 主題切換按鈕容器 */
+.ds-theme-toggle {
+    flex-shrink: 0;
+    align-self: flex-start;
+}
+
+/* 按鈕樣式 */
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+    border: 1px solid var(--border-light);
+    border-radius: var(--fluent-radius-lg);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard), border-color var(--fluent-duration-fast) var(--fluent-ease-standard), box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard), transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+[data-theme="dim"] .theme-toggle-btn {
+    background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+}
+
+/* Hover 效果 */
+.theme-toggle-btn:hover {
+    background: var(--color-base-200);
+    border-color: var(--accent);
+    box-shadow:
+        0 0 0 1px var(--accent),
+        0 0 20px rgba(var(--ds-glow-rgb), 0.2),
+        var(--fluent-shadow-8);
+    transform: translateY(-2px);
+}
+
+/* Active 效果 */
+.theme-toggle-btn:active {
+    transform: translateY(0);
+    box-shadow: var(--fluent-shadow-2);
+}
+
+/* 圖示樣式 */
+.theme-toggle-btn i {
+    font-size: 1.1rem;
+    color: var(--accent);
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.theme-toggle-btn:hover i {
+    transform: rotate(15deg);
+}
+
+/* 文字標籤 */
+.theme-toggle-label {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* 響應式：小螢幕隱藏文字標籤 */
+@media (max-width: 768px) {
+    .ds-header-content {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .ds-theme-toggle {
+        align-self: center;
+    }
+
+    .theme-toggle-label {
+        display: none;
+    }
+
+    .theme-toggle-btn {
+        padding: 0.5rem;
+        width: 40px;
+        height: 40px;
+        justify-content: center;
+    }
+}
+
+/* ==================== Page States Demo Container ==================== */
+.ds-state-demo {
+    min-height: 400px;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+/* 確保 state-page 在 demo 容器中垂直居中 */
+.ds-state-demo .state-page {
+    width: 100%;
+}
+
+/* ==================== D.14: Search Page Composition ==================== */
+
+/* 主容器 */
+.ds-search-composition {
+    min-height: 600px;
+    max-height: 800px;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-xl);
+    overflow: hidden;
+    box-shadow: var(--fluent-shadow-8);
+    border: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header - Acrylic Effect */
+.ds-search-composition .ds-comp-header {
+    flex-shrink: 0;
+    padding: 1rem 1.5rem;
+    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+    border-bottom: 1px solid var(--border-light);
+    z-index: 100;
+}
+
+/* Search Input */
+.ds-search-composition .ds-comp-search-input {
+    width: 100%;
+    height: 3.5rem;
+    padding-left: 3.5rem;
+    padding-right: 6rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-pill);
+    font-size: 1.1rem;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    outline: none;
+    box-shadow: var(--shadow-sm);
+}
+
+/* Search Hint */
+.ds-search-composition .ds-comp-hint {
+    margin-top: 0.5rem;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.ds-search-composition .ds-comp-hint code {
+    background: var(--border-light);
+    padding: 0.15rem 0.4rem;
+    border-radius: var(--radius-xs);
+}
+
+/* Result Area */
+.ds-search-composition .ds-comp-result-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    padding: 1rem;
+    gap: 1rem;
+    min-height: 0;
+}
+
+/* Cover Section (70%) */
+.ds-search-composition .ds-comp-cover-section {
+    flex: 7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    background: var(--bg-body);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding-top: 1rem;
+}
+
+/* Cover Wrapper */
+.ds-search-composition .ds-comp-cover-wrapper {
+    position: relative;
+    width: 100%;
+    min-height: 400px;
+    max-height: 600px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+/* Cover Image */
+.ds-search-composition .ds-comp-cover-img {
+    width: 100%;
+    height: 100%;
+    max-height: calc(100vh - 200px);
+    object-fit: contain;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+}
+
+/* Nav Buttons */
+.ds-search-composition .ds-comp-nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 64px;
+    background: rgba(0, 0, 0, 0.6);
+    border: none;
+    color: oklch(100% 0 0);
+    font-size: 1.4rem;
+    cursor: pointer;
+    border-radius: var(--fluent-radius-lg);
+    box-shadow: var(--fluent-shadow-8);
+    transition: background var(--duration-fast) var(--fluent-ease-standard), transform var(--duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-search-composition .ds-comp-nav-prev {
+    left: 10px;
+}
+
+.ds-search-composition .ds-comp-nav-next {
+    right: 10px;
+}
+
+.ds-search-composition .ds-comp-nav-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+    transform: translateY(-50%) scale(1.05);
+}
+
+.ds-search-composition .ds-comp-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: translateY(-50%);
+}
+
+/* Nav Indicator */
+.ds-search-composition .ds-comp-nav-indicator {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    color: oklch(100% 0 0);
+    padding: 2px 10px;
+    border-radius: var(--radius-md);
+    font-size: 0.8rem;
+}
+
+/* File Section */
+.ds-search-composition .ds-comp-file-section {
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-light);
+    padding: 0.5rem 1rem;
+    width: 100%;
+    margin-top: 0.5rem;
+    border-radius: var(--radius-sm);
+}
+
+/* File Header */
+.ds-search-composition .ds-comp-file-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px; /* §4 layout 8pt grid */
+}
+
+.ds-search-composition .ds-comp-file-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.ds-search-composition .ds-comp-file-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Batch Progress */
+.ds-search-composition .ds-comp-progress {
+    margin-bottom: 8px;
+    padding: 4px 0;
+}
+
+.ds-search-composition .batch-progress-bar {
+    height: 6px;
+    background: var(--border-light);
+    border-radius: var(--fluent-radius-sm);
+    overflow: hidden;
+    margin-bottom: 4px;
+    position: relative;
+}
+
+.ds-search-composition .batch-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), color-mix(in oklch, var(--accent) 70%, transparent));
+    transition: width var(--duration-normal) var(--fluent-ease-standard);
+}
+
+.ds-search-composition .batch-progress-text {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+/* File List */
+.ds-search-composition .ds-comp-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* File Item */
+.ds-search-composition .ds-comp-file-item {
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    border-radius: var(--fluent-radius-md);
+    transition: background var(--duration-fast) var(--fluent-ease-standard);
+    cursor: pointer;
+}
+
+.ds-search-composition .ds-comp-file-item:hover {
+    background: var(--border-light);
+}
+
+.ds-search-composition .ds-comp-file-item.active {
+    background: var(--border-light);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.ds-search-composition .ds-comp-file-icon {
+    color: var(--text-muted);
+}
+
+.ds-search-composition .ds-comp-file-item.active .ds-comp-file-icon {
+    color: var(--accent);
+}
+
+.ds-search-composition .ds-comp-file-remove {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.7rem;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-search-composition .ds-comp-file-item:hover .ds-comp-file-remove {
+    opacity: 0.6;
+}
+
+.ds-search-composition .ds-comp-file-remove:hover {
+    opacity: 1 !important;
+    color: var(--color-error);
+}
+
+/* 當 file-item 內有元素獲得焦點時，顯示刪除按鈕 */
+.ds-search-composition .ds-comp-file-item:focus-within .ds-comp-file-remove {
+    opacity: 0.6;
+}
+
+.ds-search-composition .ds-comp-file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+/* Status Icons (線條風格, 14px) */
+.ds-search-composition .ds-comp-file-status-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.ds-search-composition .ds-comp-file-status-icon.status-found {
+    color: var(--color-success);
+}
+
+.ds-search-composition .ds-comp-file-status-icon.status-fail {
+    color: var(--color-error);
+}
+
+.ds-search-composition .ds-comp-file-status-icon.status-unknown {
+    color: var(--color-warning);
+}
+
+/* Action Icon Buttons (ghost style, 24x24) */
+.ds-search-composition .ds-comp-file-action-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--color-success);
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background var(--duration-fast) var(--fluent-ease-standard), transform var(--duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-search-composition .ds-comp-file-action-btn:hover {
+    background: color-mix(in oklch, var(--color-success) 12%, transparent);
+    transform: scale(1.1);
+}
+
+.ds-search-composition .ds-comp-file-action-btn.status-unknown {
+    color: var(--color-warning);
+}
+
+.ds-search-composition .ds-comp-file-action-btn.status-unknown:hover {
+    background: color-mix(in oklch, var(--color-warning) 12%, transparent);
+}
+
+/* Info Section (30%) */
+.ds-search-composition .ds-comp-info-section {
+    flex: 3;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--fluent-shadow-8);
+    border: 1px solid var(--border-light);
+    min-width: 300px;
+}
+
+/* Info Header */
+.ds-search-composition .ds-comp-info-header {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.ds-search-composition .ds-comp-info-number {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: var(--accent);
+    margin: 0;
+}
+
+.ds-search-composition .ds-comp-local-badge {
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+/* Info Body */
+.ds-search-composition .ds-comp-info-body {
+    flex: 1;
+    padding: 0.75rem;
+    overflow-y: auto;
+}
+
+.ds-search-composition .ds-comp-info-row {
+    margin-bottom: 0.75rem;
+}
+
+.ds-search-composition .ds-comp-info-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+    letter-spacing: 0.05em;
+}
+
+.ds-search-composition .ds-comp-info-value {
+    font-size: 0.9rem;
+    word-break: break-word;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.ds-search-composition .ds-comp-info-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.ds-search-composition .ds-comp-info-tags .tag-badge {
+    font-size: 0.65rem;
+    margin: 1px;
+    padding: 2px 6px;
+    background: var(--border-light);
+    color: var(--text-secondary);
+    border-radius: var(--radius-xs);
+}
+
+.ds-search-composition .ds-comp-subtitle-badge {
+    background: var(--color-success) !important;
+    color: var(--color-success-content) !important;
+}
+
+/* Info Footer */
+.ds-search-composition .ds-comp-info-footer {
+    padding: 0.75rem;
+    border-top: 1px solid var(--border-light);
+    background: transparent;
+}
+
+.ds-search-composition .ds-comp-info-title-wrapper {
+    display: flex;
+    align-items: flex-start;
+}
+
+.ds-search-composition .ds-comp-info-title {
+    flex: 1;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+.ds-search-composition .ds-comp-info-actions {
+    display: flex;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+/* Info Icon Button — 繼承 theme.css .info-icon-btn 全域樣式 */
+/* hover 行為與全域定義一致，無需覆寫 */
+
+/* Responsive: 小螢幕垂直排列 */
+@media (max-width: 768px) {
+    .ds-search-composition .ds-comp-result-area {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .ds-search-composition .ds-comp-cover-section {
+        flex: none;
+        width: 100%;
+        max-height: 50vh;
+    }
+
+    .ds-search-composition .ds-comp-info-section {
+        flex: none;
+        width: 100%;
+        min-width: auto;
+        max-height: none;
+    }
+}
+
+/* ===================================================================
+   D.15: Gallery Page Composition
+   =================================================================== */
+.ds-gallery-composition {
+    background: var(--surface-0);
+    border-radius: var(--radius-md);
+    padding: 2rem;
+    border: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* Section Title */
+.ds-gallery-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border-light);
+}
+
+.ds-gallery-section-title i {
+    font-size: 1.25rem;
+    color: var(--accent);
+}
+
+/* Cards Row (Stats + Alias horizontal) */
+.ds-gallery-cards-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.ds-gallery-cards-row .stats-card,
+.ds-gallery-cards-row .actress-alias-card {
+    margin: 0;
+}
+
+/* Preview Grid (Mosaic Layout) */
+.ds-gallery-preview-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 1rem;
+}
+
+.ds-gallery-preview-grid .av-card-preview.featured {
+    grid-row: 1 / 3;
+    grid-column: 1;
+}
+
+.ds-gallery-preview-grid .av-card-preview:not(.featured) {
+    grid-column: 2;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .ds-gallery-composition {
+        padding: 1.5rem;
+        gap: 1.5rem;
+    }
+
+    /* Cards row becomes vertical */
+    .ds-gallery-cards-row {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    /* Preview grid becomes single column */
+    .ds-gallery-preview-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+    }
+
+    .ds-gallery-preview-grid .av-card-preview.featured {
+        grid-row: auto;
+        grid-column: 1;
+    }
+
+    .ds-gallery-preview-grid .av-card-preview:not(.featured) {
+        grid-column: 1;
+    }
+}
+
+/* ==================== D.10: Modal Demo Container ==================== */
+
+.ds-modal-demo {
+    padding: 2rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+    text-align: center;
+}
+
+.ds-modal-demo .btn {
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard), box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-modal-demo .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+/* ==================== D.11: Toast Demo Container ==================== */
+
+.ds-toast-demo {
+    padding: 3rem 2rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+    text-align: center;
+    min-height: 200px;
+    position: relative;
+}
+
+.ds-toast-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.ds-toast-buttons .btn {
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard), box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-toast-buttons .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+/* RWD: 小螢幕按鈕垂直堆疊 */
+@media (max-width: 640px) {
+    .ds-toast-buttons {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ds-toast-buttons .btn {
+        width: 100%;
+    }
+}
+
+/* ==================== D.12: Help Elements Demo Container ==================== */
+
+.ds-kbd-demo {
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+/* 表格樣式微調（讓欄位對齊更清晰）*/
+.ds-kbd-demo table {
+    width: 100%;
+}
+
+.ds-kbd-demo th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-bottom: 0.75rem;
+}
+
+.ds-kbd-demo td {
+    padding: 0.75rem 0.5rem;
+    vertical-align: middle;
+}
+
+.ds-kbd-demo tbody tr {
+    border-bottom: 1px solid var(--border-light);
+    transition: background-color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-kbd-demo tbody tr:last-child {
+    border-bottom: none;
+}
+
+.ds-kbd-demo tbody tr:hover {
+    background-color: color-mix(in oklch, var(--color-base-content) 4%, transparent);
+}
+
+/* Kbd 元件在表格中的間距調整 */
+.ds-kbd-demo kbd {
+    margin: 0 0.25rem;
+}
+
+.ds-kbd-demo kbd:first-child {
+    margin-left: 0;
+}
+
+/* Kbd 尺寸變體展示區 */
+.ds-kbd-sizes {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 1.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+.ds-kbd-size-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.ds-kbd-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+/* ==================== D.13: Hero Card Demo ==================== */
+
+/* Hero Card demo wrapper：讓卡片不要撐滿整行 */
+.ds-hero-card-demo {
+    justify-content: flex-start;
+}
+
+/* Hero Card footer 靜態 demo（showcase.css 未載入時的 fallback） */
+/* 僅在 design-system 頁使用，不影響 production */
+.ds-hero-footer-default {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+/* ==================== D.14: Toast Comparison ==================== */
+
+/* Toast Specimens Row */
+.ds-toast-specimens {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.ds-toast-specimen-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 200px;
+}
+
+.ds-specimen-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Toast Comparison Table */
+.ds-toast-comparison {
+    overflow-x: auto;
+    border-radius: var(--fluent-radius-lg);
+    border: 1px solid var(--border-light);
+}
+
+.ds-toast-comparison table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.ds-toast-comparison th {
+    padding: 0.75rem 1rem;
+    background: color-mix(in oklch, var(--color-base-content) 5%, transparent);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+    white-space: nowrap;
+}
+
+.ds-toast-comparison th:first-child {
+    color: var(--text-primary);
+    width: 120px;
+}
+
+.ds-toast-comparison td {
+    padding: 0.6rem 1rem;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.ds-toast-comparison td:first-child {
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.ds-toast-comparison tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.ds-toast-comparison tbody tr:hover td {
+    background: color-mix(in oklch, var(--color-base-content) 3%, transparent);
+}
+
+.ds-toast-comparison code {
+    font-size: 0.75rem;
+    padding: 1px 4px;
+    border-radius: var(--fluent-radius-sm); /* §3 code badge 用 sm(2px) */
+    background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    color: var(--accent);
+}
+
+/* ==================== Icon Catalog (#ds-icons) ==================== */
+.ds-icon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    min-width: 100px;
+}
+
+.ds-icon-card i {
+    font-size: 1.75rem;
+    color: var(--text-primary);
+}
+
+.ds-icon-card code {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.ds-icon-card span {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+/* ==================== Suffix Badge (from search.css:699-702) ==================== */
+.ds-page .tag-badge.suffix-badge {
+    background: var(--color-warning);
+    color: var(--color-warning-content);
+}
+
+/* ==================== Mini Terminal Controls (from scanner.css:71-126) ==================== */
+.ds-page .log-filter-group {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.ds-page .log-filter-btn {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.7rem;
+    border-radius: var(--fluent-radius-md);
+    background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    border: none;
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-page .log-filter-btn:hover {
+    background: color-mix(in oklch, var(--color-base-content) 12%, transparent);
+    color: var(--color-base-content);
+}
+
+.ds-page .log-filter-btn.active {
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+}
+
+.ds-page .log-actions {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.ds-page .log-action-btn {
+    width: 1.5rem;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--fluent-radius-sm);
+    background: transparent;
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+    border: none;
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.ds-page .log-action-btn:hover {
+    background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+    color: var(--color-base-content);
+}
+
+.ds-page .log-action-btn i {
+    font-size: 0.75rem;
+}
+
+/* ==================== Showcase Toolbar (from showcase.css:21-70) ==================== */
+.ds-page .showcase-toolbar {
+    position: static;
+    background: var(--bg-header);
+    backdrop-filter: blur(var(--fluent-blur)) saturate(130%);
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(130%);
+    border-bottom: 1px solid var(--border-light);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: var(--fluent-radius-lg);
+}
+
+.ds-page .toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.ds-page .toolbar-search {
+    flex: 1;
+    min-width: 200px;
+}
+
+.ds-page .toolbar-controls {
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.ds-page .control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ==================== §1 Pill Whitelist Demo ==================== */
+
+.ds-pill-whitelist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px; /* §4 layout 8pt grid */
+    margin-top: 1rem;
+}
+
+.ds-pill-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--fluent-radius-lg);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    background: var(--bg-card);
+}
+
+.ds-pill-card-demo {
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    background: var(--bg-body);
+    border-radius: var(--fluent-radius-md);
+}
+
+/* Simulated spotlight-search pill */
+.ds-pill-demo-spotlight {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in oklch, var(--color-base-content) 5%, transparent);
+    border: 1px solid var(--stroke-subtle);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    width: 100%;
+    max-width: 160px;
+}
+
+.ds-pill-card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.ds-pill-card-class {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ds-pill-card-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.ds-pill-card-token {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    border-radius: var(--fluent-radius-sm);
+    background: color-mix(in oklch, var(--accent) 10%, transparent);
+    color: var(--accent);
+    display: inline-block;
+}
+
+/* ==================== §2 三階 token 標籤 ==================== */
+
+.ds-token-label {
+    font-size: 0.7rem;
+    padding: 1px 5px;
+    border-radius: var(--fluent-radius-sm);
+    background: color-mix(in oklch, var(--color-primary) 12%, transparent);
+    color: var(--color-primary);
+    font-weight: 600;
+    display: inline-block;
+}
+
+/* ==================== §3 Overlay Role Swatches ==================== */
+
+.ds-overlay-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; /* §4 spacingM (12px Fluent layout) */
+    margin-top: 1rem;
+}
+
+.ds-overlay-swatch {
+    height: 100px;
+    border-radius: var(--fluent-radius-lg);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+    display: flex;
+    align-items: flex-end;
+}
+
+.ds-overlay-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0.5rem;
+    width: 100%;
+    background: linear-gradient(to top, var(--overlay-gradient), transparent);
+}
+
+.ds-overlay-token {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: oklch(100% 0 0);
+    font-family: monospace;
+}
+
+.ds-overlay-alpha {
+    font-size: 0.65rem;
+    color: oklch(100% 0 0 / 0.75);
+    font-family: monospace;
+}
+
+.ds-overlay-usage {
+    font-size: 0.65rem;
+    color: oklch(100% 0 0 / 0.65);
+}
+
+/* ==================== §4 Spacing 三層標籤 ==================== */
+
+.ds-spacing-layer-table {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px; /* §4 spacingM (12px Fluent layout) */
+    margin-top: 1rem;
+}
+
+.ds-spacing-layer {
+    border: 1px solid var(--border-light);
+    border-radius: var(--fluent-radius-lg);
+    overflow: hidden;
+}
+
+.ds-spacing-layer-header {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: oklch(100% 0 0);
+}
+
+.ds-layer-layout { background: var(--color-primary); }
+.ds-layer-micro { background: var(--color-secondary); }
+.ds-layer-stroke { background: var(--accent); }
+
+.ds-spacing-layer-body {
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--bg-card);
+}
+
+.ds-spacing-layer-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+}
+
+.ds-layer-tag {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: var(--fluent-radius-sm);
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.ds-layer-tag-ok { background: color-mix(in oklch, var(--color-success) 15%, transparent); color: var(--color-success); }
+.ds-layer-tag-ban { background: color-mix(in oklch, var(--color-error) 15%, transparent); color: var(--color-error); }
+.ds-layer-tag-note { background: color-mix(in oklch, var(--color-warning) 15%, transparent); color: var(--color-warning); }
+.ds-layer-tag-example { background: color-mix(in oklch, var(--color-base-content) 10%, transparent); color: var(--text-secondary); }
+
+/* ==================== §6 5 檢查點 pass/fail 對照 ==================== */
+
+.ds-checkpoint-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 1.25rem 0 0.5rem;
+    padding-left: 0.5rem;
+    border-left: 3px solid var(--accent);
+}
+
+.ds-checkpoint-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px; /* §4 layout 8pt grid */
+    margin-bottom: 0.75rem;
+}
+
+.ds-checkpoint-fail {
+    border: 2px dashed var(--color-error);
+    border-radius: var(--fluent-radius-lg);
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: color-mix(in oklch, var(--color-error) 4%, transparent);
+}
+
+.ds-checkpoint-pass {
+    border: 2px solid var(--color-success);
+    border-radius: var(--fluent-radius-lg);
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: color-mix(in oklch, var(--color-success) 4%, transparent);
+}
+
+.ds-cpf-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.ds-checkpoint-fail .ds-cpf-title { color: var(--color-error); }
+.ds-checkpoint-pass .ds-cpf-title { color: var(--color-success); }
+
+.ds-cpf-demo {
+    flex: 1;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.ds-cpf-code {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: var(--fluent-radius-sm);
+    background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    color: var(--text-muted);
+    word-break: break-all;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Fluent Material Token System Demo (77a-T1)
+ * All dim-scoped rules use [data-theme="dim"] prefix.
+ * In light mode: swatch placeholders render; material styles are absent (correct).
+ * In dim mode: real glass renders on the Mica stage backdrop.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* Light mode fallback notice — visible in light, hidden in dim */
+.ds-fm-light-notice {
+    display: block;
+}
+
+[data-theme="dim"] .ds-fm-light-notice {
+    display: none;
+}
+
+/* ── Stage (Mica backdrop strip) ── */
+.ds-fm-stage {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    padding: 1.5rem;
+    border-radius: var(--fluent-radius-lg);
+    margin-top: 1rem;
+    /* Light fallback: neutral surface */
+    background: color-mix(in oklch, var(--color-base-200) 80%, transparent);
+    border: 1px solid color-mix(in oklch, var(--color-base-content) 8%, transparent);
+}
+
+/* In dim: stage IS the Mica canvas — glass swatches blur what's behind them */
+[data-theme="dim"] .ds-fm-stage {
+    background: var(--mica-canvas);
+}
+
+/* ── Role Card ── */
+.ds-fm-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* ── Swatch base ── */
+.ds-fm-swatch {
+    position: relative;
+    height: 96px;
+    border-radius: var(--fluent-radius-lg);
+    overflow: hidden;
+    /* Light mode placeholder: checkerboard hint */
+    background:
+        repeating-conic-gradient(
+            color-mix(in oklch, var(--color-base-content) 6%, transparent) 0% 25%,
+            color-mix(in oklch, var(--color-base-content) 3%, transparent) 0% 50%
+        ) 0 0 / 12px 12px,
+        color-mix(in oklch, var(--color-base-200) 90%, transparent);
+    border: 1px solid color-mix(in oklch, var(--color-base-content) 10%, transparent);
+}
+
+.ds-fm-swatch-inner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.ds-fm-swatch-label {
+    font-family: ui-monospace, 'Cascadia Code', monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+    text-shadow: 0 1px 2px oklch(0 0 0 / 0.4);
+}
+
+/* ── Edge lines ── */
+.ds-fm-edge {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.ds-fm-edge--top {
+    inset: 0 0 auto 0;
+    height: 1px;
+}
+
+.ds-fm-edge--left {
+    inset: 0 auto 0 0;
+    width: 1px;
+}
+
+.ds-fm-edge--bottom {
+    inset: auto 0 0 0;
+    height: 1px;
+}
+
+/* ── Panel header sub-area ── */
+.ds-fm-panel-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 24px;
+    z-index: 1;
+    /* Light fallback */
+    background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
+    border-bottom: 1px solid color-mix(in oklch, var(--color-base-content) 6%, transparent);
+}
+
+/* ── Overlay divider hairline ── */
+.ds-fm-divider {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 28px;
+    height: 1px;
+    z-index: 2;
+    background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+}
+
+/* ── Card info area ── */
+.ds-fm-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.ds-fm-role-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-base-content);
+}
+
+.ds-fm-role-desc {
+    font-size: 0.7rem;
+    color: var(--text-secondary, color-mix(in oklch, var(--color-base-content) 60%, transparent));
+    line-height: 1.4;
+}
+
+.ds-fm-tokens-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.2rem;
+}
+
+.ds-fm-tokens-mini code {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: var(--fluent-radius-sm);
+    background: color-mix(in oklch, var(--color-base-content) 6%, transparent);
+    color: var(--text-muted, color-mix(in oklch, var(--color-base-content) 50%, transparent));
+    font-family: ui-monospace, 'Cascadia Code', monospace;
+}
+
+/* ── Supplementary grid ── */
+.ds-fm-supp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.ds-fm-supp-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ds-fm-supp-preview {
+    position: relative;
+    height: 80px;
+    border-radius: var(--fluent-radius-lg);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in oklch, var(--color-base-200) 80%, transparent);
+    border: 1px solid color-mix(in oklch, var(--color-base-content) 8%, transparent);
+}
+
+/* ── Media frame demo ── */
+.ds-fm-media-frame-box {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--fluent-radius-sm);
+    border: 2px solid color-mix(in oklch, var(--color-base-content) 15%, transparent);
+    box-sizing: border-box;
+}
+
+/* ── Edge strip ── */
+.ds-fm-edge-strip {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.ds-fm-edge-chip {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--fluent-radius-sm);
+    border: 1px solid color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    /* Light fallback */
+    background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+}
+
+.ds-fm-edge-labels {
+    position: absolute;
+    bottom: 6px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 0.6rem;
+    color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+    font-family: ui-monospace, 'Cascadia Code', monospace;
+    pointer-events: none;
+}
+
+/* ── Intro text ── */
+.ds-fm-intro {
+    margin-bottom: 0.5rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DIM-ONLY MATERIAL RULES
+ * All rules below apply only in [data-theme="dim"].
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Canvas swatch: pure gradient, no blur ── */
+[data-theme="dim"] .ds-fm-swatch--canvas {
+    background: var(--mica-canvas);
+    border-color: color-mix(in oklch, white 8%, transparent);
+}
+
+[data-theme="dim"] .ds-fm-swatch--canvas .ds-fm-swatch-label {
+    color: oklch(0.78 0.01 258 / 0.9);
+}
+
+[data-theme="dim"] .ds-fm-swatch--canvas .ds-fm-edge--top {
+    background: color-mix(in oklch, white 18%, transparent);
+}
+
+/* ── Shell swatch: blur-light + shell tokens ── */
+[data-theme="dim"] .ds-fm-swatch--shell {
+    background-color: var(--glass-shell-fill);
+    background-image: var(--glass-shell-gradient);
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-color: var(--glass-shell-border);
+}
+
+[data-theme="dim"] .ds-fm-swatch--shell .ds-fm-swatch-label {
+    color: oklch(0.82 0.01 258 / 0.9);
+}
+
+[data-theme="dim"] .ds-fm-swatch--shell .ds-fm-edge--top {
+    background: var(--glass-shell-edge-top);
+}
+
+[data-theme="dim"] .ds-fm-swatch--shell .ds-fm-edge--left {
+    background: var(--glass-shell-edge-left);
+}
+
+[data-theme="dim"] .ds-fm-swatch--shell .ds-fm-edge--bottom {
+    background: var(--glass-shell-edge-bottom);
+}
+
+/* ── Shell Mobile swatch: blur-light + mobile tokens ── */
+[data-theme="dim"] .ds-fm-swatch--shell-mobile {
+    background-color: var(--glass-shell-mobile-fill);
+    background-image: var(--glass-shell-mobile-gradient);
+    /* shell-mobile shares --glass-shell-saturate by design (no mobile-specific saturate token) */
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(var(--glass-shell-saturate));
+    border-color: var(--glass-shell-mobile-border);
+}
+
+[data-theme="dim"] .ds-fm-swatch--shell-mobile .ds-fm-swatch-label {
+    color: oklch(0.82 0.01 258 / 0.9);
+}
+
+[data-theme="dim"] .ds-fm-swatch--shell-mobile .ds-fm-edge--top {
+    background: var(--glass-shell-mobile-edge-top);
+}
+
+[data-theme="dim"] .ds-fm-swatch--shell-mobile .ds-fm-edge--bottom {
+    background: var(--glass-shell-mobile-edge-bottom);
+}
+
+/* ── Panel swatch: full blur (30px) + panel tokens ── */
+[data-theme="dim"] .ds-fm-swatch--panel {
+    background-color: var(--glass-panel-fill);
+    background-image: var(--glass-panel-gradient);
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-panel-saturate));
+    border-color: var(--glass-panel-border);
+}
+
+[data-theme="dim"] .ds-fm-swatch--panel .ds-fm-swatch-label {
+    color: oklch(0.80 0.01 258 / 0.9);
+}
+
+[data-theme="dim"] .ds-fm-swatch--panel .ds-fm-edge--top {
+    background: var(--glass-panel-edge-top);
+}
+
+[data-theme="dim"] .ds-fm-swatch--panel .ds-fm-edge--left {
+    background: var(--glass-panel-edge-left);
+}
+
+[data-theme="dim"] .ds-fm-swatch--panel .ds-fm-edge--bottom {
+    background: var(--glass-panel-edge-bottom);
+}
+
+[data-theme="dim"] .ds-fm-panel-header {
+    background: var(--glass-panel-header-tint);
+    border-bottom-color: var(--glass-panel-header-border);
+}
+
+/* ── Caption swatch: gradient fill, no backdrop-filter ── */
+[data-theme="dim"] .ds-fm-swatch--caption {
+    background-color: var(--glass-caption-fill);
+    background-image: var(--glass-caption-gradient);
+    border-color: var(--glass-caption-border-top);
+}
+
+[data-theme="dim"] .ds-fm-swatch--caption .ds-fm-swatch-label {
+    color: oklch(0.80 0.015 252 / 0.9);
+}
+
+[data-theme="dim"] .ds-fm-swatch--caption .ds-fm-edge--top {
+    background: var(--glass-caption-edge-top);
+}
+
+[data-theme="dim"] .ds-fm-swatch--caption .ds-fm-edge--bottom {
+    background: var(--glass-caption-edge-bottom);
+}
+
+/* ── Overlay swatch: fill-gradient + blur ── */
+[data-theme="dim"] .ds-fm-swatch--overlay {
+    background-color: oklch(0.18 0.025 258 / 0.72); /* WKWebView fallback: gradient mid-point */
+    background: var(--glass-overlay-fill-gradient);
+    -webkit-backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    backdrop-filter: blur(var(--fluent-blur)) saturate(var(--glass-overlay-saturate));
+    /* Overlay border uses border-gradient technique (padding-box/border-box) */
+    border: 1px solid color-mix(in oklch, white 22%, transparent);
+}
+
+[data-theme="dim"] .ds-fm-swatch--overlay .ds-fm-swatch-label {
+    color: oklch(0.85 0.01 258 / 0.95);
+}
+
+[data-theme="dim"] .ds-fm-swatch--overlay .ds-fm-edge--top {
+    background: var(--glass-overlay-edge-top);
+}
+
+[data-theme="dim"] .ds-fm-swatch--overlay .ds-fm-edge--bottom {
+    background: var(--glass-overlay-edge-bottom);
+}
+
+[data-theme="dim"] .ds-fm-divider {
+    background: var(--glass-overlay-divider);
+}
+
+/* ── Supplementary: stage background in dim ── */
+[data-theme="dim"] .ds-fm-supp-preview {
+    background: var(--mica-canvas);
+    border-color: color-mix(in oklch, white 8%, transparent);
+}
+
+/* ── Media frame box in dim ── */
+[data-theme="dim"] .ds-fm-media-frame-box {
+    border: 2px solid var(--media-frame-stroke);
+    box-sizing: border-box;
+    background: transparent;
+}
+
+/* ── Edge chips in dim ── */
+[data-theme="dim"] .ds-fm-edge-chip {
+    border-color: color-mix(in oklch, white 6%, transparent);
+}
+
+/* Highlight chips: white alpha on dark stage */
+[data-theme="dim"] .ds-fm-edge-chip--h-strong { background: var(--glass-edge-highlight-strong); }
+[data-theme="dim"] .ds-fm-edge-chip--h-mid    { background: var(--glass-edge-highlight-mid); }
+[data-theme="dim"] .ds-fm-edge-chip--h-soft   { background: var(--glass-edge-highlight-soft); }
+
+/* Lowlight chips: black alpha — overlay on top of the Mica stage strip to read */
+[data-theme="dim"] .ds-fm-edge-chip--l-soft   { background: var(--glass-edge-lowlight-soft); }
+[data-theme="dim"] .ds-fm-edge-chip--l-mid    { background: var(--glass-edge-lowlight-mid); }
+[data-theme="dim"] .ds-fm-edge-chip--l-strong { background: var(--glass-edge-lowlight-strong); }
+
+/* ── Media-frame preview: mica stage so --media-frame-stroke hairline reads clearly ── */
+[data-theme="dim"] .ds-fm-supp-preview--media-frame {
+    background: var(--mica-canvas);
+    border-color: color-mix(in oklch, white 8%, transparent);
+    /* Child .ds-fm-media-frame-box demonstrates the --media-frame-stroke token */
+}
+
+/* ── Edge-steps preview: mica stage so highlight/lowlight chips read against the gradient ── */
+[data-theme="dim"] .ds-fm-supp-preview--edge-steps {
+    background: var(--mica-canvas);
+    border-color: color-mix(in oklch, white 8%, transparent);
+    /* Child .ds-fm-edge-chip variants use --glass-edge-highlight-* / --glass-edge-lowlight-* */
+}

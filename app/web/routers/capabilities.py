@@ -1,0 +1,1511 @@
+import copy
+
+from fastapi import APIRouter, Request
+
+from core.version import DISPLAY_VERSION, VERSION_INFO, __version__
+from core.logger import get_logger
+from core.source_config import get_source_enum
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/api", tags=["capabilities"])
+
+
+_TOOLS: list[dict] = [
+    {
+        "name": "search",
+        "description": "搜尋單一番號或女優，回傳 metadata + 封面 URL。不修改資料庫",
+        "side_effect": False,
+        "method": "GET",
+        "path": "/api/search",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "番號、女優名、或關鍵字"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["auto", "exact", "partial", "prefix", "actress", "keyword", "uncensored"],
+                    "default": "auto",
+                    "description": "搜尋模式",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": get_source_enum(include_auto=False),
+                    "description": "指定來源（可選）",
+                },
+                "since": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "只回傳此日期之後的結果（YYYY-MM-DD，可選）",
+                },
+                "discovery": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "true=只回傳番號+標題清單（秒回），跳過詳情抓取。適合 actress/prefix 模式先探索再用 batch-search 精準抓取",
+                },
+            },
+            "required": ["q"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "data": "[Video] — 搜尋結果陣列。discovery=false 時含完整欄位；discovery=true 時只有 number + title",
+            "total": "integer — 結果總數",
+            "mode": "string — 實際使用的搜尋模式",
+            "discovery": "boolean — 是否為探索模式（僅 discovery=true 時出現）",
+        },
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/search?q=SONE-205'",
+    },
+    {
+        "name": "batch_search",
+        "description": "一次搜尋多個番號，適合文章解析後批量查詢。不修改資料庫",
+        "side_effect": False,
+        "method": "POST",
+        "path": "/api/batch-search",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "numbers": {"type": "array", "items": {"type": "string"}, "description": "番號陣列"},
+                "include_covers": {"type": "boolean", "default": True, "description": "是否包含封面 URL"},
+            },
+            "required": ["numbers"],
+        },
+        "output_schema": {
+            "results": "{number: Video} — 以番號為 key 的搜尋結果 map",
+            "summary": "{total, found, not_found} — 統計摘要",
+        },
+        "retry_safe": True,
+        "rate_limit_hint": "硬限 50 筆（伺服器端截斷），建議一次不超過 20 筆",
+        "cost_hint": "每筆觸發外部網站搜尋，受節流限制",
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"numbers\":[\"FC2-PPV-1854491\",\"SONE-205\"]}}' {base}/api/batch-search",
+    },
+    {
+        "name": "scrape_single",
+        "description": "新片整理：搜尋 metadata → 下載封面 → 生成 NFO → 重命名搬移",
+        "method": "POST",
+        "path": "/api/scrape-single",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "影片檔案路徑"},
+                "number": {"type": "string", "description": "番號（可選，不給會從檔名提取）"},
+                "metadata": {"type": "object", "description": "預先取得的 metadata（可選，跳過搜尋）"},
+            },
+            "required": ["file_path"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "new_folder": "string — 新目錄路徑",
+            "new_filename": "string — 新檔名",
+            "cover_path": "string — 封面圖路徑",
+            "nfo_path": "string — NFO 檔路徑",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": False,
+        "retry_safe": False,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"file_path\":\"/downloads/SONE-205.mp4\"}}' {base}/api/scrape-single",
+    },
+    {
+        "name": "generate_gallery",
+        "description": "從番號列表生成圖文並茂的 HTML 頁面",
+        "method": "POST",
+        "path": "/api/gallery/generate-from-ids",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "numbers": {"type": "array", "items": {"type": "string"}, "description": "番號陣列"},
+                "title": {"type": "string", "description": "頁面標題"},
+                "mode": {"type": "string", "enum": ["image", "detail", "text"], "default": "image"},
+                "sort": {"type": "string", "enum": ["date", "num", "title"], "default": "date"},
+                "embed_covers": {"type": "boolean", "default": True, "description": "嵌入封面圖片為 base64（預設 True，適合分享用途）"},
+            },
+            "required": ["numbers"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "html_path": "string — 生成的 HTML 檔案路徑",
+            "video_count": "integer — 成功收錄的影片數",
+            "missing": "[string] — 未找到的番號陣列",
+            "embedded_count": "integer — 成功嵌入封面數（僅 embed_covers=true 時出現）",
+            "embed_failed_count": "integer — 嵌入失敗封面數（僅 embed_covers=true 時出現）",
+        },
+        "side_effect": True,
+        "confirmation_required": False,
+        "idempotent": True,
+        "retry_safe": True,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"numbers\":[\"FC2-PPV-1854491\",\"FC2-PPV-2471432\"],\"title\":\"PTT 精選\"}}' {base}/api/gallery/generate-from-ids",
+    },
+    {
+        "name": "local_status",
+        "description": "批量查詢番號是否已在本地收藏。不修改資料庫",
+        "side_effect": False,
+        "method": "GET",
+        "path": "/api/search/local-status",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "numbers": {"type": "string", "description": "逗號分隔的番號列表"},
+            },
+            "required": ["numbers"],
+        },
+        "output_schema": {
+            "<number>": "{exists: boolean, count: integer, paths: [string]} — 以番號為 key",
+        },
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/search/local-status?numbers=SONE-205,ABW-001'",
+    },
+    {
+        "name": "parse_filename",
+        "description": "從檔名提取番號和字幕偵測。不修改資料庫",
+        "side_effect": False,
+        "method": "POST",
+        "path": "/api/parse-filename",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filenames": {"type": "array", "items": {"type": "string"}, "description": "檔名陣列"},
+            },
+            "required": ["filenames"],
+        },
+        "output_schema": {
+            "results": "[{filename: string, number: string|null, has_subtitle: boolean}] — 解析結果陣列",
+        },
+        "retry_safe": True,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"filenames\":[\"SONE-205-C.mp4\",\"FC2-1234567.mp4\"]}}' {base}/api/parse-filename",
+    },
+    {
+        "name": "enrich_single",
+        "description": "舊片原地補完：補齊 NFO/封面/劇照，不搬移不改名。refresh_full 搭配 overwrite_existing=true 才覆蓋既有 NFO/封面；若只想更新 DB 不覆蓋檔案，用 overwrite_existing=false（預設）。overwrite_existing=true 時必須先讓用戶確認",
+        "method": "POST",
+        "path": "/api/enrich-single",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "影片檔案路徑"},
+                "number": {"type": "string", "description": "番號（可選）"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["fill_missing", "db_to_sidecar", "refresh_full"],
+                    "default": "fill_missing",
+                    "description": "fill_missing=只補缺的 / db_to_sidecar=從DB重建不打外站 / refresh_full=強制重抓（搭配 overwrite_existing=true 才覆蓋既有 NFO/封面）",
+                },
+                "write_nfo": {"type": "boolean", "default": True},
+                "write_cover": {"type": "boolean", "default": True},
+                "write_extrafanart": {"type": "boolean", "default": False},
+                "overwrite_existing": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "是否覆蓋既有 NFO/封面檔案（refresh_full 時才有意義；預設 false 只補缺欄位不覆蓋）",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": get_source_enum(include_auto=True),
+                    "default": "auto",
+                    "description": "刮削來源（auto=自動多源合併；指定單一來源時只打該站；dmm 需要 proxy 才能使用）",
+                },
+                "javbus_lang": {
+                    "type": "string",
+                    "enum": ["zh-tw", "ja", "en"],
+                    "description": "JavBus 語系（覆蓋 config 設定；source=auto 或 source=javbus 時生效）",
+                },
+            },
+            "required": ["file_path", "number"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "nfo_written": "boolean — 是否寫入 NFO",
+            "cover_written": "boolean — 是否寫入封面",
+            "fields_filled": "[string] — 本次補齊的欄位名",
+            "source_used": "string — 使用的來源（javbus/dmm/db 等）",
+        },
+        "side_effect": True,
+        "confirmation_required": False,
+        "idempotent": True,
+        "retry_safe": True,
+        "cost_hint": "fill_missing/refresh_full 會打外部網站；db_to_sidecar 純本地",
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"file_path\":\"/library/SONE-205/SONE-205.mp4\",\"number\":\"SONE-205\",\"mode\":\"fill_missing\"}}' {base}/api/enrich-single",
+    },
+    {
+        "name": "video_rescrape_with_source",
+        "description": (
+            "進階重刮：以指定來源覆蓋既有封面 / NFO，不可逆。"
+            "mode=refresh_full 重刮覆蓋（rescrape 主用）/ fill_missing 補缺。"
+            "重刮覆蓋請設 overwrite_existing=true（refresh_full 配 overwrite_existing=false "
+            "在不會寫出任何 sidecar 的設定下後端會擋下，只更新 DB 會造成磁碟分裂）。"
+            "source 可為停用來源或 metatube:{provider}。"
+        ),
+        "method": "POST",
+        "path": "/api/enrich-single",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "影片檔案路徑"},
+                "number": {"type": "string", "description": "番號（可與檔名解析不同，重刮用此值查詢）"},
+                "source": {
+                    "type": "string",
+                    "enum": get_source_enum(include_auto=True),
+                    "default": "auto",
+                    "description": "重刮來源（明確選源整包贏；可為停用來源 / metatube:{provider}；auto=多源合併）",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["refresh_full", "fill_missing"],
+                    "default": "refresh_full",
+                    "description": "refresh_full=重刮覆蓋 / fill_missing=補缺",
+                },
+                "overwrite_existing": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "是否覆蓋既有 NFO/封面。重刮覆蓋請設 true；refresh_full+false 不會寫出任何 sidecar 時後端 400",
+                },
+                "write_nfo": {"type": "boolean", "default": True},
+                "write_cover": {"type": "boolean", "default": True},
+            },
+            "required": ["file_path", "number", "source", "mode", "overwrite_existing"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "nfo_written": "boolean — 是否寫入 NFO",
+            "cover_written": "boolean — 是否寫入封面",
+            "fields_filled": "[string] — fill_missing 模式下本次補上的欄位名（無缺漏則為空）；refresh_full 不回報覆蓋欄位，固定為空陣列",
+            "source_used": "string — 實際使用的來源",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": False,
+        "retry_safe": False,
+        "cost_hint": "refresh_full 會打外部網站重抓",
+        "_example_template": (
+            "curl -X POST -H 'Content-Type: application/json' "
+            "-d '{{\"file_path\":\"/library/SONE-205/SONE-205.mp4\",\"number\":\"SONE-205\","
+            "\"source\":\"javdb\",\"mode\":\"refresh_full\",\"overwrite_existing\":true}}' "
+            "{base}/api/enrich-single"
+        ),
+    },
+    {
+        "name": "fetch_samples",
+        "description": "自動下載影片對應番號的劇照（sample images）到本機 extrafanart 資料夾，並更新 DB sample_images 欄位。僅下載劇照，不改 NFO / 封面 / 其他欄位。若影片所在資料夾有多於 1 個影片會拒絕執行（避免污染）。",
+        "method": "POST",
+        "path": "/api/scraper/fetch-samples",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "影片檔案路徑（file:/// URI 或原生 FS 路徑）"},
+                "number": {"type": "string", "description": "番號"},
+            },
+            "required": ["file_path", "number"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "nfo_written": "boolean — 固定 false（此端點不寫 NFO）",
+            "cover_written": "boolean — 固定 false（此端點不寫封面）",
+            "extrafanart_written": "integer — 成功下載的劇照數",
+            "fields_filled": "[string] — 本次補齊的欄位名",
+            "source_used": "string — 使用的來源",
+            "error": "string|null — 錯誤訊息；multi_video_folder=資料夾有多片，拒絕執行",
+            "count": "integer — multi_video_folder 時，資料夾內的影片數",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": True,
+        "retry_safe": True,
+        "cost_hint": "會打外部網站抓劇照，並寫入本機磁碟與 DB",
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"file_path\":\"file:///library/SONE-205/SONE-205.mp4\",\"number\":\"SONE-205\"}}' {base}/api/scraper/fetch-samples",
+    },
+    {
+        "name": "batch_enrich",
+        "description": "批次補完：一次提交最多 20 筆舊片，逐筆補齊 NFO/封面/DB。結果以 SSE streaming 逐筆回傳。注意：此操作會覆寫 NFO 和封面檔案，使用 overwrite_existing=true 時不可逆，必須先讓用戶確認。",
+        "method": "POST",
+        "path": "/api/batch-enrich",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string", "description": "影片檔案路徑"},
+                            "number": {"type": "string", "description": "番號"},
+                            "source": {
+                                "type": "string",
+                                "enum": get_source_enum(include_auto=True),
+                                "description": "per-item 刮削來源覆蓋（優先於 batch 預設）",
+                            },
+                            "javbus_lang": {
+                                "type": "string",
+                                "enum": ["zh-tw", "ja", "en"],
+                                "description": "per-item JavBus 語系覆蓋",
+                            },
+                        },
+                        "required": ["file_path", "number"],
+                    },
+                    "description": "要補完的影片清單（最多 20 筆，按 file_path 去重）",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["fill_missing", "db_to_sidecar", "refresh_full"],
+                    "default": "refresh_full",
+                    "description": "補完模式（套用到全部 items）",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": get_source_enum(include_auto=True),
+                    "default": "auto",
+                    "description": "batch 預設刮削來源（item.source 未指定時使用）",
+                },
+                "javbus_lang": {
+                    "type": "string",
+                    "enum": ["zh-tw", "ja", "en"],
+                    "description": "batch 預設 JavBus 語系",
+                },
+                "write_nfo": {"type": "boolean", "default": True},
+                "write_cover": {"type": "boolean", "default": True},
+                "write_extrafanart": {"type": "boolean", "default": False},
+                "overwrite_existing": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "是否覆蓋既有 NFO/封面（不可逆，必須先讓用戶確認）",
+                },
+            },
+            "required": ["items"],
+        },
+        "output_schema": {
+            "streaming": "text/event-stream — SSE 格式逐筆推送",
+            "progress": "{type: 'progress', current, total, number}",
+            "result_item": "{type: 'result-item', number, file_path, success, nfo_written, cover_written, source_used, error?}",
+            "done": "{type: 'done', summary: {total, success, failed}}",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": False,
+        "retry_safe": False,
+        "cost_hint": "每筆 item 觸發外部網站搜尋",
+        "_example_template": "curl -N -X POST -H 'Content-Type: application/json' -d '{{\"items\":[{{\"file_path\":\"/video/IPZ-154.mp4\",\"number\":\"IPZ-154\"}}],\"mode\":\"refresh_full\"}}' {base}/api/batch-enrich",
+    },
+    {
+        "name": "collection_sql",
+        "description": "Read-only SQL 查詢收藏資料庫，可自由組合 SELECT/JOIN/GROUP BY/WHERE",
+        "method": "POST",
+        "path": "/api/collection/sql",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "SELECT 語句（僅允許 SELECT）"},
+                "limit": {
+                    "type": "integer",
+                    "default": 500,
+                    "maximum": 500,
+                    "description": "回傳筆數上限",
+                },
+            },
+            "required": ["sql"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "columns": "[string] — 欄位名陣列",
+            "rows": "[[any]] — 二維結果陣列",
+            "count": "integer — 回傳筆數",
+        },
+        "retry_safe": True,
+        "database_schema": {
+            "videos": {
+                "id": "INTEGER PRIMARY KEY",
+                "path": "TEXT UNIQUE — 影片檔案路徑",
+                "number": "TEXT — 番號 (e.g. SONE-205)",
+                "title": "TEXT — 翻譯後標題",
+                "original_title": "TEXT — 原始日文標題",
+                "actresses": "TEXT — 女優名 JSON array (e.g. '[\"明日花キララ\"]')",
+                "maker": "TEXT — 片商",
+                "director": "TEXT — 導演",
+                "series": "TEXT — 系列",
+                "label": "TEXT — 廠牌",
+                "tags": "TEXT — 標籤 JSON array",
+                "user_tags": "TEXT — 用戶自訂標籤 JSON array",
+                "sample_images": "TEXT — 劇照 JSON array",
+                "duration": "INTEGER — 片長（分鐘）",
+                "size_bytes": "INTEGER — 檔案大小",
+                "cover_path": "TEXT — 封面圖路徑",
+                "release_date": "TEXT — 發行日 YYYY-MM-DD",
+                "mtime": "REAL — 影片檔案 mtime (Unix timestamp)",
+                "nfo_mtime": "REAL — NFO 檔案 mtime (Unix timestamp)",
+                "created_at": "TIMESTAMP",
+                "updated_at": "TIMESTAMP",
+            },
+        },
+        "sql_examples": [
+            "SELECT COUNT(*) as total FROM videos",
+            "SELECT maker, COUNT(*) as cnt FROM videos GROUP BY maker ORDER BY cnt DESC LIMIT 10",
+            "SELECT * FROM videos WHERE title IS NULL OR cover_path IS NULL LIMIT 50",
+            "SELECT * FROM videos WHERE actresses LIKE '%明日花%' AND release_date > '2025-01-01'",
+            "SELECT maker, COUNT(*) FROM videos WHERE release_date > '2025-01-01' GROUP BY maker ORDER BY COUNT(*) DESC",
+            "SELECT strftime('%Y', release_date) as year, COUNT(*) FROM videos GROUP BY year ORDER BY year DESC",
+        ],
+        "note": "actresses 和 tags 是 JSON 字串，用 LIKE '%name%' 或 json_each() 查詢",
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"sql\":\"SELECT COUNT(*) as total FROM videos\"}}' {base}/api/collection/sql",
+    },
+    {
+        "name": "collection_analysis",
+        "description": "收藏庫 metadata 健康度診斷 — 統計各欄位缺失數、空陣列、異常番號、日文 tag、NFO 狀態。AI agent 批次補完前先呼叫此端點了解規模",
+        "method": "GET",
+        "path": "/api/collection/analysis",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "total_videos": "integer — 收藏總筆數",
+            "missing_fields": "{title, actresses, maker, tags, release_date, cover_path, director, label, original_title} — 各欄位 NULL/空字串筆數",
+            "empty_array_fields": "{actresses, tags} — JSON 空陣列（'[]'）筆數",
+            "corrupted_numbers": "{total: integer, patterns: [{name, count}]} — 異常番號統計（digit_prefix/TK_prefix/K9_prefix/R_prefix）",
+            "japanese_tags": "{total: integer} — tags 含假名字元的筆數",
+            "nfo_status": "{has_nfo: integer, missing_nfo: integer} — NFO 狀態統計",
+            "available_groups": "[string] — 可用的 group 名稱（傳給 /api/collection/analysis/groups）",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/collection/analysis'",
+    },
+    {
+        "name": "collection_analysis_groups",
+        "description": "依問題類型取得待修復影片清單（drill-down）。group 可選：no_nfo / corrupted_numbers / japanese_tags / missing_core / missing_secondary。永遠從頭取 limit 筆，批次修復後再呼叫取下一批，直到 items 為空",
+        "method": "POST",
+        "path": "/api/collection/analysis/groups",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "type": "string",
+                    "enum": [
+                        "no_nfo", "corrupted_numbers", "japanese_tags",
+                        "missing_core", "missing_secondary"
+                    ],
+                    "description": "問題類型群組",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "maximum": 200,
+                    "description": "回傳筆數上限（1–200）",
+                },
+                "exclude_western": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "是否過濾掉西洋片（路徑含「西洋」/「《03》」/「《05》」）",
+                },
+            },
+            "required": ["group"],
+        },
+        "output_schema": {
+            "group": "string — 請求的 group 名稱",
+            "total": "integer — 符合條件的總筆數（含 exclude_western 過濾後）",
+            "limit": "integer — 請求的 limit",
+            "exclude_western": "boolean — 是否已過濾西洋片",
+            "items": "[{id, number, file_path, title, maker}] — 待修復影片清單",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"group\":\"no_nfo\",\"limit\":50}}' {base}/api/collection/analysis/groups",
+    },
+    {
+        "name": "fix_numbers_preview",
+        "description": "預覽收藏庫中符合異常番號修正規則的影片清單。支援 4 種規則：digit_prefix（開頭多餘數字）、TK_prefix、K9_prefix、R_prefix。不修改任何資料，回傳待修正清單供 fix_numbers_apply 使用",
+        "method": "POST",
+        "path": "/api/collection/fix-numbers/preview",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["digit_prefix", "TK_prefix", "K9_prefix", "R_prefix"],
+                    },
+                    "description": "要套用的規則名稱（空陣列或省略 = 全部 4 條規則）",
+                },
+            },
+            "required": [],
+        },
+        "output_schema": {
+            "rules_applied": "[string] — 實際套用的規則名稱",
+            "affected": "[{id, old_number, new_number, rule, path}] — 待修正影片清單",
+            "total": "integer — 符合條件的總筆數",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"rules\":[]}}' {base}/api/collection/fix-numbers/preview",
+    },
+    {
+        "name": "fix_numbers_apply",
+        "description": "執行番號修正：將 fix_numbers_preview 回傳的異常番號永久更新到 DB。**此操作直接修改 DB 的 number 欄位，不可逆。必須先呼叫 preview 確認範圍，並讓用戶確認後再執行。** apply 內部會重新驗證每個 ID，已被其他途徑修正的番號不會被覆蓋",
+        "method": "POST",
+        "path": "/api/collection/fix-numbers/apply",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "要修正的影片 ID 清單（從 fix_numbers_preview 的 affected[].id 取得）",
+                },
+            },
+            "required": ["ids"],
+        },
+        "output_schema": {
+            "updated": "integer — 成功更新的筆數",
+            "failed": "integer — 跳過或失敗的筆數（ID 不存在、或番號已不符合規則）",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": False,
+        "retry_safe": False,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"ids\":[42,55,78]}}' {base}/api/collection/fix-numbers/apply",
+    },
+    {
+        "name": "proxy_image",
+        "description": "代理下載遠端圖片 — 解決 Cloudflare / 防盜鏈問題。搜尋結果的 cover 和 sample_images URL 是遠端直連，AI agent 直接 curl 會被擋。必須透過此端點下載。URL 必須屬於 SSRF 白名單域名（scraper 圖片來源 javbus / dmm / javdb / jav321 等，以及女優圖片 cdn.jsdelivr.net / upload.wikimedia.org / graphis.ne.jp / minnano-av.com），scheme 須為 https。非白名單 host 一律回 403。",
+        "method": "GET",
+        "path": "/api/proxy-image",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "遠端圖片 URL（從搜尋結果的 cover 或 sample_images 欄位取得；須為 https 白名單域名）"},
+            },
+            "required": ["url"],
+        },
+        "output_schema": "binary — 圖片二進位資料（Content-Type: image/jpeg）。非白名單 URL 回 403；外部下載失敗回 404 空回應。",
+        "side_effect": False,
+        "retry_safe": True,
+        "_example_template": "curl -o cover.jpg '{base}/api/proxy-image?url=https://pics.dmm.co.jp/digital/video/ssis00221/ssis00221pl.jpg'",
+    },
+    {
+        "name": "user_tags",
+        "description": "管理用戶自訂標籤（評分、書籤、分類等）。存入 DB + NFO <user_tag> 元素，不被 scraper refresh 覆蓋",
+        "method": "POST",
+        "path": "/api/user-tags",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "影片路徑（DB key，file:/// URI 格式）"},
+                "add": {"type": "array", "items": {"type": "string"}, "description": "要新增的 tags（可省略）"},
+                "remove": {"type": "array", "items": {"type": "string"}, "description": "要移除的 tags（可省略）"},
+            },
+            "required": ["file_path"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "user_tags": "[string] — 更新後的完整 user_tags 清單",
+            "nfo_updated": "boolean — NFO 是否同步更新",
+        },
+        "side_effect": True,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "also_see": "GET /api/user-tags?file_path=... — 查詢現有 user_tags（見 get_user_tags tool）",
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"file_path\":\"file:///C:/AVtest/SONE-205/SONE-205.mp4\",\"add\":[\"★5\",\"足\"]}}' {base}/api/user-tags",
+    },
+    {
+        "name": "get_user_tags",
+        "description": (
+            "查詢指定影片的現有 user_tags（user_tags POST 的對等讀取端點）。"
+            "接受 file:/// URI 或 native FS 路徑（自動正規化）。影片不存在於 DB 時回 200 + 空清單。"
+        ),
+        "method": "GET",
+        "path": "/api/user-tags",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "影片路徑（file:/// URI 或 native FS path）"},
+            },
+            "required": ["file_path"],
+        },
+        "output_schema": {
+            "user_tags": "[string] — 現有 user_tags 清單（空時回 []）",
+            "file_path": "string — 正規化後的 file:/// URI",
+        },
+        "side_effect": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/user-tags?file_path=file:///C:/AVtest/SONE-205/SONE-205.mp4'",
+    },
+    {
+        "name": "showcase_videos",
+        "description": (
+            "列出當前 Showcase 設定資料夾下「所有」影片，每筆含 19 欄位 enrich 過的完整 metadata。"
+            " ⚠️ 高 token 成本：回整個 configured directory（可能數百到數千筆）一次回完，無分頁。"
+            " Routing 規則（依優先級）："
+            " (1) 已知具體 path → 用 `showcase_video`（單筆，省 token）；"
+            " (2) 只需 ID/path 篩選、統計、條件查詢 → 用 `collection_sql`（自訂 SELECT）"
+            " 或 `collection_analysis`（預設 5 種診斷分組）；"
+            " (3) 僅在「真的需要全庫概觀」時才用本 tool（例如 diagnose 缺資料的影片總覽、"
+            " 批次操作前的全量探索）。"
+        ),
+        "method": "GET",
+        "path": "/api/showcase/videos",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "total": "integer — videos 陣列長度",
+            "videos": {
+                "type": "array",
+                "description": "影片清單；每筆 item 為 19 欄位 dict",
+                "item_fields": {
+                    "path": "string — file:/// URI（DB key 格式，可作為 showcase_video 查詢輸入）",
+                    "title": "string",
+                    "original_title": "string",
+                    "number": "string — 番號（可能為空字串）",
+                    "actresses": "string — ⚠️ 逗號分隔字串，**不是** array（例：'女優A,女優B'）",
+                    "maker": "string",
+                    "release_date": "string — YYYY-MM-DD（可能為空字串）",
+                    "tags": "string — ⚠️ 逗號分隔字串，**不是** array",
+                    "size": "integer — 檔案 bytes",
+                    "cover_url": "string — 後端代理 URL（/api/gallery/image?path=...），可直接 <img> 顯示",
+                    "mtime": "integer — Unix timestamp（秒）",
+                    "director": "string",
+                    "duration": "integer | null — 秒；null 時前端隱藏",
+                    "series": "string",
+                    "label": "string",
+                    "sample_images": "array[string] — 劇照 gallery image URLs（真正的 array）",
+                    "user_tags": "array[string] — 用戶自訂標籤（真正的 array，可空）",
+                    "has_cover": "boolean — DB 初判 cover_path 非空（不做 IO 檢查）",
+                    "has_nfo": "boolean — nfo_mtime > 0（41a 寫入契約）",
+                },
+            },
+        },
+        "side_effect": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/showcase/videos'",
+    },
+    {
+        "name": "showcase_video",
+        "description": (
+            "By-path 單筆查詢 Showcase 影片資料（showcase_videos 的單筆版本）。"
+            " 比 `collection_sql WHERE path=...` 更省 prompt token，且回傳 schema 已 enrich"
+            "（cover_url、has_cover、has_nfo 已預先計算）。"
+            " 適合：(a) 前端 enrich-single / scrape-single 後刷新單張卡片；"
+            " (b) AI 從 collection_sql 結果拿到 path 後取單筆完整 metadata。"
+            " 影片不在 configured directory 或 DB 內回 404。"
+        ),
+        "method": "GET",
+        "path": "/api/showcase/video",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "影片 file:/// URI（DB key 格式）"},
+            },
+            "required": ["path"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "video": (
+                "object — 19 欄位 dict，schema 同 showcase_videos.videos.item_fields"
+                "（path/title/original_title/number/actresses[csv⚠️]/maker/release_date/tags[csv⚠️]/"
+                "size/cover_url/mtime/director/duration/series/label/sample_images[array]/"
+                "user_tags[array]/has_cover/has_nfo）。注意 actresses 和 tags 是逗號分隔字串，"
+                "其餘標記為 array 的欄位才是真正的 array。"
+            ),
+        },
+        "side_effect": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/showcase/video?path=file:///C:/AVtest/SONE-205/SONE-205.mp4'",
+    },
+    {
+        "name": "jellyfin_check",
+        "description": (
+            "檢查本地收藏中有多少影片缺少外部媒體管理器 poster/fanart 圖片，回傳待更新數量。"
+            " update 操作（批次產生圖片）為 SSE 串流，不適合 AI 直接呼叫，需透過 UI 操作。"
+        ),
+        "method": "GET",
+        "path": "/api/gallery/jellyfin-check",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "data": "{need_update: integer} — 缺少外部媒體管理器圖片的影片數量",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/gallery/jellyfin-check'",
+    },
+    {
+        "name": "favorite_actress",
+        "description": "收藏女優：從本地快取或即時爬取女優資料並存入 DB + 下載照片到本地。寫入 DB + 下載照片到 output/Gfriends/",
+        "method": "POST",
+        "path": "/api/actresses/favorite",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "女優名（日文）"},
+                "makers": {"type": "array", "items": {"type": "string"}, "description": "片商名列表（可選，提升 gfriends 照片查詢精準度）"},
+            },
+            "required": ["name"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "actress": "Actress — 完整女優資料（含本地 photo_url）",
+            "photo_downloaded": "boolean — 照片是否成功下載",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": False,
+        "retry_safe": False,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"name\":\"三上悠亜\"}}' {base}/api/actresses/favorite",
+    },
+    {
+        "name": "list_actresses",
+        "description": "列出所有已收藏女優，每筆含 video_count（本地收藏片數）、created_at（收藏時間）、照片 URL 等完整資料。適合 AI 查看用戶收藏總覽或依條件篩選女優。",
+        "method": "GET",
+        "path": "/api/actresses",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "actresses": "Actress[] — 完整女優資料陣列，每筆含 name/photo_url/video_count/created_at/is_favorite 等欄位",
+            "total": "integer — 收藏女優總數",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "idempotent": True,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/actresses'",
+    },
+    {
+        "name": "get_actress",
+        "description": "查詢單一收藏女優資料（含本地照片 URL）。不修改資料庫",
+        "side_effect": False,
+        "method": "GET",
+        "path": "/api/actresses/{name}",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "女優名（URL path parameter）"},
+            },
+            "required": ["name"],
+        },
+        "output_schema": {
+            "actress": "Actress",
+            "is_favorite": "boolean — 固定 true（此端點只回傳已收藏女優）",
+        },
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/actresses/%E4%B8%89%E4%B8%8A%E6%82%A0%E4%BA%9C'",
+    },
+    {
+        "name": "unfavorite_actress",
+        "description": "取消收藏女優（從 DB 刪除 + 刪除本地照片）",
+        "method": "DELETE",
+        "path": "/api/actresses/{name}",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "女優名（URL path parameter）"},
+            },
+            "required": ["name"],
+        },
+        "output_schema": {
+            "success": "boolean",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": True,
+        "retry_safe": True,
+        "_example_template": "curl -X DELETE '{base}/api/actresses/%E4%B8%89%E4%B8%8A%E6%82%A0%E4%BA%9C'",
+    },
+    {
+        "name": "alias_crud_read",
+        "description": (
+            "列出所有別名組或查詢單一別名組。"
+            " GET /api/actress-aliases 回傳所有 group（primary_name + aliases list）；"
+            " GET /api/actress-aliases/{name} 可用 primary_name 或 alias 查詢所屬 group。"
+            " 適合 AI 查看目前別名設定或確認某個名字是否已被收錄。"
+        ),
+        "method": "GET",
+        "path": "/api/actress-aliases",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "女優名（URL path parameter，可為 primary_name 或 alias）。省略時列出所有 group。",
+                },
+            },
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "groups": "AliasGroup[] — 列表時回傳；每筆含 primary_name/aliases/source/created_at/updated_at",
+            "total": "integer — 群組總數（列表時）",
+            "group": "AliasGroup — 單筆查詢時回傳",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/actress-aliases'",
+    },
+    {
+        "name": "alias_crud_write",
+        "description": (
+            "別名 CRUD 寫入操作（建立 group、新增 alias、刪除 group、刪除 alias）。"
+            " ⚠️ 刪除整個 group 不可逆，必須先讓用戶確認再執行。"
+            " POST /api/actress-aliases 建立新 group；"
+            " POST /api/actress-aliases/{name}/alias 新增單一 alias；"
+            " DELETE /api/actress-aliases/{name} 刪除整個 group（name 可為 primary 或 alias）；"
+            " DELETE /api/actress-aliases/{name}/alias/{alias} 移除單一 alias。"
+        ),
+        "method": "POST",
+        "path": "/api/actress-aliases",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "primary_name": {
+                    "type": "string",
+                    "description": "主要名稱（必填，建立 group 時使用）",
+                },
+                "aliases": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "別名清單（可選，省略等同空 list）",
+                },
+                "alias": {
+                    "type": "string",
+                    "description": "單一別名（新增或刪除 alias 時使用）",
+                },
+            },
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "group": "AliasGroup — 建立或新增 alias 成功後的最新 group 資料",
+            "error": "string — 衝突或找不到時的錯誤訊息",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "retry_safe": False,
+        "_example_template": (
+            "curl -X POST -H 'Content-Type: application/json'"
+            " -d '{{\"primary_name\":\"橋本ありな\",\"aliases\":[\"新ありな\"]}}'"
+            " {base}/api/actress-aliases"
+        ),
+    },
+    {
+        "name": "alias_search_online",
+        "description": (
+            "呼叫 scraper orchestrator 搜尋女優，從 profile 提取建議別名列表。"
+            " 只查詢不寫入，適合 AI 先取得建議再讓用戶確認是否要呼叫 alias_crud_write 寫入。"
+            " 若 scraper 超時回 504；查無此女優回 suggested_aliases=[]。"
+        ),
+        "method": "POST",
+        "path": "/api/actress-aliases/search-online",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "女優名（日文）"},
+            },
+            "required": ["name"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "name": "string — 查詢名稱",
+            "suggested_aliases": "string[] — 建議別名清單（可空 list）",
+            "message": "string — 查無時說明訊息（可選）",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": (
+            "curl -X POST -H 'Content-Type: application/json'"
+            " -d '{{\"name\":\"橋本ありな\"}}'"
+            " {base}/api/actress-aliases/search-online"
+        ),
+    },
+    {
+        "name": "list_actress_photo_candidates",
+        "description": (
+            "串流回傳女優候選照片列表（SSE）。"
+            "從 4 個雲端來源（graphis/gfriends/wiki/minnano）並行抓取，"
+            "加上本機影片封面 crop，最多 6 張。"
+            "每張照片準備好立即 push，前端即時展示。不修改資料庫。"
+        ),
+        "side_effect": False,
+        "method": "GET",
+        "path": "/api/actresses/{name}/photo-candidates",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "女優名稱（URL path parameter，需 URL encode）",
+                },
+            },
+            "required": ["name"],
+        },
+        "output_schema": {
+            "candidates": "SSE stream — event: candidate（重複 N 次）+ event: done",
+            "candidate_data": '{"source": str, "thumb_url": str, "full_url": str, "video_path"?: str}',
+            "done_data": '{"total": int}',
+        },
+        "_example_template": "curl -N '{base}/api/actresses/%E4%B8%89%E4%B8%8A%E6%82%A0%E4%BA%9C/photo-candidates'",
+    },
+    {
+        "name": "set_actress_photo",
+        "description": (
+            "替換女優本機照片。接受雲端 URL（graphis/gfriends/wiki/minnano）或本機影片封面 crop（local_crop）。"
+            "⚠️ side effect：覆蓋本機照片檔案（先 glob 刪除舊副檔名再寫入新圖）。"
+            "可逆 — 隨時可再換；但舊檔案無備份。"
+            "執行前必須先確認用戶選擇的來源與 URL。"
+        ),
+        "method": "POST",
+        "path": "/api/actresses/{name}/photo",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "女優名稱（URL path parameter，需 URL encode）"},
+                "source": {
+                    "type": "string",
+                    "enum": ["graphis", "gfriends", "wiki", "minnano", "local_crop"],
+                    "description": "照片來源識別碼",
+                },
+                "url": {"type": "string", "description": "雲端照片 URL（source 為雲端來源時必填）"},
+                "video_path": {"type": "string", "description": "影片 file:/// URI（source=local_crop 時必填）"},
+                "crop_spec": {"type": "string", "description": "裁切規格，預設 v1（source=local_crop 時適用）"},
+            },
+            "required": ["name", "source"],
+        },
+        "output_schema": {
+            "photo_url": "string — 新照片路徑，含 ?t=timestamp cache-bust query",
+            "photo_source": "string — 實際使用的來源識別碼",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": False,
+        "retry_safe": False,
+        "_example_template": (
+            "curl -X POST '{base}/api/actresses/%E4%B8%89%E4%B8%8A%E6%82%A0%E4%BA%9C/photo' "
+            "-H 'Content-Type: application/json' "
+            "-d '{{\"source\": \"graphis\", \"url\": \"https://example.com/photo.jpg\"}}'"
+        ),
+    },
+    {
+        "name": "get_notifications",
+        "description": "查詢 OpenAver 最近發生的事件通知（最多 10 筆），包含掃描開始/完成/失敗、批次補完等事件。可用來確認後台任務是否成功執行。只讀，不修改任何資料。",
+        "method": "GET",
+        "path": "/api/notifications",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "items": "[Notification] — 通知列表，最多 10 筆，最新的排前面；每筆含 id/timestamp/level/title_key/message/task_type/is_read",
+            "unread_count": "integer — 未讀通知數量",
+            "highest_unread_level": "string | null — 未讀中最高嚴重度（info/success/warn/error），無未讀時為 null",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/notifications'",
+    },
+    {
+        "name": "mark_notifications_read",
+        "description": "把所有通知標記為已讀。無破壞性：不刪除任何通知，只更新已讀記錄。下次查詢時 unread_count 會變 0。",
+        "method": "POST",
+        "path": "/api/notifications/read",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "ok": "boolean",
+            "marked_count": "integer — 本次標記為已讀的通知數量",
+        },
+        "side_effect": True,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl -X POST '{base}/api/notifications/read'",
+    },
+    {
+        "name": "clear_notifications",
+        "description": "清空所有通知記錄（包含已讀和未讀）。此操作不可逆，清空後記錄永久消失（重啟前）。AI 呼叫前必須向用戶確認。",
+        "method": "DELETE",
+        "path": "/api/notifications",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "ok": "boolean",
+            "cleared_count": "integer — 刪除的通知筆數",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "idempotent": True,
+        "retry_safe": True,
+        "_example_template": "curl -X DELETE '{base}/api/notifications'",
+    },
+    {
+        "name": "similar_covers_by_number",
+        "description": "規則式相似度排序：基於 tag IDF-weighted Jaccard + 系列 / 片商 / 年份多訊號 + MMR diversity；給定番號回傳 12 部探索星空候選。不修改資料庫。",
+        "side_effect": False,
+        "method": "GET",
+        "path": "/api/similar-covers/by-number/{number}",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "number": {"type": "string", "description": "番號（大小寫不敏感）"},
+                "limit": {
+                    "type": "integer", "default": 12, "minimum": 1, "maximum": 50,
+                    "description": "回傳筆數",
+                },
+            },
+            "required": ["number"],
+        },
+        "output_schema": {
+            "model_id": "string — ranker 版本識別（固定 'rule-based:v1'，非 ML model id）",
+            "query_video": "{video_id, number, title, cover_url}",
+            "results": "[{video_id, number, title, cover_url, cosine_score, penalty_applied, actresses}]",
+        },
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/similar-covers/by-number/SONE-205'",
+    },
+    {
+        "name": "similar_covers",
+        "description": "同 similar_covers_by_number，但用 DB 內部 video_id 查詢。一般 AI agent 用 by-number 即可，本端點為內部識別保留。",
+        "side_effect": False,
+        "method": "GET",
+        "path": "/api/similar-covers/{video_id}",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "integer"},
+                "limit": {"type": "integer", "default": 12, "minimum": 1, "maximum": 50},
+            },
+            "required": ["video_id"],
+        },
+        "output_schema": {
+            "model_id": "string — ranker 版本識別（固定 'rule-based:v1'，非 ML model id）",
+            "query_video": "{video_id, number, title, cover_url}",
+            "results": "[{video_id, number, title, cover_url, cosine_score, penalty_applied, actresses}]",
+        },
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/similar-covers/123'",
+    },
+    {
+        "name": "tag_alias_crud_read",
+        "description": (
+            "列出所有 tag 別名組或查詢單一 group。"
+            " GET /api/tag-aliases 回傳全部 group（primary_name + aliases list）；"
+            " GET /api/tag-aliases/{name} 可用 primary_name 或 alias 查詢所屬 group。"
+            " 適合 AI 查看目前 tag alias 設定或確認某個 tag 是否已被收錄。"
+        ),
+        "method": "GET",
+        "path": "/api/tag-aliases",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "tag 名稱（URL path parameter，可為 primary_name 或 alias）。省略時列出所有 group。",
+                },
+            },
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "groups": "TagAliasGroup[] — 列表時回傳；每筆含 primary_name/aliases/source/created_at/updated_at",
+            "total": "integer — 群組總數（列表時）",
+            "group": "TagAliasGroup — 單筆查詢時回傳",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/tag-aliases'",
+    },
+    {
+        "name": "tag_alias_crud_write",
+        "description": (
+            "Tag 別名 CRUD 寫入（建立 group、新增 alias、刪除 group、刪除 alias）。"
+            " ⚠️ 刪除整個 group 不可逆，必須先讓用戶確認再執行。"
+            " POST /api/tag-aliases 建立新 group；"
+            " POST /api/tag-aliases/{name}/alias 新增單一 alias；"
+            " DELETE /api/tag-aliases/{name} 刪除整個 group（name 可為 primary 或 alias）；"
+            " DELETE /api/tag-aliases/{name}/alias/{alias} 移除單一 alias。"
+            " tag alias 影響 Showcase 過濾展開與 SimilarRanker canonicalize，寫入後立即生效（cache 自動清除）。"
+        ),
+        "method": "POST",
+        "path": "/api/tag-aliases",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "primary_name": {
+                    "type": "string",
+                    "description": "主要 tag 名稱（必填，建立 group 時使用）",
+                },
+                "aliases": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "別名清單（可選，省略等同空 list）",
+                },
+                "alias": {
+                    "type": "string",
+                    "description": "單一別名（新增或刪除 alias 時使用）",
+                },
+            },
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "group": "TagAliasGroup — 建立或新增 alias 成功後的最新 group 資料",
+            "error": "string — 衝突或找不到時的錯誤訊息",
+        },
+        "side_effect": True,
+        "confirmation_required": True,
+        "retry_safe": False,
+        "_example_template": (
+            "curl -X POST -H 'Content-Type: application/json'"
+            " -d '{{\"primary_name\":\"巨乳\",\"aliases\":[\"Big Tits\",\"おっぱい\"]}}'"
+            " {base}/api/tag-aliases"
+        ),
+    },
+    {
+        "name": "tags_top",
+        "description": (
+            "列出 NFO tag 頻次排序（前 N 名），適合 AI 用 LLM 判斷跨語言同義詞候選後"
+            " 呼叫 tag_alias_crud_write 建立 alias group。"
+            " min_count=2（預設）過濾噪音單次 tag；total_unique_tags 不受 min_count 影響。"
+            " 不含 user_tags（user_tags 為獨立欄位）。"
+        ),
+        "method": "GET",
+        "path": "/api/tags/top",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": "回傳筆數上限（預設 100，最大 500）",
+                },
+                "min_count": {
+                    "type": "integer",
+                    "default": 2,
+                    "minimum": 1,
+                    "description": "最低出現次數過濾（預設 2，過濾噪音；設 1 看全集合）",
+                },
+            },
+            "required": [],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "items": "[{tag: string, count: integer}] — 依 count 降序排列",
+            "total_unique_tags": "integer — 全庫 unique tag 數（不受 min_count 影響）",
+            "applied_min_count": "integer — 本次查詢使用的 min_count 值",
+        },
+        "side_effect": False,
+        "confirmation_required": False,
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/tags/top?limit=50&min_count=2'",
+    },
+    {
+        "name": "scraper_sources_list",
+        "description": (
+            "查詢使用者目前啟用、會用於自動搜尋（auto 模式實際 fan-out）的來源清單，"
+            "協助 AI 判斷目前哪些來源 active。total_enabled 為已揭露的來源數。"
+            "不揭露：停用（enabled=false）、Parts Bin（未 promote 的 metatube）、"
+            "Manual-Only、BETA 來源都不會出現；也不揭露 metatube URL / token。"
+            "不修改任何資料"
+        ),
+        "side_effect": False,
+        "confirmation_required": False,
+        "method": "GET",
+        "path": "/api/scraper-sources",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        "output_schema": {
+            "sources": "array — 每筆 {id: string, display_name: string, type: string, enabled: boolean, order: integer, is_censored: boolean}，依 order 升冪",
+            "total_enabled": "integer — 已揭露（實際會 fan-out）的啟用來源數",
+        },
+        "retry_safe": True,
+        "_example_template": "curl '{base}/api/scraper-sources'",
+    },
+    {
+        "name": "readonly_dry_run",
+        "description": "预览只读来源中的视频和识别到的番号，不抓取网络资料、不写入文件",
+        "side_effect": False,
+        "confirmation_required": False,
+        "method": "POST",
+        "path": "/api/readonly/dry-run",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_path": {"type": "string", "description": "只读视频来源文件夹"},
+            },
+            "required": ["source_path"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "total": "integer — 找到的视频数量",
+            "files": "[{path, number, size, mtime}] — 预览列表",
+        },
+        "retry_safe": True,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"source_path\":\"D:\\\\Videos\"}}' {base}/api/readonly/dry-run",
+    },
+    {
+        "name": "readonly_produce",
+        "description": "从只读来源生成独立媒体库；不会修改来源视频。媒体服务器模式可生成 .strm",
+        "side_effect": True,
+        "confirmation_required": True,
+        "method": "POST",
+        "path": "/api/readonly/produce",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_path": {"type": "string"},
+                "output_path": {"type": "string", "description": "Emby/Jellyfin/Kodi 模式必填"},
+                "external_manager": {"type": "string", "enum": ["off", "jellyfin", "emby", "kodi"]},
+                "force": {"type": "boolean", "default": False},
+                "strm_path_mappings": {"type": "object", "description": "本机路径前缀到播放端路径前缀的映射"},
+            },
+            "required": ["source_path"],
+        },
+        "output_schema": {
+            "success": "boolean",
+            "result": "{created, skipped, failed, no_scrape, pruned, aborted_reason, outcomes}",
+        },
+        "retry_safe": False,
+        "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"source_path\":\"D:\\\\Videos\",\"external_manager\":\"off\"}}' {base}/api/readonly/produce",
+    },
+]
+
+
+def _build_tools(base: str) -> list[dict]:
+    tools = []
+    for t in _TOOLS:
+        tool = copy.deepcopy(t)
+        template = tool.pop("_example_template", "")
+        tool["example"] = template.format(base=base)
+        tools.append(tool)
+    return tools
+
+
+@router.get("/capabilities")
+async def get_capabilities(request: Request):
+    base = str(request.base_url).rstrip("/")
+
+    return {
+        "schema_version": "v1",
+        "name": "OpenAver",
+        "version": DISPLAY_VERSION,
+        "upstream_base_version": __version__,
+        "custom_build": VERSION_INFO["custom_build"],
+        "update_protected": True,
+        "base_url": base,
+        "description": "影片元數據管理工具 — 搜尋、刮削、整理、瀏覽",
+        "skill_setup": {
+            "description": "將以下內容加入你的 AI 自訂指令 / Skill / System Prompt，讓 AI 學會使用 OpenAver",
+            "template": f"你可以使用 OpenAver 影片元數據管理工具。使用前先 GET {base}/api/capabilities 查看可用操作和使用範例。",
+            "hint": f"建議將此服務註冊為 AI skill（如 SKILL.md），存入 `curl -s {base}/api/capabilities` 指令，後續啟動自動發現。",
+        },
+        "quick_check": {
+            "description": "確認服務是否運行中",
+            "method": "GET",
+            "path": "/api/health",
+        },
+        "network": {
+            "scope": "lan",
+            "auth": "bearer_or_session_cookie",
+            "auth_header": "Authorization: Bearer <LAN token>",
+            "note": "本地/區網服務，不上公網",
+        },
+        "agent_instructions": {
+            "fetch_method": "curl",
+            "fetch_note": "必須走 shell HTTP 工具（POSIX 用 curl，Windows 用 curl.exe 或 Invoke-RestMethod）存取此服務。禁止使用瀏覽器 fetch()、AI 內建的 WebFetch / web_search 等 HTTP 工具，因其常經由外部 proxy 或沙箱網路，無法可靠連到 localhost / LAN。",
+            "example": f"curl -s {base}/api/capabilities",
+            "shell_compat": {
+                "preferred": {
+                    "posix": "curl",
+                    "windows": "curl.exe",
+                },
+                "alternative_windows": f"Invoke-RestMethod -Uri '{base}/api/batch-search' -Method POST -ContentType 'application/json' -Body '{{\"numbers\":[\"SONE-205\"]}}'",
+                "windows_gotcha": "PowerShell 內 curl 是 Invoke-WebRequest 的 alias，建議顯式呼叫 curl.exe；POST JSON body 引號易與 PS 字串規則打架，改用 Invoke-RestMethod -Body 較穩。",
+                "forbidden": ["fetch()", "WebFetch", "web_search"],
+                "forbidden_reason": "Browser-sandbox or external-proxy routing cannot reliably reach localhost or LAN services.",
+            },
+        },
+        "image_display": {
+            "description": "如何在對話流程中向用戶展示搜尋結果的封面 / 劇照圖片",
+            "problem": "搜尋結果的 cover 和 sample_images 是遠端 URL。AI agent 直接 curl 遠端 URL 會被 Cloudflare / 防盜鏈擋掉（回傳 HTML 而非圖片）。",
+            "solution": "透過 /api/proxy-image 下載圖片到本地，再依 agent 形態用本地絕對路徑嵌入。",
+            "steps": [
+                "1. 搜尋取得 cover / sample_images URL",
+                "2. curl -o <local_path> '<base_url>/api/proxy-image?url=<remote_url>' 下載到本地",
+                "3. 依 agent 形態嵌入（見 agents 區塊）：對話氣泡內嵌 / artifact 面板 / 純路徑文字",
+            ],
+            "rules": [
+                "禁止直接 curl 遠端圖片 URL — 一定會被擋",
+                "一律透過 /api/proxy-image 代理下載",
+                "下載到本地後用絕對路徑顯示（不要用遠端 URL 嵌入）",
+            ],
+            "agents": {
+                "codex_app": {
+                    "description": "Codex App（OpenAI 桌面應用）— 對話氣泡可直接內嵌圖片",
+                    "mechanism": "inline_markdown",
+                    "temp_dir": "C:/Codex/tmp/openaver-images/",
+                    "display_format": "![SONE-205 cover](C:/Codex/tmp/openaver-images/SONE-205-cover.jpg)",
+                    "naming": "<number>-cover.jpg 或 <number>-sample-<N>.jpg",
+                    "note": "路徑不可含空格。OpenAver 的番號與檔名不含空格，可安全使用。",
+                },
+                "antigravity": {
+                    "description": "Google Antigravity 2.0（桌面 app）— 對話氣泡不渲染圖片，必須透過右側 artifact 面板（Markdown 富文本）嵌入",
+                    "mechanism": "artifact_markdown",
+                    "artifact_dir_hint": "<appDataDir>/brain/<conversation-id>/  例：C:/Users/<user>/.gemini/antigravity/brain/<conv-id>/。實際路徑請從 runtime 取得當前對話的 artifact 目錄，不要寫死 conv-id",
+                    "display_format": "![SONE-205 cover](<artifact_dir>/SONE-205-cover.jpg)",
+                    "rules": [
+                        "圖片下載到 artifact 目錄內（或其子目錄）才能被 artifact 引用",
+                        "Markdown 路徑用絕對路徑 + 正斜線（Windows 也用 / 不用 \\）",
+                        "用 ![]() 不能用 []()，前綴 ! 才會渲染為圖片",
+                        "圖片不在對話氣泡顯示，而是右側 artifact 面板",
+                    ],
+                    "carousel_syntax": "多張圖可用 carousel 區塊：````carousel 開頭 + 每張 ![](path) 之間用 <!-- slide --> 分隔 + ```` 結尾（實測可用，官方文件未列）",
+                },
+                "terminal_cli": {
+                    "description": "終端機型 agent（Claude Code / Codex CLI / Gemini CLI 等）— 終端不渲染圖片",
+                    "mechanism": "path_text",
+                    "display_format": "下載完成後在訊息中提供絕對路徑供用戶手動開啟（檔案總管 / Preview / Quick Look 等）",
+                    "note": "若 agent host 環境支援開檔指令，可主動呼叫 open / xdg-open / start 等",
+                },
+            },
+        },
+        "error_format": {
+            "structure": {"success": False, "error": "string — 錯誤描述"},
+            "http_codes": {
+                "400": "參數錯誤（不該重試）",
+                "404": "資源不存在（不該重試）",
+                "422": "輸入驗證失敗（不該重試）",
+                "500": "伺服器錯誤（可重試）",
+            },
+            "retry_hint": "5xx 可重試，間隔 2 秒，最多 3 次。4xx 不重試，檢查參數。",
+        },
+        "tools": _build_tools(base),
+        "examples": [
+            {
+                "scenario": "新下載影片整理",
+                "description": "剛下載一批檔案，搜尋 metadata + 封面 + NFO + 整理命名",
+                "steps": [
+                    "1. POST /api/parse-filename 從檔名批量提取番號",
+                    "2. POST /api/batch-search 批量取得 metadata",
+                    "3. 逐個 POST /api/scrape-single 整理（會搬移+改名+建目錄）",
+                ],
+                "confirmation_rule": "scrape-single 會搬移檔案，建議先列出計畫讓用戶確認",
+            },
+            {
+                "scenario": "下載前查本地是否已有",
+                "description": "用戶貼一串番號，先檢查是否已收藏，避免重複下載",
+                "steps": [
+                    "1. GET /api/search/local-status?numbers=SONE-205,ABW-001,...",
+                ],
+                "confirmation_rule": "純查詢，不需確認",
+            },
+            {
+                "scenario": "論壇文章擷取 — URL 或純文字皆可",
+                "description": "用戶提供論壇 URL 或直接貼文章內文，AI 抓取內容並提取番號/女優名",
+                "steps": [
+                    "1. 判斷輸入：URL → 嘗試抓取頁面內容；純文字 → 直接解析",
+                    "2. 若 URL 是 ptt.cc → curl -b 'over18=1' 取得 HTML → 從 div#main-content 解析內文（PTT 年齡驗證是 client-side JS，加 cookie 即可繞過）",
+                    "3. 若 URL 是其他論壇 → 回覆用戶「此論壇無法直接抓取，請複製文章內文貼上」",
+                    "4. 從內容提取番號（如 'fc2 793288 半外半中' → FC2-PPV-793288）",
+                    "5. POST /api/batch-search 批量取得 metadata + 封面 URL",
+                ],
+                "confirmation_rule": "純查詢，不需確認",
+            },
+            {
+                "scenario": "追蹤女優新片",
+                "description": "定期查詢喜歡的女優是否有新作品，比對本地已收藏片單",
+                "steps": [
+                    "1. GET /api/search?q=明日花キララ&mode=actress&since=2026-03-01&discovery=true → 秒回番號清單",
+                    "2. 比對 GET /api/search/local-status 過濾掉已有的",
+                    "3. POST /api/batch-search 只抓新片的完整 metadata",
+                    "4. 回報新片清單給用戶",
+                ],
+                "confirmation_rule": "純查詢，不需確認",
+            },
+            {
+                "scenario": "舊片批量補完（NFO / 封面 / 缺欄位）",
+                "description": "已在資料庫中的影片，原地補齊缺少的 metadata。嚴格不搬移、不改名、不改目錄結構",
+                "steps": [
+                    "1. POST /api/collection/sql → SELECT path, number FROM videos WHERE title IS NULL OR cover_path IS NULL",
+                    "2. 逐個 POST /api/enrich-single（mode: fill_missing）原地補齊",
+                    "3. POST /api/collection/sql → 確認完整度提升",
+                ],
+                "confirmation_rule": "enrich-single 不搬檔不改名，但會寫入 NFO/封面。建議先告知用戶將補齊的數量",
+            },
+            {
+                "scenario": "換封面來源（JavBus 浮水印 → DMM 高清）",
+                "description": "用 DMM 高清封面覆蓋現有 JavBus 浮水印封面",
+                "steps": [
+                    "1. POST /api/collection/sql → 找出目標影片",
+                    "2. POST /api/enrich-single（mode: refresh_full, write_cover: true, overwrite_existing: true）",
+                ],
+                "confirmation_rule": "overwrite_existing: true 會覆蓋既有封面，必須讓用戶確認",
+            },
+            {
+                "scenario": "DB 有資料但 NFO 檔不見了",
+                "description": "從 DB 現有資料重建 NFO sidecar 檔，不打外站",
+                "steps": [
+                    "1. POST /api/collection/sql → 找目標影片",
+                    "2. POST /api/enrich-single（mode: db_to_sidecar）從 DB 重建 NFO",
+                ],
+                "confirmation_rule": "db_to_sidecar 純本地操作，不打外站。會寫入 NFO 檔",
+            },
+            {
+                "scenario": "顯示封面圖片（對話內嵌入）",
+                "description": "用戶要求看某部片的封面或劇照，AI 在回覆中直接顯示圖片",
+                "steps": [
+                    "1. GET /api/search?q=SONE-205 → 取得 cover URL",
+                    "2. curl -o /tmp/SONE-205-cover.jpg '<base_url>/api/proxy-image?url=<cover_url>' 下載到本地",
+                    "3. 回覆中嵌入 ![SONE-205 封面](/tmp/SONE-205-cover.jpg)",
+                ],
+                "confirmation_rule": "純查詢 + 下載圖片，不需確認",
+            },
+            {
+                "scenario": "收藏統計",
+                "description": "快速統計收藏的片商分布、年份分布、女優作品數",
+                "steps": [
+                    "1. POST /api/collection/sql → SELECT maker, COUNT(*) as cnt FROM videos GROUP BY maker ORDER BY cnt DESC LIMIT 10",
+                    "2. POST /api/collection/sql → SELECT strftime('%Y', release_date) as year, COUNT(*) FROM videos GROUP BY year ORDER BY year DESC",
+                ],
+                "confirmation_rule": "純查詢，不需確認",
+            },
+        ],
+        "integration_notes": {
+            "automation": "可搭配 qBittorrent Web API 實現下載→整理自動化",
+            "notification": "搭配 LINE Notify / Telegram Bot 實現新片通知",
+            "scheduling": "搭配 cron 或 AI agent 排程定期查詢",
+            "docker": "支援 Docker 部署，base_url 隨部署環境變動",
+        },
+        "notes": [
+            "所有搜尋遵守節流規則（MAX_WORKERS=2, REQUEST_DELAY=0.3s）",
+            "有 side_effect 標記的端點會修改檔案系統",
+            "batch-search 建議一次不超過 20 筆，避免觸發來源網站封鎖",
+            "base_url 會依實際部署環境動態生成",
+        ],
+    }

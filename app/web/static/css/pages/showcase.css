@@ -1,0 +1,3411 @@
+/* ========================================
+   Showcase 頁面專屬樣式
+   IMPORTANT: 禁止重複定義 theme.css 已有元件
+   ======================================== */
+
+/* ==================== Page Container ==================== */
+.showcase-container {
+    min-height: calc(100vh - 56px); /* 扣除 header */
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 48px; /* 防止底部 .showcase-footer 遮擋最後一行卡片 (49a-T4 三段式 footer，高度約 40-44px) */
+
+    /* Background Atmosphere — 對齊 Design System (design-system.css L6-11) */
+    background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(var(--ds-glow-rgb), 0.15), transparent),
+        radial-gradient(ellipse 60% 40% at 80% 100%, oklch(55% 0.15 250 / 0.08), transparent),
+        var(--bg-body);
+}
+
+/* ==================== Toolbar - Sticky + Acrylic ==================== */
+.showcase-toolbar {
+    /* Sticky positioning */
+    position: sticky;
+    top: 0;
+    z-index: 100;
+
+    /* Acrylic 毛玻璃效果（Fluent Design 2 - Heavy Glass）*/
+    background: var(--bg-header); /* color-mix 85% transparency */
+    backdrop-filter: blur(var(--fluent-blur));
+    -webkit-backdrop-filter: blur(var(--fluent-blur));
+
+    /* Border */
+    border-bottom: 1px solid var(--border-light);
+
+    /* Spacing */
+    padding: 0.75rem 1.5rem;
+
+    /* Layout — 3-column grid: [balance] [search] [controls] (44c-T8) */
+    display: grid;
+    grid-template-columns: 1fr var(--spotlight-width) 1fr;
+    gap: 1rem;
+    align-items: center;
+}
+
+/* Toolbar 區段 */
+.toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Search 區段 — grid 中欄，永遠置中 (44c-T8) */
+.toolbar-search {
+    grid-column: 2;
+    width: 100%;
+}
+
+/* Controls 區段 — grid 右欄，靠右對齊 (44c-T8) */
+.toolbar-controls {
+    grid-column: 3;
+    justify-self: end;
+    flex-wrap: wrap;
+}
+
+/* Control Group - 單個控制元件群組（排序 + 按鈕 / select / mode switcher）*/
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* (M3c mode-switcher 已改為 dropdown) */
+
+/* ==================== Toolbar Dropdown (排序/每頁) ==================== */
+
+.toolbar-dropdown-wrap {
+    position: relative;
+    z-index: 210;
+}
+
+.toolbar-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    min-width: 160px;
+    background: var(--surface-2);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 0.375rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 200;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.4rem 0.625rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    transition: background var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out);
+    white-space: nowrap;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.dropdown-item:hover {
+    background: var(--glow-subtle);
+    color: var(--text-primary);
+}
+
+.dropdown-item.active {
+    background: var(--accent);
+    color: var(--color-primary-content);
+    font-weight: 500;
+}
+
+.dropdown-item i {
+    font-size: 0.9375rem;
+    flex-shrink: 0;
+    width: 1.125rem;
+    text-align: center;
+}
+
+/* ==================== Status Bar (M3g) ==================== */
+/* 49a-T4: status bar 已從 showcase 主頁移除（showcase.html 不再使用），
+   保留 CSS 是因為 design-system.html 仍引用 .showcase-status-bar / .status-total /
+   .status-pagination / .page-btn / .page-select 作為元件 reference demo。
+   勿在 showcase 主頁重新使用此元件，相關功能已整合至底部 .showcase-footer 三段式。 */
+
+.showcase-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    background: var(--surface-0);
+    border-bottom: 1px solid var(--stroke-subtle);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.status-total {
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+}
+
+.status-total b {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+
+.status-pagination {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.page-select {
+    padding: 0.375rem 2rem 0.375rem 0.75rem;
+    background: var(--surface-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: border-color var(--duration-fast) var(--ease-out),
+                background var(--duration-fast) var(--ease-out);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    min-width: 100px;
+}
+
+.page-select:hover {
+    border-color: var(--accent);
+    background: var(--glow-subtle);
+}
+
+.page-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--glow-primary);
+}
+
+.page-btn {
+    padding: 0.375rem 0.875rem;
+    background: transparent;
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+    white-space: nowrap;
+}
+
+.page-btn:hover:not(:disabled) {
+    background: var(--glow-subtle);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    .showcase-status-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+
+    .status-total {
+        text-align: center;
+    }
+
+    .status-pagination {
+        justify-content: center;
+    }
+
+    .page-select {
+        min-width: 80px;
+    }
+
+    .page-btn {
+        padding: 0.375rem 0.625rem;
+        font-size: 0.8125rem;
+    }
+}
+
+/* ==================== Image Grid - 5 段響應式斷點 ==================== */
+/* 參考 gallery_generator.py L1177-1216 */
+
+.showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem;
+
+    /* 防止卡片過寬 */
+    max-width: 100%;
+}
+
+/* 響應式斷點 - 5 段固定欄位 */
+
+/* 1500px+ → 5 columns */
+@media (min-width: 1500px) {
+    .showcase-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+/* 1100-1499px → 4 columns */
+@media (min-width: 1100px) and (max-width: 1499px) {
+    .showcase-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* 900-1099px → 3 columns */
+@media (min-width: 900px) and (max-width: 1099px) {
+    .showcase-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* 481-899px → 4 columns 直式右裁 poster 格（US-10 / CD-11；T10 合併原 481-679 / 680-899 兩段） */
+@media (min-width: 481px) and (max-width: 899px) {
+    .showcase-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+    }
+}
+
+/* ≤480px → 3 column poster 格（US5-75b，比照 .actress-grid 的 ≤480 斷點） */
+@media (max-width: 480px) {
+    .showcase-grid {
+        grid-template-columns: repeat(3, 1fr); /* US5-75b：1fr → 3-col（CD-75b-7） */
+        gap: 0.5rem;
+        padding: 0.75rem;
+    }
+}
+
+/* US-10 / T10：poster-crop 樣式從 ≤480 擴到 ≤899（481–899 4 欄直式右裁與 ≤480 一致）。
+   欄數靠各自 @media（≤480 = 3 欄 / 481–899 = 4 欄）；poster-crop 卡裁切 + img 右裁 + caption + hero
+   為兩段共用樣式，故移入 ≤899 區塊。selector 形式不變（showcase 後代 :is(…) .showcase-grid，有空格）。 */
+@media (max-width: 899px) {
+    /* US5-75b：影片卡切直式 poster 比例。
+       數值來源 = plan-75a US2 poster-crop（--poster-crop-ratio），**不可獨立修改**（單一真理）。
+       Codex P1（specificity）：selector 必帶 :is(#ds-gallery-components, .ds-gallery-composition) scope。
+         :is() 含 #id → a=1（無論其他 arg），:not(.hero-card) 的 .hero-card 計入 b。
+         theme.css 基準 :is(#id,…) .av-card-preview-img = (1,0,1)；本規則 4 個 class（showcase-grid /
+         av-card-preview / .hero-card(:not) / av-card-preview-img）= (1,4,0) 贏。
+         若漏 :is() 前綴 → (0,4,0)，a=0 輸給基準 a=1 → aspect-ratio silent no-op、手機卡仍 3:2。
+       Codex F5：:not(.hero-card) 排除女優精準匹配 hero 卡（其圖 object-fit:contain，不可被裁成 0.71）。
+       .av-card-preview-img 是 <div> → aspect-ratio 寫 div；object-position 只對 replaced element 生效 → 寫子 img。 */
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview:not(.hero-card) .av-card-preview-img {
+        aspect-ratio: var(--poster-crop-ratio, 0.71);
+        height: auto;   /* aspect-ratio 與 explicit height 互斥，明確 auto 防其他規則殘留高度 */
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview:not(.hero-card) .av-card-preview-img img {
+        object-position: right center; /* (1,4,1) 贏 theme.css 基準 img (1,0,2)；基準本無 object-position（此為加值）；只露封面正面 */
+    }
+
+    /* US5-75b：3 欄 poster 格 caption（CD-75b-9）——番號單行 ellipsis、女優名次行隱藏。
+       次行 class = .av-actress（非 .av-maker；grid 卡無 .av-maker，誤用會 silent no-op）。
+       同帶 :is(…) scope + :not(.hero-card) 防誤殺 hero footer（其 footer 也有 .av-num/.av-actress，Codex F5）。 */
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview:not(.hero-card) .av-card-preview-footer .footer-default .av-num {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.7rem; /* 略縮字型容納番號（3 欄每欄 ≈107px） */
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview:not(.hero-card) .av-card-preview-footer .footer-default .av-actress {
+        display: none; /* narrow 下次要資訊，空間不足 */
+    }
+
+    /* T11：≤480px hero 卡（女優精準匹配入口）改直式 poster 比例，對齊同列 0.71 鄰卡 → 消 row 死白/錯位。
+       值引用 --poster-crop-ratio（與鄰卡同源，單一真理）。img 改 object-fit:cover（女優照 0.826 略寬胖，
+       cover 填滿僅輕裁上下、無 letterbox），覆蓋 hero 既有 contain（L2342）。
+       selector 帶 :is(#id,…) scope → (1,4,0) 勝 theme.css 基準 (1,0,1)；showcase 的 ds-gallery-composition
+       在 .showcase-container 祖先 → 用後代 :is(…) .showcase-grid（與 L313 同 pattern）。
+       hero 在女優收藏模式不存在（showFavoriteActresses gate），故只影響 video-mode grid。 */
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview.hero-card .av-card-preview-img {
+        aspect-ratio: var(--poster-crop-ratio, 0.71);
+        height: auto;
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview.hero-card .av-card-preview-img img {
+        object-fit: cover;             /* 覆蓋 hero 桌面 contain（L2342）；女優照填滿、無 letterbox */
+        transform-origin: center center;
+    }
+}
+
+/* ==================== Actress Grid — Collection Wall (44c-T6) ==================== */
+.actress-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+    padding: 1rem;
+    max-width: 100%;
+}
+
+@media (max-width: 480px) {
+    .actress-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+        padding: 0.75rem;
+    }
+}
+
+/* ==================== Actress Card (T3) ==================== */
+
+.actress-card {
+    background: var(--bg-card);
+    border-radius: var(--fluent-radius-xl);
+    box-shadow: var(--fluent-shadow-2);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard),
+                box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.actress-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: var(--fluent-shadow-8);
+}
+
+/* C21: GSAP cascade 進場期間關掉 CSS transition + 阻擋 hover 搶 transform */
+.actress-card.gsap-animating {
+    pointer-events: none;
+    transition: none !important;
+}
+
+.actress-card-photo {
+    aspect-ratio: 3 / 4;   /* portrait，比 video card 的 3/2 更窄 */
+    overflow: hidden;
+    background: var(--surface-1);
+    position: relative;
+}
+
+.actress-card-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.actress-card:hover .actress-card-photo img {
+    transform: scale(1.05);
+}
+
+/* 無照片 placeholder */
+.actress-no-photo {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 3rem;
+}
+
+/* Actress card hover overlay (44c-T7) */
+.actress-card-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    padding-bottom: 12px;
+    background: linear-gradient(to top, var(--overlay-gradient) 0%, rgba(0,0,0,0.2) 60%, transparent 100%); /* mid-stop optical fade */
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    opacity: 0;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard);
+    pointer-events: none;
+}
+
+.actress-card:hover .actress-card-overlay,
+.actress-card:focus-within .actress-card-overlay {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.actress-card-footer {
+    position: relative;
+    overflow: hidden;
+    height: 2.5rem;
+    padding: 0 0.75rem;
+}
+
+.actress-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.actress-count-badge {
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* Actress Card Footer — three-column layout + hover swap (44c-T2, CD-3) */
+.actress-card-footer .footer-default {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 100%;
+    gap: 0.5rem;
+}
+
+.actress-card-footer .footer-default .av-num {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.actress-sort-indicator {
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.actress-card:hover .footer-hover {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.actress-card:hover .footer-default {
+    opacity: 0;
+}
+
+/* ==================== Card Footer Switch (M3e) ==================== */
+
+/* Footer 容器：支援雙層切換 */
+.showcase-grid .av-card-preview-footer {
+    position: relative;
+    overflow: hidden;
+    height: 2.5rem;
+}
+
+/* 預設層：番號（左）+ 女優（右） */
+.footer-default {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+/* 懸停層：標題（絕對定位覆蓋） */
+.footer-hover {
+    position: absolute;
+    inset: 0;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-1);
+    opacity: 0;
+    transform: translateY(100%);
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard),
+                transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+    display: flex;
+    align-items: center;
+}
+
+/* Card Hover 時切換 */
+.av-card-preview:hover .footer-hover {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.av-card-preview:hover .footer-default {
+    opacity: 0;
+}
+
+/* 懸停標題：2 行截斷 */
+.hover-title {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==================== Lightbox ==================== */
+
+/* Lightbox Overlay */
+.showcase-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    /* Smoke Backdrop — 匹配 gallery_generator.py 舊版風格 */
+    background: var(--overlay-modal);
+    /* charter §2 仲裁：lightbox backdrop 用 floating-control 12px (非 overlay 30px)，保留 grid spatial reference UX */
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+
+    /* 初始隱藏 */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    /* Fluent Design 2 動畫 */
+    transition: opacity var(--duration-normal) var(--ease-out),
+                visibility 0s linear var(--duration-normal);
+}
+
+.showcase-lightbox.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
+}
+
+/* Lightbox Content Card — 垂直佈局（大圖上方 + metadata 下方） */
+.lightbox-content {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    overflow-y: auto;
+
+    /* Fluent Design 2 Card */
+    background: var(--surface-2);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--fluent-shadow-28);
+
+    /* Scale Pop-in 動畫 */
+    transform: scale(0.95);
+    transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.showcase-lightbox.show .lightbox-content {
+    transform: scale(1);
+}
+
+/* D2: GSAP Lightbox 動畫期間關掉 CSS transition（C21） — search 頁面 */
+.search-container .showcase-lightbox.gsap-animating,
+.search-container .showcase-lightbox.gsap-animating .lightbox-content {
+    transition: none !important;
+}
+
+/* B16: GSAP Lightbox 動畫期間關掉 CSS transition（C21） — showcase 頁面 */
+.showcase-container .showcase-lightbox.gsap-animating,
+.showcase-container .showcase-lightbox.gsap-animating .lightbox-content {
+    transition: none !important;
+}
+
+/* 49a-T7: hero card glow pulse / scale settle 期間關掉 CSS transition（C21） */
+.hero-card.gsap-animating {
+    transition: none !important;
+}
+
+/* Close Button */
+.lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: var(--overlay-control);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: var(--text-inverse);
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out),
+                transform var(--duration-fast) var(--ease-out);
+    z-index: 10;
+}
+
+.lightbox-close:hover {
+    /* hover 升階 0.5 (charter §3 個案保留，控制按鈕 hover 強調) */
+    background: rgba(0, 0, 0, 0.5);
+    transform: scale(1.1);
+}
+
+/* Cover Image Section — 大圖佔主要空間 */
+.lightbox-cover {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* 無封面時保留 floor — placeholder SVG 不塌陷、cover-actions absolute 仍能撐盒 */
+    min-width: min(60vw, 600px);
+    min-height: min(58vh, 460px);
+}
+
+/* 83a-T3-fix P1: metadata 可變高 → modal 整體捲動修正。
+   83b-T2：:not(.similar-open) gate 已移除（similar-open class 不再使用）；規則無條件命中。
+   metadata 靠 flex:1 1 auto + min-height:0 + overflow-y:auto 自行消化剩餘高度。 */
+.lightbox-content {
+    overflow-y: hidden;
+}
+
+/* 83a-T1fix1 M1+M2+M3: has-cover 時 aspect-box modal-hug 模型（全斷點適用）。
+   修正 T1 的 flex-shrink letterbox bug（CDP 實測：cover box 1139×610 AR=1.869≠圖 AR 1.481
+   → img object-fit:contain 只佔 903px → 左右各 118px 暗死白）。
+   修法 A — flex-shrink:0（禁止 cover 被壓縮）：配合 width-formula 確保 cover 高不超 content。
+   修法 B — width-formula 對齊 content max-height:90vh（vreserve=15rem≈240px）：
+     width = min(90vw, (90dvh − 15rem) × AR) → cover 高 = width/AR；
+     cover 高 + 15rem ≤ 90dvh = content max-height → 不捲動。
+     T1 錯用 100dvh：cover 高 = dvh−15rem，content max-height=90vh < dvh → 溢出捲動。
+   T1fix1 就是把 100dvh/100vh 改 90dvh/90vh 這一行，其餘不變。
+   83b-T2：:not(.similar-open) gate 已移除（similar-open class 不再使用）；規則無條件命中。 */
+.lightbox-content .lightbox-cover.has-cover {
+    flex-shrink: 0;
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: var(--lb-cover-ar, 1.5);
+    width: min(90vw, calc((90vh - 15rem) * var(--lb-cover-ar, 1.5)));
+    width: min(90vw, calc((90dvh - 15rem) * var(--lb-cover-ar, 1.5)));
+    height: auto;
+}
+
+/* 83a-T1 M1: base img 與 .lb-full 皆填滿 aspect-ratio 正確的盒（兩層疊在 has-cover 盒內）。
+   83b-T2：:not(.similar-open) gate 已移除；此規則無條件命中，接管 T8 block 移除後的 width:100% 供應。
+   盒 AR == 圖 AR → 不 letterbox；border-radius 保留視覺細節。
+   無封面的普通 img（破圖/placeholder）維持舊規則（非 has-cover，不命中此選擇器）。 */
+.lightbox-content .lightbox-cover.has-cover img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+}
+
+/* 83a-T1 M1: 無封面 / 女優分支 base img — 維持舊規則（cover-first，不干擾 has-cover 內 absolute 層疊）。
+   specificity (0,1,1) 低於上方 .has-cover img (0,3,1)，has-cover 時上方規則勝出。 */
+.lightbox-cover img {
+    /* 舊規則保留給無封面路徑（placeholder/破圖）與女優照（.lightbox-cover 無 has-cover class）。
+       height:60vh 讓無封面 lightbox 維持既有視覺氣勢；object-fit:contain 不裁切。 */
+    height: 60vh;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+}
+
+/* 71-T6 blur-up overlay：原圖（cover_full_url）疊在 base（cover_url 小圖）之上。
+   83a-T1 M1: has-cover 時 .lb-full 填滿 has-cover 盒（盒 AR == 圖 AR，不 letterbox）；
+   opacity 溶接不變；pointer-events:none 確保不擋 cover-actions / sparkle 點擊。
+   transition 用 fluent token；duration-slow=300ms、ease-decel 為進場/淡入角色。
+   83b-T2：similar-open 禁區已移除；has-cover 時 .lb-full 由 .lightbox-content .lightbox-cover.has-cover .lb-full 填滿盒。 */
+.lb-full {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    height: 60vh;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--fluent-duration-slow) var(--fluent-ease-decel);
+}
+
+/* 83a-T1 M1: has-cover → lb-full 填滿盒（覆寫舊 60vh 規則）。
+   83b-T2：:not(.similar-open) gate 已移除；specificity (0,3,0) 勝 .lb-full (0,1,0)。 */
+.lightbox-content .lightbox-cover.has-cover .lb-full {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    max-width: none;
+}
+
+.lb-full-shown {
+    opacity: 1;
+}
+
+/* 71-T6 blur-up：reduced-motion 下原圖瞬切（無漸變），仍正確蓋上（鏡像既有 PRM 範式）。 */
+@media (prefers-reduced-motion: reduce) {
+    .lb-full {
+        transition: none;
+    }
+}
+
+/* Metadata Panel — 緊湊版（匹配原版 gallery） */
+/* 83a-T1 M4: 移除 max-width:600px，改 width:100% 對齊封面寬（modal shrink-to-fit 後即封面寬）。
+   83a-T3-fix P1: flex:1 1 auto + min-height:0 讓 metadata 吃剩餘空間並自行捲動，
+   配合上方 .lightbox-content{overflow-y:hidden} 防 modal 整體捲動（83b-T2 gate 已移除）。 */
+.lightbox-metadata {
+    padding: 0.5rem 0 0 0;
+    width: 100%;
+    border-top: 1px solid var(--stroke-subtle);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Header row: title + sample gallery button */
+.lightbox-metadata .lb-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+    flex-wrap: wrap;
+}
+
+/* Title */
+.lightbox-metadata .lb-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.4;
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+}
+
+/* Original Title */
+.lightbox-metadata .lb-otitle {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Actress */
+.lightbox-metadata .lb-actor {
+    font-size: 0.8125rem;
+    color: var(--accent);
+    margin-bottom: 0.25rem;
+}
+
+/* Meta: Number · Maker · Date — 單行 flex */
+.lightbox-metadata .lb-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.lightbox-metadata .lb-meta span:not(:last-child)::after {
+    content: " · ";
+    margin: 0 0.35em;
+}
+
+/* Details: merged meta row (number · maker · director · duration · series · label · date · size) */
+.lightbox-metadata .lb-details {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;          /* 讓行末 muted icon 鈕（垃圾桶）與 metadata 文字垂直置中 */
+}
+
+/* 分隔符由 HTML 中各 span 內部開頭的 " · " 控制，隨 x-show 一起顯示/隱藏 */
+
+/* Tags — pill flex wrap */
+.lightbox-metadata .lb-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+.lightbox-metadata .lb-tag {
+    padding: 0.15rem 0.5rem;
+    background: var(--bg-body);
+    border-radius: var(--radius-pill);
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    border: 1px solid var(--stroke-subtle);
+}
+
+/* Cover Actions Overlay — 預設隱藏，hover / focus-within 時 fade in */
+.lightbox-cover .cover-actions {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    padding-bottom: 24px;
+    gap: 12px;
+    background: linear-gradient(to top, var(--overlay-gradient) 0%, rgba(0,0,0,0.2) 60%, transparent 100%);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.lightbox-cover:hover .cover-actions,
+.lightbox-cover:focus-within .cover-actions {
+    opacity: 1;
+}
+
+/* Glass Circle Button — 對齊 theme.css .btn-glass-circle，尺寸略縮為 46px */
+.lb-action-btn {
+    position: relative;
+    width: 46px; height: 46px;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: white;
+    font-size: 1.125rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--fluent-shadow-8);
+    transition: background var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out),
+                transform var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.lb-action-btn:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.6);
+    transform: scale(1.08);
+    box-shadow: var(--fluent-shadow-16);
+}
+
+.lb-action-btn:active {
+    transform: scale(0.95);
+}
+
+/* Danger modifier — red tint for remove button (44c-T3) */
+.lb-action-btn--danger {
+    border-color: rgba(255, 100, 100, 0.5);
+    color: var(--color-error-hover);
+}
+
+.lb-action-btn--danger:hover {
+    background: rgba(255, 100, 100, 0.25);
+    border-color: rgba(255, 100, 100, 0.7);
+}
+
+/* Touch fallback — cover-actions always visible on touch devices (44c-T3) */
+@media (pointer: coarse) {
+    .lightbox-cover .cover-actions {
+        opacity: 1;
+    }
+}
+
+/* 75a-US3c: touch 裝置 hover-only 三處直達（比照 .lightbox-cover .cover-actions 先例，showcase.css:825-829）*/
+@media (pointer: coarse) {
+    /* (1) showcase grid 影片卡 overlay — 常駐顯示 */
+    :is(#ds-gallery-components, .ds-gallery-composition) .av-card-preview-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    /* (2) 影片卡 footer-hover（標題層）— 常駐顯示，解除 translateY(100%) 入場 transform */
+    .av-card-preview .footer-hover {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    .av-card-preview .footer-default {
+        opacity: 0;    /* touch 裝置：標題層常駐、番號/女優層隱藏 */
+    }
+    /* (3) actress card overlay — 常駐顯示 */
+    .actress-card-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+/* US5-75b fix（Codex P1）：真實觸控 ≤480px poster 格——還原 .footer-default（番號可讀層）、
+ * 壓回上方 75a-US3c 的 footer-hover 常駐。
+ * 衝突來源：US3c 在 @media(pointer:coarse) 無條件把 .footer-default opacity:0 + footer-hover opacity:1
+ * （touch 顯示標題層）；但 US5 的 3 欄 poster 格（≤480px）要顯示「番號 caption」（spec §US5 / CD-75b-9），
+ * 標題在 107px 窄格不可讀。故在 ≤480px ∩ pointer:coarse ∩ poster-grid 非 hero 卡，反轉回 footer-default。
+ * scope :is(#id,…) → a=1 勝 US3c .av-card-preview .footer-* 的 (0,2,0)；:not(.hero-card) 不碰女優入口；
+ * 481px+ touch / pointer:fine 桌面皆不受影響（US3c title-on-touch 行為保留）。
+ * T5 的 .av-num ellipsis / .av-actress display:none 規則此時作用在已可見的 .footer-default 上。
+ * US-10 / T10：擴 ≤480 → ≤899 與 poster-crop 樣式同步（481–899 平板 poster 格 footer 行為一致）。 */
+@media (max-width: 899px) and (pointer: coarse) {
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview:not(.hero-card) .footer-default {
+        opacity: 1;
+    }
+
+    :is(#ds-gallery-components, .ds-gallery-composition) .showcase-grid .av-card-preview:not(.hero-card) .footer-hover {
+        opacity: 0;
+    }
+}
+
+/* ─── 56c-T3 / T3fix: Similar Mode 入口按鈕 + Sparkle Burst 預覽 ────────────
+ * .lightbox-similar-btn — 玻璃材質圓鈕，與 .lightbox-close 鏡射對稱（左上 1rem/1rem）
+ *   尺寸 44×44，與 .lightbox-close 鏡射對稱（同尺寸 + 同距邊 1rem）
+ *   icon 用 --star-glow 香檳金，呼應 56b 星空主題（CD-56B-6）
+ * .sparkle-burst — Magic 點擊預演，10 顆四角星 sparkle burst（GSAP 操作 opacity/scale/rotation）
+ */
+.lightbox-similar-btn {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    z-index: 10;
+    width: 44px; height: 44px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    box-shadow: var(--fluent-shadow-8);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out),
+                transform var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.lightbox-similar-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: scale(1.08);
+    box-shadow: var(--fluent-shadow-16);
+}
+
+.lightbox-similar-btn:active {
+    transform: scale(0.95);
+}
+
+.lightbox-similar-btn:focus-visible {
+    outline: 2px solid var(--star-glow);
+    outline-offset: 2px;
+}
+
+.lightbox-similar-btn i {
+    color: var(--star-glow);
+    font-size: 1.25rem;  /* 對齊 .lightbox-close 的 font-size */
+    line-height: 1;
+}
+
+/* 56c-T7 舊手機 grid（.lightbox-similar-mobile / .similar-mobile-grid / .similar-mobile-card 等）
+   已於 83b-T2 移除：T1 改為獨立全螢幕 .similar-mobile-panel；HTML block 已移除，CSS 同步清理。 */
+
+/* ===================================================================
+ * 83b-T1: 行動相似探索面板（Mobile Photo Picker 爆射）
+ * 全螢幕獨立面板（.showcase-lightbox 外側 sibling），<960px only。
+ * Core 無轉場：default-hidden（opacity/visibility/pointer-events）+ .show 直顯/直隱。
+ * cover + cards layout-isolated（position:absolute）→ BurstPicker 內部 getBCR()
+ * 在爆射並行期間讀到穩定 rect（R1 緩解，模組無 rect 注入口 CD-12）。
+ * =================================================================== */
+@media (max-width: 959px) {
+    .similar-mobile-panel {
+        position: fixed;
+        inset: 0;
+        z-index: 1502;  /* > .similar-stage 1501 > .showcase-lightbox 1000 */
+        /* default-hidden（非 bare x-show）：Alpine boot 前 overlay 不閃現（FOUC，D10/AC-8） */
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    .similar-mobile-panel.show {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+    }
+
+    /* scrim：overlay 30px 模糊完全遮住 lightbox（CD-10；雙寫 -webkit-，禁硬編碼 px） */
+    .similar-mobile-scrim {
+        position: absolute;
+        inset: 0;
+        background-color: var(--overlay-modal);
+        backdrop-filter: blur(var(--fluent-blur));
+        -webkit-backdrop-filter: blur(var(--fluent-blur));
+    }
+
+    /* stage：爆射 origin frame（cover 在中央，cards 從中央爆射） */
+    .similar-mobile-stage {
+        position: absolute;
+        inset: 0;
+    }
+
+    /* 中央主圖：layout-isolated（爆射卡 out of flow 不 reflow 它，R1 根本緩解）。
+     * 83b-T1fix1: 大封面、置中偏上。維持 position:absolute（R1 不破）。
+     * 寬度雙約束 min(vw界, vh界*ratio)：--poster-crop-ratio=0.71（portrait），故 vh*ratio
+     * 上界鎖住封面「高度」≤56vh，下方預留 ~40vh 給 3+3 grid（9:16 矮 / 9:21 高 / 平板直式皆不溢出）。
+     * 垂直置中偏上：cover 中心落在 ~30vh（視口中線之上），上緣貼近 close 鈕下方。 */
+    .similar-mobile-cover {
+        position: absolute;
+        top: 30vh;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(88vw, 56vh * var(--poster-crop-ratio));
+        /* T4: overflow:hidden 移到 img（border-radius 掛 img 可裁角），
+           讓 .similar-mobile-play-btn 子元素不被裁切而能在封面內顯示 */
+        border-radius: var(--fluent-radius-lg);
+        cursor: pointer;
+    }
+
+    .similar-mobile-cover img {
+        display: block;
+        width: 100%;
+        aspect-ratio: var(--poster-crop-ratio);   /* 單一真理，禁硬編碼 4/5 */
+        object-fit: cover;
+        object-position: right center;             /* 右半裁切 */
+        border-radius: var(--fluent-radius-lg);    /* T4: 接管 overflow:hidden 的裁角職責 */
+    }
+
+    /* cards 容器：absolute（layout-isolated，不 reflow cover）但改放螢幕下方區域，
+     * 內部 3 欄 grid（mirror 女優 picker mobile L2877–2887）→ 6 卡自然版位 = 下方 3+3 各格。
+     * 83b-T1fix1: 從 inset:0（全覆蓋、卡疊中心）改為下方 grid。 */
+    .similar-mobile-cards {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: calc(4vh + env(safe-area-inset-bottom));
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        justify-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        pointer-events: none;   /* 容器不擋；卡片各自 pointer-events:auto */
+    }
+
+    /* 爆射卡：GSAP-only（opacity:0 + transition:none 防 1-frame paint glitch，mirror .picker-candidate-card）。
+     * 83b-T1fix1: position:relative（grid item，有獨立版位 → burst 落各格不再疊），尺寸用 grid 欄寬。 */
+    .similar-mobile-burst-card {
+        position: relative;
+        width: 100%;
+        max-width: 120px;
+        overflow: hidden;
+        border-radius: var(--fluent-radius-lg);
+        cursor: pointer;
+        pointer-events: auto;
+        opacity: 0;
+        transition: none;
+    }
+
+    .similar-mobile-burst-card img {
+        display: block;
+        width: 100%;
+        aspect-ratio: var(--poster-crop-ratio);
+        object-fit: cover;
+        object-position: right center;
+    }
+
+    /* 右上 ✕ 關閉鈕（x-trap Tab 目標） */
+    .similar-mobile-panel-close {
+        position: absolute;
+        top: max(1rem, env(safe-area-inset-top));
+        right: max(1rem, env(safe-area-inset-right));
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        border: none;
+        border-radius: var(--radius-pill);
+        background: rgba(0, 0, 0, 0.35);
+        color: var(--text-primary);
+        font-size: 1.25rem;
+        cursor: pointer;
+    }
+
+    /* T4: 行動相似面板播放按鈕（mirror .similar-play-button，桌面 L3255） */
+    .similar-mobile-play-btn {
+        position: absolute;
+        left: 50%;
+        /* 相對 .similar-mobile-cover（position:absolute，子元素 containing block）定位；
+           bottom:12px 置於封面底部中央，對齊桌面 .similar-play-button 位置邏輯 */
+        bottom: 12px;
+        transform: translateX(-50%);
+        width: 44px;
+        height: 44px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        background: var(--overlay-control);
+        backdrop-filter: blur(var(--fluent-blur-light));
+        -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+        color: white;
+        font-size: 1.25rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: var(--fluent-shadow-8);
+        z-index: 12;
+        transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                    border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                    box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    }
+
+    .similar-mobile-play-btn:hover,
+    .similar-mobile-play-btn:active {
+        background: rgba(0, 0, 0, 0.5);
+        border-color: rgba(255, 255, 255, 0.6);
+        box-shadow: var(--fluent-shadow-16);
+    }
+
+    .similar-mobile-play-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .similar-mobile-play-btn:focus-visible {
+        outline: 2px solid var(--star-glow);
+        outline-offset: 2px;
+    }
+
+    /* T4-fix: ghost-fly 飛行期間（img data-ghost-hidden 存在）隱藏播放按鈕，
+       避免 enter 封面尚未落地 / exit 封面已飛走 時按鈕懸空或可點 */
+    .similar-mobile-cover img[data-ghost-hidden] ~ .similar-mobile-play-btn {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* 桌面安全網：即使 flag 殘留（matchMedia reset 未及）也不顯示（mirror 既有 .lightbox-similar-mobile） */
+@media (min-width: 960px) {
+    .similar-mobile-panel {
+        display: none !important;
+    }
+}
+
+/* 83b-T1fix2 (3): iPad / 寬平板 grid 收緊置中（base minmax(0,1fr) 不動，僅 ≥600 覆蓋）。
+ * base 1fr 在寬平板每欄 ~256px 但卡 max-width:120px → 三卡橫向被拉開大留白（owner 真機回饋）。
+ * 固定欄寬 + justify-content:center 讓卡緊靠置中（mirror 女優 picker tablet-fixed 雙軌）。
+ * <600 手機保留 proven 1fr（極窄機零溢出）。 */
+@media (min-width: 600px) and (max-width: 959px) {
+    .similar-mobile-cards {
+        grid-template-columns: repeat(3, 120px);
+        justify-content: center;
+    }
+}
+
+/* 83b-T1fix2 (1a): 行動相似面板開啟期間，把飛行 FlipReplace ghost 抬到 scrim 前方（銳利）。
+ * ghost（burst-picker.js）以 inline style 設 z-index:1000、掛在 document.body → 在面板
+ * scrim（z-index:1502 + backdrop-filter blur）後方 → 飛行全程被模糊。!important 為必須
+ * （覆蓋 inline z-index）。scope 到 body.similar-mobile-active → 女優 picker 共用 ghost
+ * （面板未開、無此 class）完全不受影響。scrim blur 保留（D8 lightbox 遮蔽）。 */
+body.similar-mobile-active [data-picker-ghost] {
+    z-index: 1600 !important;
+    /* 83b-T1fix4: ghost（burst-picker.js）inline 只設 object-fit:cover、無 object-position
+     * → 飛行全程 center-crop；但 cards/封面用 object-position:right center（右半裁切）→ 落地瞬間
+     * center→right snap。補上 right center 讓右半裁切飛行全程一致（如桌面星座）。無 inline
+     * object-position 可覆蓋故不需 !important。scope 到 body.similar-mobile-active → 女優 picker
+     * 共用 ghost（面板未開、無此 class）維持 center-crop 不受影響。 */
+    object-position: right center;
+}
+
+/* 56c-T3fix: Sparkle burst overlay — 10 顆四角星 ring 分佈，GSAP 操作 opacity/scale/rotation
+ * 容器 .sparkle-burst 與 .lightbox-cover 內 <img> 同層 absolute overlay；
+ * inset:0 自動覆蓋封面區（不擴及 metadata），無需 hardcoded size。
+ * pointer-events:none 不擋下層 <img> / cover-actions 互動。
+ */
+.sparkle-burst {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 8;
+    opacity: 0;
+}
+
+.sparkle-star {
+    position: absolute;
+    left: var(--cx);
+    top: var(--cy);
+    width: var(--star-size, 16px);
+    height: var(--star-size, 16px);
+    transform: translate(-50%, -50%);
+    overflow: visible;
+    opacity: 0;
+    will-change: opacity, transform;
+}
+
+.sparkle-star polygon {
+    fill: var(--star-glow);
+    transform-origin: center;
+}
+
+.sparkle-star[data-sparkle-size="lg"] { --star-size: 24px; }
+.sparkle-star[data-sparkle-size="md"] { --star-size: 16px; }
+.sparkle-star[data-sparkle-size="sm"] { --star-size: 10px; }
+
+/* CSS Tooltip — 桌機輔助，觸控裝置不依賴 */
+.lb-action-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    padding: 0.25rem 0.625rem;
+    background: rgba(0,0,0,0.75);
+    color: white;
+    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.lb-action-btn[data-tooltip]:hover::after,
+.lb-action-btn[data-tooltip]:focus-visible::after {
+    opacity: 1;
+}
+
+/* lb-size in lb-meta context */
+.lightbox-metadata .lb-meta .lb-size {
+    font-family: var(--font-mono);
+}
+
+/* Navigation Arrows */
+.lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 56px;
+    height: 56px;
+    border: none;
+    border-radius: 50%;
+    background: var(--overlay-control);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: var(--text-inverse);
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out),
+                transform var(--duration-fast) var(--ease-out);
+    z-index: 10;
+}
+
+.lightbox-nav:hover {
+    /* hover 升階 0.5 (charter §3 個案保留，同 .lightbox-close:hover) */
+    background: rgba(0, 0, 0, 0.5);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.lightbox-nav-prev {
+    left: 2rem;
+}
+
+.lightbox-nav-next {
+    right: 2rem;
+}
+
+/* Lightbox Clickable Links (M3f) */
+.lb-link {
+    color: inherit;
+    text-decoration: none;
+    transition: color var(--duration-fast) var(--ease-out);
+}
+
+.lb-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+/* Tag 連結 - 保留 pill 背景 */
+.lb-tag.lb-link:hover {
+    background: var(--accent);
+    color: var(--surface-0);
+    text-decoration: none;
+}
+
+/* 62b-1: 進階重刮 ⚙ inline 細鈕（lb-details 番號旁）
+ * 與 .lb-link metadata 同層的 inline icon button，非 cover-actions 玻璃圓鈕、非 999px pill。
+ * 視覺對齊 .lb-details muted 文字（color inherit muted），hover → accent；ui-conventions §6 token 不硬編碼。 */
+.lightbox-metadata .lb-rescrape-gear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-left: 4px;             /* micro spacing（§4 micro 子網格）*/
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--fluent-radius-md);   /* 互動小元件 4px（§1）*/
+    background: transparent;
+    color: var(--text-muted);     /* 與番號 muted 文字同色，融入 metadata 行 */
+    font-size: 0.8125rem;         /* icon optical 對齊 0.75rem 番號文字 */
+    line-height: 1;
+    cursor: pointer;
+    vertical-align: baseline;
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.lightbox-metadata .lb-rescrape-gear:hover {
+    color: var(--accent);
+    background: var(--surface-1);
+    border-color: var(--stroke-subtle);
+}
+
+.lightbox-metadata .lb-rescrape-gear:active {
+    color: var(--accent);
+    background: var(--surface-1);
+}
+
+.lightbox-metadata .lb-rescrape-gear:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;          /* stroke / focus 級（§4）*/
+    color: var(--accent);
+    box-shadow: 0 0 0 4px var(--glow-subtle);   /* §6 #5 focus 4px glow */
+}
+
+/* 71b-T1: 單筆刪除常駐 muted icon（info panel，.lb-details size 行末，margin-left:auto 靠右）。
+ * 從 hover overlay .cover-actions 搬進 metadata 行末，與 .lb-rescrape-gear 同尺寸同語言，
+ * 鏡像其 muted 模式，差別只在 hover → danger（不是 accent）。 */
+.lightbox-metadata .lb-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;                                   /* 與 .lb-rescrape-gear 同尺寸，融入 metadata 行 */
+    height: 1.25rem;
+    margin-left: auto;                                /* 推到 .lb-details flex 行末（靠右）*/
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--fluent-radius-md);           /* 互動小元件 4px（§1）*/
+    background: transparent;
+    color: var(--text-muted);                         /* subtle 常駐態 */
+    font-size: 0.8125rem;                             /* icon optical 對齊 0.75rem metadata 文字 */
+    line-height: 1;
+    cursor: pointer;
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.lightbox-metadata .lb-delete-btn:hover {
+    color: var(--color-error-hover);                  /* hover → danger 紅（非 accent）*/
+    background: var(--surface-1);
+    border-color: var(--stroke-subtle);
+}
+
+.lightbox-metadata .lb-delete-btn:active {
+    color: var(--color-error-hover);
+    background: var(--surface-1);
+}
+
+.lightbox-metadata .lb-delete-btn:focus-visible {
+    outline: 2px solid var(--color-error-hover);
+    outline-offset: 2px;                              /* stroke / focus 級（§4）*/
+    color: var(--color-error-hover);
+    box-shadow: 0 0 0 4px var(--glow-subtle);         /* §6 #5 focus 4px glow */
+}
+
+/* Responsive: 小螢幕 */
+@media (max-width: 1024px) {
+    .lightbox-nav {
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .lightbox-content {
+        max-width: 95vw;
+        max-height: 95vh;
+        padding: 1rem;
+    }
+
+    .lightbox-nav {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+}
+
+/* 75a-US4 similar-open 40vh override 已於 83b-T2 移除：similar-open class 不再由 lightbox 使用，
+   行動相似模式已改為獨立全螢幕 .similar-mobile-panel（T1）。 */
+
+/* US5-75b-T8 block 已於 83b-T2 移除：modal-hug（:not(.similar-open) gate 同步去除）接管 width:100%。
+   .lightbox-content .lightbox-cover.has-cover img { width:100%; } 為 regular mobile lightbox 供應 cover fit。 */
+
+/* ==================== Responsive: Toolbar ==================== */
+/* 小螢幕：Toolbar 單欄堆疊 (44c-T8) */
+@media (max-width: 768px) {
+    .showcase-toolbar {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+
+    .toolbar-search {
+        grid-column: 1;
+    }
+
+    .toolbar-controls {
+        grid-column: 1;
+        justify-self: stretch;
+        justify-content: flex-end;
+    }
+
+    /* 單一 .control-group 含 5 icon：允許在極窄視窗下整組折行 */
+    .toolbar-controls .control-group {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+}
+
+/* 75a-US3d: tablet toolbar 769–1023px 銜接規則（舊缺失，補齊斷層）
+ * 佈局策略：搜尋框（col2 1fr）填滿中段、控制區（col3 auto）靠右。
+ * 不強制視覺置中——tablet 寬度下真置中需與 controls 等寬的平衡欄，會擠壓 controls
+ * 致換行/溢出；「搜尋框填滿、controls 靠右」是 tablet 慣例且無溢出風險。col1 auto
+ * 無內容會 collapse 成 0（刻意，非 bug）。Codex P2 採「明確布局策略」解。 */
+@media (min-width: 769px) and (max-width: 1023px) {
+    .showcase-toolbar {
+        grid-template-columns: auto 1fr auto;   /* col1 空佔位(0) | 搜尋框填滿 | 控制區靠右 */
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+    }
+    .toolbar-search {
+        grid-column: 2;
+    }
+    .toolbar-controls {
+        grid-column: 3;
+    }
+}
+
+/* 81-T3 (US-1 / CD-1·CD-3, showcase 單頁)：行動工具列收合/展開 overlay。
+ * ≤480 下 .showcase-toolbar 預設收合（sticky→fixed 移出文件流，封面牆自動上補位、
+ * 不推擠 grid），點 navbar 搜尋 icon（翻轉 $store.ui.toolbarOpen → .mobile-toolbar-open）
+ * 後從 navbar(56px) 下方 slide-down + fade 滑出 overlay。透明 backdrop 接收外部點擊收合。
+ * Token 理由：duration 走 --fluent-duration-fast(167ms)、enter ease 走 --fluent-ease-decel
+ * (curveDecelerateMid，進場專用)；stylelint 禁字面秒數，必走 token。z 階層：navbar 50 <
+ * backdrop 85 < toolbar 90 < lightbox 1000。 */
+@media (max-width: 480px) {
+    .showcase-toolbar {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        z-index: 90;
+        transform: translateY(-100%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform var(--fluent-duration-fast) var(--fluent-ease-decel),
+                    opacity var(--fluent-duration-fast) var(--fluent-ease-decel);
+    }
+
+    .showcase-toolbar.mobile-toolbar-open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* 透明全屏 backdrop（x-show 控制顯隱，點擊收合）：從 navbar 下緣起，不蓋 navbar icon */
+    .mobile-toolbar-backdrop {
+        position: fixed;
+        inset: 56px 0 0 0;
+        z-index: 85;
+        background: transparent;
+    }
+}
+
+/* 81 (US-1 / CD-1, Codex P2 修正)：navbar 搜尋 icon 只在 ≤480px 顯示，與工具列收合 CSS 斷點對齊。
+ * base.html 的 .navbar-search-btn 僅有 lg:hidden（<1024 可見），但收合 overlay CSS 只在 ≤480；
+ * 若不收緊，481–1023px 會看到 icon 但點了無收合反應（spec §3.1：>480px 行為不變）→ 誤導控制。
+ * 此 page-scoped 規則（.navbar-search-btn 只在 showcase {% if page=='showcase' %} 下渲染）把 481+ 隱藏，
+ * 使「icon 可見區」＝「收合 UI 生效區」＝≤480，邊界一致。 */
+@media (min-width: 481px) {
+    .navbar-search-btn {
+        display: none;
+    }
+}
+
+/* ==================== Detail Table Mode ==================== */
+
+/* Table Wrapper */
+.showcase-table-wrapper {
+    padding: 1.5rem;
+}
+
+/* Scroll Container - 小螢幕橫向滾動 */
+.table-scroll-container {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Table Base - DaisyUI .table 強化 */
+.showcase-table-wrapper .table {
+    background: var(--surface-1);
+    border: 1px solid var(--stroke-default);
+    font-size: 0.875rem;
+}
+
+/* Table Header */
+.showcase-table-wrapper .table thead th {
+    background: var(--surface-0);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1rem 0.75rem;
+    border-bottom: 2px solid var(--stroke-default);
+    white-space: nowrap;
+    position: relative;
+}
+
+/* Table Body */
+.showcase-table-wrapper .table tbody td {
+    padding: 0.875rem 0.75rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--stroke-subtle);
+    vertical-align: middle;
+}
+
+/* Clickable Row */
+.table-row-clickable {
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+}
+
+.table-row-clickable:hover {
+    background: var(--glow-subtle) !important; /* 覆蓋 DaisyUI zebra */
+}
+
+/* Column Widths */
+.table-col-index { width: 60px; }
+.table-col-number { width: 140px; }
+.table-col-title { min-width: 250px; max-width: 400px; }
+.table-col-actor { width: 150px; }
+.table-col-maker { width: 120px; }
+.table-col-date { width: 110px; }
+.table-col-tags { width: 200px; }
+.table-col-size { width: 100px; }
+
+/* Cell Styles */
+.table-cell-index {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.table-cell-number {
+    font-family: var(--font-mono);
+}
+
+.table-number-highlight {
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+}
+
+.table-number-highlight:hover {
+    text-decoration: underline;
+}
+
+.table-cell-title {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.table-cell-actor {
+    color: var(--text-secondary);
+}
+
+.table-cell-maker,
+.table-cell-date {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* Tags in Table */
+.table-tags-wrapper {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.table-tag {
+    padding: 0.125rem 0.5rem;
+    background: var(--bg-body);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: var(--radius-pill);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.table-tag-more {
+    padding: 0.125rem 0.5rem;
+    background: var(--glow-subtle);
+    border-radius: var(--radius-pill);
+    font-size: 0.7rem;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* Size Cell */
+.table-size-mono {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Responsive: 小螢幕 */
+@media (max-width: 768px) {
+    .showcase-table-wrapper {
+        padding: 1rem;
+    }
+
+    .showcase-table-wrapper .table {
+        font-size: 0.8rem;
+    }
+
+    .showcase-table-wrapper .table thead th,
+    .showcase-table-wrapper .table tbody td {
+        padding: 0.75rem 0.5rem;
+    }
+}
+
+/* ==================== Text List Mode ==================== */
+
+/* List Wrapper */
+.showcase-list-wrapper {
+    padding: 1.5rem;
+}
+
+/* List Container */
+.showcase-list {
+    list-style: none;
+    background: var(--surface-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+/* List Item - Compact Single Line */
+.list-item {
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--stroke-subtle);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+}
+
+.list-item:last-child {
+    border-bottom: none;
+}
+
+.list-item:hover {
+    background: var(--glow-subtle);
+}
+
+/* Number - Accent + Monospace */
+.list-number {
+    color: var(--accent);
+    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+    min-width: 120px;
+}
+
+/* Title - Primary Text */
+.list-title {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.9375rem;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Actor - Secondary Text with Parentheses */
+.list-actor {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* Responsive: 小螢幕 */
+@media (max-width: 768px) {
+    .showcase-list-wrapper {
+        padding: 1rem;
+    }
+
+    .list-item {
+        padding: 0.75rem 1rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .list-number {
+        min-width: 100px;
+        font-size: 0.8125rem;
+    }
+
+    .list-title {
+        font-size: 0.875rem;
+        flex-basis: 100%;
+    }
+
+    .list-actor {
+        font-size: 0.8125rem;
+        flex-basis: 100%;
+        padding-left: calc(100px + 0.5rem);
+    }
+}
+
+/* ==================== Card Info Expand (M3i) ==================== */
+
+/* 展開面板 — footer 同層，自然撐高卡片 */
+.card-info {
+    padding: 0.5rem 0.75rem 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    border-top: 1px solid var(--stroke-subtle);
+}
+
+.card-info .info-title {
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+    margin-bottom: 0.25rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.card-info .info-row {
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.card-info .info-row b {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.card-info .info-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-fast) var(--ease-out);
+}
+
+.card-info .info-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.card-info .info-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+}
+
+.card-info .info-tags {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.card-info .tag:not(:last-child)::after {
+    content: " / ";
+    color: var(--stroke-subtle);
+}
+
+/* ==================== Light / Dim 主題適配 ==================== */
+/* 使用 theme.css 定義的 CSS 變數，無需額外覆寫 */
+/* --bg-header 已在 theme.css 定義：color-mix(in oklch, var(--color-base-200) 85%, transparent) */
+/* 主題切換時自動過渡（transition 在 theme.css body 定義）*/
+
+/* Dim 模式：降低背景光暈透明度（對齊 design-system.css L18-23） */
+[data-theme="dim"] .showcase-container {
+    background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(var(--ds-glow-rgb), 0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 80% 100%, oklch(55% 0.2 280 / 0.06), transparent),
+        var(--bg-body);
+}
+
+/* ==================== Showcase Footer 三段式 (49a-T4) ==================== */
+/* 取代原 .shortcut-hint：左 count + 中 shortcut + 右 pager */
+
+.showcase-footer {
+    position: fixed;
+    bottom: 0;
+    /* 對齊 .main-content 的 margin-left 模式，避免被 sidebar (z-index 1000) 覆蓋左側 */
+    left: var(--sidebar-width, 200px);
+    right: 0;
+    z-index: 50;
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- token var() with token-derived fallback (200ms = Fluent normal), 2026-05-03 */
+    transition: left var(--fluent-duration-normal, 0.2s) var(--fluent-ease-standard, ease);
+
+    /* 背景 - 使用 Design System token */
+    background: var(--bg-header);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    border-top: 1px solid var(--stroke-subtle);
+
+    /* 間距 */
+    padding: 0.5rem 1rem;
+
+    /* 三段 flexbox；.footer-center 用 absolute 居中（fixed 本身即錨點） */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* sidebar collapsed 時 footer 跟著縮 left（同 .main-content 模式） */
+body.sidebar-collapsed .showcase-footer {
+    left: var(--sidebar-collapsed-width, 60px);
+}
+
+/* Left: count pill */
+.footer-left {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0; /* 不縮減，解耦 left/right 讓 center absolute 居中 */
+}
+
+.footer-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px; /* micro: icon + 數字緊鄰，charter §4 micro 子網格 */
+    white-space: nowrap;
+}
+
+.footer-count i {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.footer-count b {
+    font-size: 1.0625rem;   /* 17px 數字主導 */
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-weight: 700;       /* 600 → 700 */
+    padding: 0 2px;
+    line-height: 1;         /* 避免大字撐高 footer */
+}
+
+/* Center: shortcut hint — absolute 居中，解耦 left/right */
+.footer-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: center;
+    pointer-events: none; /* 不擋 flex 兩側點擊 */
+}
+
+.footer-center .hint-text {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Keyboard Key Styling — 對齊原 .shortcut-hint kbd 視覺 */
+.showcase-footer kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    padding: 0.125rem 0.375rem;
+
+    background: var(--surface-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--fluent-shadow-2);
+
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+/* Right: pager pill */
+.footer-right {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.footer-pager {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    position: relative;
+}
+
+.pager-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    background: transparent;
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+}
+
+.pager-btn:hover:not(:disabled) {
+    background: var(--glow-subtle);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.pager-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pager-current {
+    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    padding: 0 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: color var(--duration-fast) var(--ease-out);
+}
+
+.pager-current:hover {
+    color: var(--accent);
+}
+
+.pager-current b {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* 響應式：≤991.98px sidebar 隱藏，footer 也要回到 left:0（對齊 .main-content margin-left:0）*/
+@media (max-width: 991.98px) {
+    .showcase-footer,
+    body.sidebar-collapsed .showcase-footer {
+        left: 0;
+    }
+}
+
+/* 響應式：中段 shortcut hint — 768px 以下隱藏 */
+@media (max-width: 767px) {
+    .footer-center {
+        display: none;
+    }
+}
+
+/* 響應式：手機 <640px 只留右側 pager */
+@media (max-width: 640px) {
+    .showcase-footer {
+        justify-content: flex-end;
+        padding: 0.4rem 0.75rem;
+    }
+    .footer-left,
+    .footer-center {
+        display: none;
+    }
+    .showcase-container {
+        /* layout 對齊 fixed footer 真實渲染高度 (charter §4 例外) */
+        padding-bottom: 44px;
+    }
+}
+
+/* label 文字（位/部/共 X 頁 等）視覺降階 */
+.footer-count > span {
+    font-size: 0.75rem;   /* 12px */
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+/* 女優模式：數字改粉色識別 */
+.footer-count--actress b {
+    color: var(--accent-pink);
+}
+
+/* 搜尋詞 <b> — 壓回正常字體，避免被 mono 17px 700 渲染 */
+.footer-count b.footer-search-term {
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: 600;
+    color: var(--text-secondary);
+    line-height: inherit;
+    /* 限制搜尋詞長度，避免 footer-left 無上限撐寬撞上 absolute center（Codex P2） */
+    display: inline-block;
+    max-width: clamp(80px, 16vw, 200px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* ==================== Background Atmosphere ==================== */
+
+/* 噪點紋理覆蓋層（對齊 design-system.css L93-101） */
+.showcase-container::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.02;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* 確保內容層在噪點紋理之上 */
+/* 注意：.showcase-toolbar 已有 position:sticky + z-index:100，不需加入 */
+.showcase-status-bar,
+.showcase-grid,
+.showcase-table-wrapper,
+.showcase-list-wrapper {
+    position: relative;
+    z-index: 1;
+}
+
+/* ==================== Sample Gallery (T7) ==================== */
+
+/* Overlay — 初始隱藏，高於 showcase-lightbox（z-index: 1000）*/
+.sample-gallery {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--overlay-gallery);
+    backdrop-filter: blur(var(--fluent-blur));
+    -webkit-backdrop-filter: blur(var(--fluent-blur));
+
+    /* 初始隱藏 */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard),
+                visibility var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.sample-gallery.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: all;
+    transition-delay: 0s;
+}
+
+/* 主圖包裝 */
+.sample-gallery .sg-main-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    max-height: calc(100vh - 100px);
+    width: 100%;
+    padding: 0 3rem;
+}
+
+/* 主圖 */
+.sample-gallery .sg-main-img {
+    max-width: 100%;
+    max-height: calc(100vh - 160px);
+    object-fit: contain;
+    display: block;
+    border-radius: var(--fluent-radius-md);
+    user-select: none;
+}
+
+/* 縮圖列 */
+.sample-gallery .sg-thumbs {
+    display: flex;
+    flex-direction: row;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    height: 80px;
+    overflow-x: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.sample-gallery .sg-thumbs::-webkit-scrollbar {
+    height: 4px;
+}
+
+.sample-gallery .sg-thumbs::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: var(--fluent-radius-sm);
+}
+
+/* 縮圖按鈕 */
+.sample-gallery .sg-thumb-btn {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    padding: 0;
+    background: none;
+    border: 2px solid transparent;
+    border-radius: var(--fluent-radius-md);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                opacity var(--fluent-duration-fast) var(--fluent-ease-standard);
+    opacity: 0.6;
+}
+
+.sample-gallery .sg-thumb-btn:hover {
+    opacity: 0.9;
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 縮圖 active 高亮 */
+.sample-gallery .sg-thumb-active {
+    border-color: var(--accent);
+    opacity: 1;
+}
+
+.sample-gallery .sg-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+}
+
+/* 計數器 */
+.sample-gallery .sg-counter {
+    position: absolute;
+    top: 1rem;
+    right: 4rem;
+    background: var(--overlay-gradient);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.8rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-pill);
+    pointer-events: none;
+    user-select: none;
+}
+
+/* 關閉按鈕 */
+.sample-gallery .sg-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    background: var(--overlay-control);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                color var(--fluent-duration-fast) var(--fluent-ease-standard);
+    font-size: 1rem;
+    z-index: 10;
+}
+
+.sample-gallery .sg-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 1);
+}
+
+/* 左右導航箭頭 */
+.sample-gallery .sg-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--overlay-control);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    width: 2.5rem;
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                color var(--fluent-duration-fast) var(--fluent-ease-standard);
+    font-size: 1.1rem;
+    z-index: 10;
+    /* 避免縮圖列遮到箭頭 */
+    margin-bottom: 40px;
+}
+
+.sample-gallery .sg-nav:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 1);
+}
+
+.sample-gallery .sg-prev {
+    left: 0.75rem;
+}
+
+.sample-gallery .sg-next {
+    right: 0.75rem;
+}
+
+/* 入口按鈕（在 lightbox metadata .lb-header 內，pill 風格） */
+.sg-open-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--glow-primary);
+    background: var(--glow-subtle);
+    color: var(--accent);
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard);
+    white-space: nowrap;
+}
+
+.sg-open-btn:hover {
+    background: var(--glow-primary);
+    border-color: var(--accent);
+}
+
+/* fetch-samples-btn：鏡像 sg-open-btn pill 結構，藍色差異化（--accent-secondary = Apple Blue） */
+.fetch-samples-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in oklch, var(--accent-secondary) 40%, transparent);
+    background: color-mix(in oklch, var(--accent-secondary) 15%, transparent);
+    color: var(--accent-secondary);
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard);
+    white-space: nowrap;
+}
+
+.fetch-samples-btn:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--accent-secondary) 30%, transparent);
+    border-color: var(--accent-secondary);
+}
+
+/* Dark theme (dim) calibration — feature/69 T4: 近黑底吃光低% tint，提 tint% + border%。
+   mix partner 用 transparent（同 base 慣例，色相安全）。accent-secondary 無 dim override
+   （Apple Blue 暗底可見），只補背景物理隱形。
+   hover override 必要：base hover (3 class) specificity 高於 dim resting，否則 hover 反更淡。 */
+[data-theme="dim"] .fetch-samples-btn {
+    background: color-mix(in oklch, var(--accent-secondary) 25%, transparent);
+    border-color: color-mix(in oklch, var(--accent-secondary) 55%, transparent);
+}
+
+[data-theme="dim"] .fetch-samples-btn:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--accent-secondary) 40%, transparent);
+}
+
+.fetch-samples-btn:disabled {
+    filter: grayscale(1);
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* C21 guard：GSAP 動畫期間禁用 sg-main-img 的 CSS transition */
+.sample-gallery .sg-main-img.gsap-animating {
+    transition: none !important;
+}
+
+/* === User Tags in Lightbox (T4) === */
+
+/* 整個 user tags 容器 — flex wrap，與 lb-tags 間距一致 */
+.lightbox-metadata .lb-user-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+/* 單個 user tag badge — accent 色背景，與 scraper tag 明顯區分 */
+.lb-user-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.15rem 0.5rem;
+    background: var(--accent);
+    color: var(--color-primary-content);
+    border-radius: var(--radius-pill);
+    font-size: 0.6875rem;
+}
+
+/* × 刪除按鈕 */
+.lb-tag-remove {
+    cursor: pointer;
+    opacity: 0.7;
+    line-height: 1;
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 0.75rem;
+}
+
+.lb-tag-remove:hover {
+    opacity: 1;
+}
+
+/* + 新增按鈕 — dashed border */
+.lb-tag-add-btn {
+    /* chip optical 6px (charter §4 micro chip 級例外保留) */
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    background: transparent;
+    border: 1px dashed var(--text-muted);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+}
+
+.lb-tag-add-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* 輸入框包裝 */
+.lb-tag-input-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+/* 輸入框 */
+.lb-tag-input {
+    width: 80px;
+    padding: 1px 4px;
+    font-size: 0.7rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+/* ✓ 確認 / ✕ 取消按鈕 */
+.lb-tag-confirm,
+.lb-tag-cancel {
+    padding: 0 4px;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.lb-tag-confirm {
+    color: var(--color-success);
+}
+
+.lb-tag-cancel {
+    color: var(--color-error);
+}
+
+/* T3: 無封面卡片 overlay 常駐顯示（pointer-events 必須補 auto，否則不可點擊）*/
+:is(#ds-gallery-components, .ds-gallery-composition)
+.av-card-preview.missing-cover
+.av-card-preview-overlay {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ==================== Phase 44a T4: Actress Lightbox ==================== */
+.actress-lightbox-meta .actress-lb-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.actress-lightbox-meta .lb-name-en { font-size: 0.9em; opacity: 0.7; }
+.actress-lightbox-meta .lb-actress-core { font-size: 0.95em; margin: 8px 0; opacity: 0.85; }
+.actress-lightbox-meta .lb-chips-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.actress-lightbox-meta .lb-chips-more {
+    cursor: pointer; font-size: 0.85em; padding: 2px 8px;
+    border-radius: var(--radius-md); border: 1px solid currentColor; opacity: 0.6;
+}
+.actress-lightbox-meta .lb-chips-more:hover { opacity: 1; }
+.actress-lightbox-meta .lb-actress-urls { margin-top: 8px; }
+.actress-lightbox-meta .lb-actress-urls a { display: block; font-size: 0.8em; word-break: break-all; opacity: 0.7; }
+.actress-lightbox-meta .lb-actress-urls a:hover { opacity: 1; text-decoration: underline; }
+
+/* Actress Lightbox no-photo placeholder */
+.actress-lb-cover-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    min-width: min(60vw, 600px); min-height: min(58vh, 460px);
+}
+
+/* lb-chips-more shared rule for video lightbox tags +N */
+.lightbox-metadata .lb-chips-more {
+    cursor: pointer; font-size: 0.85em; padding: 2px 8px;
+    border-radius: var(--radius-md); border: 1px solid currentColor; opacity: 0.6;
+}
+
+/* ==================== Mode Toggle Capsule (44c-T4) ==================== */
+
+.spotlight-search .mode-toggle {
+    position: absolute;
+    left: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-pill);
+    padding: 2px;
+}
+
+.mode-toggle-btn {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.mode-toggle-btn.active {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: var(--text-primary);
+    box-shadow: var(--fluent-shadow-2);
+}
+
+.mode-toggle-btn:not(.active):hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* Variant: mode-toggle — wider left slot for capsule toggle (44c-T8) */
+.spotlight-search--mode-toggle {
+    --spotlight-left-slot: 5.5rem;
+    --spotlight-right-slot: 8.5rem;
+}
+.lightbox-metadata .lb-chips-more:hover { opacity: 1; }
+
+/* ==================== Phase 44b T3: Hero Card ==================== */
+
+/* Grid Mode Hero Card — cursor pointer */
+.hero-card {
+    cursor: pointer;
+}
+
+/* Hero Card 圖片：contain 完整顯示（不裁切女優照片） */
+:is(#ds-gallery-components, .ds-gallery-composition) .hero-card .av-card-preview-img {
+    background: var(--bg-card, rgba(0, 0, 0, 0.05));
+}
+
+:is(#ds-gallery-components, .ds-gallery-composition) .hero-card .av-card-preview-img img {
+    object-fit: contain;
+    transform-origin: center center;
+}
+
+/* Hero Card 愛心 overlay 常駐（已收藏時不需 hover） */
+.hero-card .av-card-preview-overlay.always-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 已收藏愛心按鈕 — 紅色，可點擊（浮動愛心粒子效果） */
+.hero-card .btn-glass-circle.is-favorite {
+    color: var(--color-favorite);
+    cursor: pointer;
+}
+
+/* No-cover fallback placeholder（Hero Card 圖片載入失敗） */
+.av-card-no-cover {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    gap: 0.25rem;
+}
+
+.av-card-no-cover i {
+    font-size: 1.5rem;
+    opacity: 0.4;
+}
+
+/* 49a-T3: Actress Lightbox alias label（Row 3 chips 前方淡色標籤 + tooltip） */
+.lb-chips-row .lb-chips-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-right: 4px;
+    cursor: default;
+    align-self: center;
+}
+
+/* ── 49b T4cd / 49c T5fix.B (V2 viewport overlay)：Actress Photo Picker ── */
+.actress-picker-overlay {
+    position: fixed;
+    z-index: 1100;
+    bottom: 5vh;
+    left: max(10vw, calc(50vw - 600px));
+    width: min(80vw, 1200px);
+    pointer-events: auto;
+    padding: 12px;
+    box-sizing: border-box;          /* 顯式宣告，防 Tailwind preflight 失效時 width 計算偏差（gotchas） */
+}
+
+.actress-picker-overlay .picker-candidates-grid {
+    /* desktop ≥1280：grid N 固定 col 取代 flex justify-content:center
+     * --picker-cols 由 JS 在 SSE 收齊後依實際 count 設（_burstAllPickerCandidates）
+     * fallback 6（首次 burst 前 / partial 階段）。
+     * tablet/mobile 由 media query 自行覆蓋為 repeat(3, ...)，不引用此 var，
+     * 因此 desktop→tablet resize 時 inline var 不會洩漏蓋掉媒體查詢規則。
+     */
+    display: grid;
+    grid-template-columns: repeat(var(--picker-cols, 6), 150px);
+    justify-content: center;
+    gap: 20px;
+    overflow-x: visible;             /* 覆寫全域 overflow-x: auto */
+    overflow-y: visible;
+    margin-top: 0;                   /* V2 不再 -38px overlap */
+}
+
+.actress-picker-overlay .picker-candidate-card {
+    width: 150px;
+    aspect-ratio: 4 / 5;             /* 188px tall on 150 wide */
+    height: auto;                    /* 覆寫全域 height: 140px */
+    border-radius: var(--radius-md);
+    flex: none;                      /* grid 不需 flex，覆寫全域 flex: 0 0 100px */
+}
+
+.actress-picker-overlay .picker-candidate-img {
+    object-fit: cover;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-md);
+}
+
+.picker-current-source {
+    font-size: 0.85em;
+    opacity: 0.8;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.picker-candidates-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding: 4px 0;
+}
+
+/* 候選卡：opacity 0 + transition none（GSAP-only 防 1-frame paint glitch） */
+.picker-candidate-card {
+    position: relative;
+    flex: 0 0 100px;
+    width: 100px;
+    height: 140px;
+    border-radius: var(--fluent-radius-lg);
+    overflow: hidden;
+    cursor: pointer;
+    opacity: 0;
+    transition: none;
+    background: rgba(0, 0, 0, 0.2); /* sub-tier dim hint, below §3 4-stop overlay range */
+}
+
+.picker-candidate-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.picker-source-badge {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 8px;
+    background: var(--overlay-badge);
+    font-size: 0.7em;
+    color: var(--text-inverse);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.picker-check-icon {
+    opacity: 0;
+    margin-right: 3px;
+    font-size: 0.6rem;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.picker-candidate-card:hover .picker-source-badge {
+    background: var(--color-success);
+    color: var(--text-inverse);
+}
+
+.picker-candidate-card:hover .picker-check-icon {
+    opacity: 1;
+}
+
+.picker-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    font-size: 0.9em;
+    opacity: 0.7;
+    gap: 8px;
+}
+
+.picker-loading i {
+    font-size: 1.5em;
+}
+
+.picker-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    text-align: center;
+    opacity: 0.6;
+}
+
+.picker-empty i {
+    font-size: 2em;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
+
+.picker-empty p {
+    margin: 4px 0;
+    font-size: 0.9em;
+}
+
+.picker-empty-hint {
+    font-size: 0.8em;
+    opacity: 0.7;
+    margin-top: 8px;
+}
+
+/* Phase 51 T1.4 §6 5 檢查點 — picker-refresh-btn（非 DaisyUI，照 §6 精神對齊）
+ * Radius: var(--fluent-radius-md) ✅（T1.2 已 token 化）
+ * Surface: rgba(255,255,255,0.1) 白 tint（floating-control 薄膜語義，§3 觀察項保留）
+ * Stroke: 1px solid rgba(255,255,255,0.2)（width/style + tint border）
+ * Shadow: dual-layer inset + var(--fluent-shadow-2)；hover 升 var(--fluent-shadow-4)
+ * Focus: 2px outline + 4px glow（charter §6 Checkpoint 5 精確規格）
+ */
+.picker-refresh-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--fluent-radius-md);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- inset highlight composed with Fluent shadow token (default state), 2026-05-03 */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--fluent-shadow-2);
+    cursor: pointer;
+    color: var(--text-inverse);
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.picker-refresh-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- inset highlight composed with Fluent shadow token (hover state), 2026-05-03 */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--fluent-shadow-4);
+    transform: translateY(-1px);
+}
+
+.picker-refresh-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    /* stylelint-disable-next-line declaration-property-value-disallowed-list -- inset highlight + Fluent shadow + glow ring (focus-visible), 2026-05-03 */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--fluent-shadow-2), 0 0 0 4px var(--glow-primary);
+}
+
+.picker-refresh-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.picker-refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Cover-actions 淡出（picker open 時） */
+.lightbox-cover .cover-actions[data-picker-open="true"] {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+/* 49c T5fix.B：tablet 兩行 wrap (768–1279px) */
+@media (min-width: 768px) and (max-width: 1279px) {
+    /* 49c Codex T5fix.B follow-up：強制 3 column 防 1024 5+1 / 1180-1279 6 卡單行
+     * 違反「tablet 兩行」contract（flex-wrap 在大寬度不會 wrap）。grid 明確契約。
+     */
+    .actress-picker-overlay .picker-candidates-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 140px);
+        justify-content: center;
+        gap: 16px;
+    }
+    .actress-picker-overlay .picker-candidate-card {
+        width: 140px;
+        flex: none;        /* grid 不需 flex */
+    }
+}
+
+/* 49c T5fix.B：mobile bottom-sheet (<768px)，從 <640 擴大涵蓋 phone + portrait tablet */
+@media (max-width: 767px) {
+    .actress-picker-overlay {
+        position: fixed;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: auto !important;
+        width: 100% !important;
+        z-index: 1100;
+        background: var(--surface-2);
+        border-top: 1px solid var(--stroke-default);
+        padding: 0.75rem 1rem;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        max-height: 50vh;
+        overflow-y: auto;
+    }
+    /* 49c T6 follow-up：mobile 也用 grid + repeat(3, minmax(0, 1fr)) 強制 3+3，
+     * 同 tablet pattern。flex-wrap 在 600-700 寬度範圍會 wrap 成 4+2 不平衡
+     * （相同 Codex P2 echo）。minmax(0, 1fr) 在極窄 phone (320px) 自動縮小卡片不溢出。
+     */
+    .actress-picker-overlay .picker-candidates-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        justify-content: center;
+        gap: 10px;
+    }
+    .actress-picker-overlay .picker-candidate-card {
+        width: 100%;
+        max-width: 130px;
+        flex: none;
+        justify-self: center;
+    }
+    .actress-picker-overlay .picker-current-source {
+        position: static;
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        color: inherit;
+        padding: 0;
+        margin-bottom: 8px;
+        pointer-events: auto;
+    }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.bi.spin,
+.picker-refresh-btn i.spin {
+    animation: spin 1s linear infinite;
+}
+
+/* ==================== Phase 50 T5 §6 5 檢查點 — DaisyUI Component Override ==================== */
+/* Fluent 覆寫 .showcase-container 內 DaisyUI .btn / .input（charter §6 5 檢查點：radius/surface/stroke/shadow/hover-focus）*/
+/* CD-4 限制：scoped 在 .showcase-container 內，不影響其他頁面 */
+/* P1b fix: 補齊 Stroke token、Surface token、修正 Focus 為 2px outline + 4px glow（charter §6） */
+
+/* §6 Checkpoint 1 Radius: var(--fluent-radius-md) */
+/* §6 Checkpoint 2 Surface: DaisyUI variant 提供 .btn background；.input 補 var(--surface-1) */
+/* §6 Checkpoint 3 Stroke: border var(--stroke-default) + inset 0 1px 0 dual-layer 內框 */
+/* §6 Checkpoint 4 Shadow: var(--fluent-shadow-2)，hover 升 --fluent-shadow-4 */
+/* §6 Checkpoint 5 Hover/Focus: hover 升 shadow + translateY；focus 2px outline + 4px glow */
+
+.showcase-container .btn {
+    border-radius: var(--fluent-radius-md);
+    /* Stroke: width/style only — 保留 DaisyUI variant border-color (.btn-outline.btn-primary 等) */
+    border-width: 1px;
+    border-style: solid;
+    /* Shadow: 底階 + dual-layer 內框 */
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-2);
+    transition:
+        background var(--fluent-duration-fast) var(--fluent-ease-standard),
+        border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+        box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard),
+        transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.showcase-container .btn:hover:not(:disabled) {
+    /* hover 不覆寫 border-color，DaisyUI variant 自管 (.btn-outline.btn-primary primary 強調保留) */
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 12%, transparent),
+        var(--fluent-shadow-4);
+    transform: translateY(-1px);
+}
+
+.showcase-container .btn:focus-visible {
+    /* Focus: 2px outline + 4px glow（charter §6 Checkpoint 5 精確規格） */
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-2),
+        0 0 0 4px var(--glow-primary);
+}
+
+.showcase-container .btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-2);
+}
+
+.showcase-container .input {
+    border-radius: var(--fluent-radius-md);
+    /* Surface: 輸入框用 surface-1 基底（charter §6 Checkpoint 2） */
+    background: var(--surface-1);
+    /* Stroke: width/style only — 保留 DaisyUI .input-bordered variant border-color */
+    border-width: 1px;
+    border-style: solid;
+    /* Shadow: 輸入框底階（charter §6 Checkpoint 4） */
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-2);
+    transition:
+        border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+        box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.showcase-container .input:focus,
+.showcase-container .input:focus-visible {
+    /* Focus: 2px outline + 4px glow（charter §6 Checkpoint 5 精確規格） */
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-color: var(--accent);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-2),
+        0 0 0 4px var(--glow-primary);
+}
+
+/* ─── 57c-T4: Similar Stage — fullscreen takeover (z-index:1501) ─────────── */
+
+/* fullscreen backdrop（spec §1 CD-56C-1）*/
+.similar-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 1501;  /* > sample-gallery 1500 > showcase-lightbox 1000 */
+    /* 56c-T4: 星空 backdrop 全屏鋪滿（從 .similar-stage-inner 搬上來，
+       避免 inner box 與外圍 backdrop 兩種灰色） */
+    background:
+        radial-gradient(ellipse at 30% 40%, color-mix(in oklch, var(--star-line-bright) 8%, transparent) 0%, transparent 55%),
+        radial-gradient(ellipse at 70% 65%, color-mix(in oklch, var(--star-glow) 6%, transparent) 0%, transparent 50%),
+        var(--color-base-200);
+
+    /* 初始隱藏（與 sample-gallery 一致 pattern） */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-standard),
+                visibility var(--fluent-duration-fast) var(--fluent-ease-standard);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 56c-T4: vignette 覆蓋整個 viewport（從 .similar-stage-inner::before 搬上來） */
+.similar-stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: radial-gradient(ellipse at 50% 50%,
+        transparent 35%,
+        rgba(0, 0, 0, 0.45) 100%);
+}
+
+.similar-stage.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: all;
+    transition-delay: 0s;
+}
+
+/* inner stage 960×620 design-space（spec §1 CD-56C-11）
+   data-theme="dim" 強制 dust dim variant（搬遷自 motion-lab .clip-lab-stage[data-theme="dim"]） */
+.similar-stage-inner {
+    position: relative;
+    width: 960px;
+    height: 620px;
+    overflow: visible;
+    /* 56c-T4: 純座標容器，背景/box-shadow/border-radius 已搬到 .similar-stage 全屏層 */
+    /* 56c-T4: 視窗等比放大充滿 viewport（design-space 不動，視覺層 scale） */
+    transform: scale(var(--similar-stage-scale, 1));
+    transform-origin: center center;
+}
+
+/* X 關閉按鈕（backdrop scope 不在 inner 內，玻璃配方對齊 .lb-action-btn） */
+.similar-close-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 10;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    background: var(--overlay-control);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.similar-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 1);
+}
+
+.similar-close-btn:focus-visible {
+    outline: 2px solid var(--star-glow);
+    outline-offset: 2px;
+}
+
+/* lightbox 內容隱藏（既有 takeover pattern） */
+.showcase-lightbox.similar-mode-active .lightbox-content {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+}
+
+/* ── Dust particle layer（搬遷自 .clip-lab-dust）─────────────────────────────
+ * indirection 模型：inline 寫 --dust-base-seed，CSS rule 用 --dust-base 計算
+ * resolved value，dim selector 才能 override --dust-base 而非永遠輸給 inline */
+.similar-stage-dust {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.7;
+    z-index: 0;
+}
+
+.similar-stage-dust circle {
+    --dust-base: var(--dust-base-seed, 0.08);
+    fill: var(--star-line-fade);
+    opacity: var(--dust-base);
+    animation: dust-twinkle var(--dust-cycle, 6s) ease-in-out var(--dust-delay, 0s) infinite;
+}
+
+@keyframes dust-twinkle {
+    0%, 100% { opacity: var(--dust-base); }
+    50%      { opacity: calc(var(--dust-base) * 1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .similar-stage-dust circle {
+        animation: none;
+        opacity: var(--dust-base);
+    }
+}
+
+/* dim theme override（similar-stage 永遠暗底 — Constellation 是星空場景） */
+[data-theme="dim"] .similar-stage-dust circle,
+.similar-stage .similar-stage-dust circle {
+    fill: var(--star-line-bright);
+    --dust-base: 0.10;
+}
+
+/* T6 Hover constellation bright state — corridor dust 切到 .in-constellation
+   覆寫 stylesheet 級 --dust-base（不動 inline --dust-base-seed）；
+   keyframe dust-twinkle-bright 引用 var(--dust-base)，自動拉高 peak。 */
+.similar-stage-dust circle.in-constellation {
+    --dust-base: 0.70;
+    --dust-halo-opacity: 0.45;
+    filter: drop-shadow(0 0 4px rgba(232, 201, 137, var(--dust-halo-opacity)));
+    transition: filter var(--fluent-duration-slow) var(--fluent-ease-standard);
+    animation-name: dust-twinkle-bright;
+}
+
+@keyframes dust-twinkle-bright {
+    0%, 100% { opacity: var(--dust-base); }
+    50%      { opacity: 1.00; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .similar-stage-dust circle.in-constellation {
+        animation: none;
+        opacity: var(--dust-base);
+    }
+}
+
+/* T7 pulse 期間暫停 CSS dust-twinkle，讓 GSAP inline opacity / scale 生效 */
+.similar-stage-dust circle.dust-pulsing {
+    animation: none;
+}
+
+/* ── Rails（搬遷自 .clip-lab-rails / .clip-lab-rail / .clip-lab-rail-sweep）── */
+.similar-stage-rails {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 2;
+}
+
+.similar-rail {
+    stroke: var(--star-line-fade);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-opacity: 0;
+    fill: none;
+    /* 注意：禁加 transition: stroke-opacity（gotchas C21）— GSAP 直接動，
+       CSS transition 會與 GSAP tick 賽跑，抹平 ease */
+}
+
+.similar-rail.rail--bright {
+    stroke: var(--star-line-bright);
+    stroke-opacity: 0.85;
+}
+
+.similar-rail.rail--neighbor {
+    stroke: var(--star-line-bright);
+    stroke-opacity: 0.55;
+}
+
+.similar-rail-sweep {
+    stroke: var(--star-line-bright);
+    stroke-width: 2;
+    stroke-linecap: round;
+    fill: none;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Rail 初始隱藏狀態（搬遷自 motion-lab .rail--hidden，namespaced 避免污染全域）
+   SVG <line> opacity 影響顯示；pointer-events 對 SVG 預設無關但保留無害 */
+.similar-rail.rail--hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ── Slot cards（搬遷自 .clip-lab-slot）─────────────────────────────────
+ * 注意：禁加 transition: transform（gotchas C21）— hover scale 走 GSAP，
+ * CSS transition 會與 GSAP tick 賽跑。box-shadow 走 CSS transition 安全。 */
+.similar-slot {
+    position: absolute;
+    width: 107px;
+    height: 150px;
+    transform: translate(-50%, -50%);
+    background: var(--color-base-100);
+    border-radius: var(--fluent-radius-xl);
+    box-shadow: var(--fluent-shadow-4);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    --card-glow-opacity: 0;
+    overflow: visible;
+    border: 1px solid color-mix(in oklch, var(--color-base-content) 15%, transparent);
+    transition: box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    z-index: 10;
+}
+
+.similar-slot::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: var(--fluent-radius-xl);
+    background: radial-gradient(ellipse at 50% 50%,
+        color-mix(in oklch, var(--star-glow) 55%, transparent) 0%,
+        transparent 70%);
+    opacity: var(--card-glow-opacity);
+    pointer-events: none;
+    z-index: -1;
+    will-change: opacity;
+}
+
+.similar-slot:hover {
+    box-shadow: var(--fluent-shadow-8);
+}
+
+.similar-slot-img {
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: right center;
+    display: block;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+/* 56c-T4fix7: dim overlay — ::after opacity tween via --slot-dim-opacity CSS var。
+   取代 filter: brightness() 兩段式 race，消除 enter→enter 亮閃。
+   gotchas C21：transition: none — 動畫純走 GSAP CSS var tween，禁加 CSS transition。
+   z-index 1 蓋在 .similar-slot-img (z=0) 之上；::before halo 既有 z=-1 不受影響。 */
+.similar-slot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: rgba(0, 0, 0, 0.45);
+    opacity: var(--slot-dim-opacity, 0);
+    pointer-events: none;
+    z-index: 1;
+    transition: none;
+}
+
+/* Slot 初始隱藏狀態（搬遷自 motion-lab .slot--hidden，namespaced 避免污染全域） */
+.similar-slot.slot--hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 56c-T4: main image visual center anchor — single source of truth
+   for ghost-fly enter target rect。invisible / non-interactive，
+   design-space 480/310 200×250 居中，吃 .similar-stage-inner 的 transform: scale */
+.similar-main-anchor {
+    position: absolute;
+    left: 480px;
+    top: 310px;
+    width: 200px;
+    height: 250px;
+    transform: translate(-50%, -50%);
+    transform-origin: center center;
+    pointer-events: none;
+    opacity: 0;
+    /* z-index 不指定 — 純座標 anchor 不需參與堆疊 */
+}
+
+/* 56c-T4: similar mode 停留期間的 main image — .similar-stage-inner 子元素，
+   與 8 cards 走同一 design-space layout 路徑，resize 自動跟隨 inner scale。
+   codex 改良：不用 transform: translate(-50%,-50%)，避免與 GSAP scale tween
+   混疊；改 left:380 top:185（中心點數學等價於 design-space (480, 310)）。
+   codex P1-2：pointer-events 改 auto（從 _buildSimilarMainStatic 接 click → onSimilarMainImgClick），
+   同 stacking context 內 z=11 < play button z=12，play button 仍在上層命中正確。 */
+.similar-main-static {
+    position: absolute;
+    left: 380px;
+    top: 185px;
+    width: 178px;
+    height: 250px;
+    object-fit: cover;
+    object-position: right center;  /* 沿用 cropMode: 'right-half' 視覺一致 */
+    transform-origin: center center;
+    border-radius: var(--fluent-radius-lg);
+    box-shadow: var(--fluent-shadow-16);
+    z-index: 11;  /* > .similar-slot z=10；play button z=12 > 11 → button 在上 */
+    cursor: pointer;
+}
+
+/* 56c-T4 (codex P1-2)：.similar-main-overlay 已移除。
+   原本是 .similar-stage 直屬子層 z=2001，會在 root stacking context 蓋住
+   被 .similar-stage-inner transform stacking context 囚禁的 play button (z=12)，
+   導致點擊 play button 實際打到 overlay → onSimilarMainImgClick → closeSimilarMode，
+   而非 playSimilarMainVideo。改用 main static 直接接 click（同 inner stacking 內，
+   play button z=12 仍在 main static z=11 之上），點擊命中正確。 */
+
+/* 56c-T4: play button 在 .similar-stage-inner 內 design-space coords，
+   位置 main image (480,310) 下方中央 (480,410)；inverse scale 抵消 inner
+   transform: scale，維持 44×44 視覺尺寸；對齊 lightbox cover 內 play
+   button 的視覺語意（在主圖下方而非 viewport 下方） */
+.similar-play-button {
+    position: absolute;
+    left: 480px;
+    top: 410px;
+    transform: translate(-50%, -50%) scale(calc(1 / var(--similar-stage-scale, 1)));
+    transform-origin: center center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 50%;
+    background: var(--overlay-control);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: white;
+    font-size: 1.25rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--fluent-shadow-8);
+    z-index: 12;  /* > .similar-main-static z=11 (inner stacking)；ghost 飛行期間蓋過 acceptable */
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.similar-play-button:hover {
+    background: rgba(0, 0, 0, 0.5);
+    border-color: rgba(255, 255, 255, 0.6);
+    box-shadow: var(--fluent-shadow-16);
+    transform: translate(-50%, -50%) scale(calc(1.1 / var(--similar-stage-scale, 1)));
+}
+
+.similar-play-button:focus-visible {
+    outline: 2px solid var(--star-glow);
+    outline-offset: 2px;
+}
+
+/* < 960px：similar-stage-inner 寬 960px，視窗不足以完整顯示
+   56c-T7 才實作手機 < 768px 降級（x-collapse 平面化）；本 task 桌面優先，
+   < 960px 暫時隱藏（沿用 motion-lab 慣例） */
+@media (max-width: 959px) {
+    .similar-stage-inner { display: none; }
+}
+
+/* ==================== 67-A1: Cover Loading UX — skeleton/shimmer + per-image 淡入 + PRM guard ==================== */
+/* skeleton/shimmer 複製自 search.css:682-702，補 overlay 定位：showcase 的封面 img 淡入時 opacity:0
+   仍佔 flow（CD-67-3 用 x-show=cover_url + _imgLoaded 淡入，非互斥 x-show）→ skeleton 須 absolute overlay。
+   容器 aspect-ratio:3/2 由 theme.css:1017 提供、img height:100% 撐滿 → A1 不重複宣告（G1：無 height 互斥、不需 height:auto）。
+   容器 position:relative（theme.css:1016）+ overflow:hidden（:1018）→ overlay 定位 context + 圓角裁切皆現成。 */
+.av-card-preview-img .skeleton-cover {
+    position: absolute;
+    inset: 0;
+    background: var(--color-base-300);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--color-base-300) 25%,
+        var(--color-base-200) 50%,
+        var(--color-base-300) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* per-image 淡入（CSS transition，不用 GSAP — CD-67-1/G3）：掛 img 層；
+   .av-card-preview 容器 opacity 由 GSAP playEntry 專屬（animations.js:142/177/193），此處零容器 transition。
+   ⚠️ 選擇器須對齊 theme.css:1022 的 :is(#ds-gallery-components,.ds-gallery-composition) scope，否則裸
+   .av-card-preview-img img(0,1,1) 的 transition:opacity 蓋不過 theme 的 transition:transform → 淡入失效。
+   ⚠️ Codex P2#1 修正：再 compound .showcase-container（showcase.html:16 同元素同時帶兩 class）——showcase.css
+   也被 search.html / design-system.html 載入且共用 ds scope，但那兩頁的卡 img 無 .cover-loaded 機制；若不
+   收斂，opacity:0 會讓 search 搜尋封面整片隱形、design-system demo 隱形。compound 後 specificity (1,2,1)>theme
+   (1,1,1) 仍贏，且只命中 showcase 頁（search/design-system 容器無 .showcase-container）。
+   合併保留 transform transition（hover-zoom 過渡不回歸）。 */
+:is(#ds-gallery-components, .ds-gallery-composition).showcase-container .av-card-preview-img img {
+    opacity: 0;
+    transition:
+        opacity var(--fluent-duration-fast) var(--fluent-ease-standard),
+        transform var(--fluent-duration-slow) var(--fluent-ease-standard);
+}
+:is(#ds-gallery-components, .ds-gallery-composition).showcase-container .av-card-preview-img img.cover-loaded {
+    opacity: 1;
+}
+
+/* reduced-motion：shimmer + 淡入皆退化靜態（per-rule，可被 inspection/lint 驗證；DoD A-4）。
+   兩條都要——只 guard .shimmer 不夠，淡入也是動畫。 */
+@media (prefers-reduced-motion: reduce) {
+    .shimmer {
+        animation: none;
+    }
+    :is(#ds-gallery-components, .ds-gallery-composition).showcase-container .av-card-preview-img img {
+        transition: none;
+        opacity: 1;
+    }
+}

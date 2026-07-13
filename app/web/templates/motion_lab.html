@@ -1,0 +1,3459 @@
+{% extends "base.html" %}
+
+{% block title %}Motion Lab{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Motion Lab 沙盒頁樣式 */
+.motion-lab-container {
+    min-height: calc(100vh - 56px);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+.motion-lab-header {
+    padding: 0.75rem 1rem;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.motion-lab-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.motion-lab-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: var(--color-warning);
+    color: var(--color-base-content);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--fluent-radius-md);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.motion-lab-tab-bar {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.motion-lab-tab {
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--fluent-radius-lg);
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.motion-lab-tab.active {
+    background: var(--accent-secondary);
+    color: oklch(100% 0 0);
+    border-color: var(--accent-secondary);
+}
+
+.motion-lab-tab:not(.active):not(:disabled) {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border-light);
+}
+
+.motion-lab-tab:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: transparent;
+    color: var(--text-muted);
+    border-color: var(--border-light);
+}
+
+/* 控制面板 */
+.motion-lab-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-light);
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.control-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.control-value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-secondary);
+    min-width: 2.5rem;
+    text-align: right;
+}
+
+.control-slider {
+    width: 100px;
+    accent-color: var(--accent-secondary);
+    cursor: pointer;
+}
+
+.control-select {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: var(--fluent-radius-md);
+    border: 1px solid var(--border-light);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.control-checkbox {
+    accent-color: var(--accent-secondary);
+    cursor: pointer;
+}
+
+.control-divider {
+    width: 1px;
+    height: 1.5rem;
+    background: var(--border-light);
+}
+
+/* 動作按鈕 */
+.control-btn {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: var(--fluent-radius-md);
+    border: 1px solid var(--border-light);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+    white-space: nowrap;
+}
+
+.control-btn:hover:not(:disabled) {
+    background: var(--accent-secondary);
+    color: oklch(100% 0 0);
+    border-color: var(--accent-secondary);
+}
+
+.control-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.control-btn.primary {
+    background: var(--accent-secondary);
+    color: oklch(100% 0 0);
+    border-color: var(--accent-secondary);
+}
+
+.control-btn.primary:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+.control-btn.danger {
+    border-color: var(--color-error);
+    color: var(--color-error);
+}
+
+.control-btn.danger:hover:not(:disabled) {
+    background: var(--color-error);
+    color: oklch(100% 0 0);
+}
+
+/* 預覽區 */
+.motion-lab-preview {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+    min-height: 0;
+    position: relative;
+}
+
+/* 假搜尋框 */
+.motion-lab-search-bar {
+    flex-shrink: 0;
+    height: 44px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.motion-lab-search-bar i {
+    font-size: 1rem;
+}
+
+/* Grid 區 */
+.motion-lab-grid {
+    flex: 1;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    align-content: start;
+    min-height: 0;
+}
+
+/* Empty state */
+.motion-lab-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    gap: 0.75rem;
+}
+
+.motion-lab-empty i {
+    font-size: 3rem;
+    opacity: 0.5;
+}
+
+/* av-card-preview 與 search 頁保持一致結構 */
+.motion-lab-grid .av-card-preview {
+    border-radius: var(--fluent-radius-xl);
+    overflow: hidden;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    cursor: pointer;
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard), box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    position: relative;
+}
+
+/* Staging Anchor — overlay layer，浮在 preview 區上方，不佔 flex flow 空間 */
+.staging-anchor {
+    position: absolute;
+    top: 60px;          /* 搜尋框下方（搜尋框 44px 高 + 12px padding + 4px gap） */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    pointer-events: none;   /* 不攔截 grid 互動 */
+}
+
+.staging-anchor .av-card-preview {
+    min-width: 280px;
+    position: relative;
+    border-radius: var(--fluent-radius-xl);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    pointer-events: auto;   /* staging card 本身可正常互動與動畫渲染 */
+}
+
+.staging-anchor .av-card-preview-img {
+    position: relative;
+    aspect-ratio: 3/2;
+    overflow: hidden;
+    background: var(--bg-tertiary);
+}
+
+.staging-anchor .av-card-preview-footer {
+    padding: 0.35rem 0.5rem;
+}
+
+.staging-anchor .av-num {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Staging counter badge（staging card 內嵌版） */
+.staging-counter-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: var(--accent-secondary);
+    color: oklch(100% 0 0);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--fluent-radius-md);
+}
+
+.motion-lab-grid .av-card-preview:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--fluent-shadow-8);
+}
+
+.motion-lab-grid .av-card-preview-img {
+    position: relative;
+    aspect-ratio: 3/2;
+    overflow: hidden;
+    background: var(--bg-tertiary);
+}
+
+.motion-lab-grid .av-card-preview-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.motion-lab-grid .av-card-preview-footer {
+    padding: 0.35rem 0.5rem;
+}
+
+.motion-lab-grid .av-num {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.motion-lab-grid .av-actress {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* No-cover placeholder */
+.av-card-no-cover {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    gap: 0.25rem;
+}
+
+.av-card-no-cover i {
+    font-size: 1.5rem;
+    opacity: 0.4;
+}
+
+/* Detail 區 */
+.motion-lab-detail {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.motion-lab-detail .av-card-full {
+    gap: 0;
+    padding: 0;
+    border-radius: var(--fluent-radius-xl);
+}
+
+.motion-lab-detail .av-card-full-cover {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.motion-lab-detail .av-card-full-cover-wrapper {
+    position: relative;
+    width: 100%;
+    min-height: 400px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.motion-lab-detail .av-card-full-cover-img {
+    width: 100%;
+    height: 100%;
+    max-height: calc(100vh - 200px);
+    object-fit: contain;
+    display: block;
+}
+
+.motion-lab-detail .av-card-full-info {
+    flex: 0 0 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+    min-width: 0;
+}
+
+.motion-lab-detail .av-card-full-info .info-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+}
+
+.motion-lab-detail .av-card-full-info .info-label {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 4rem;
+}
+
+.motion-lab-detail .av-card-full-info .info-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Detail: header / body / footer 三段 */
+.motion-lab-detail .av-card-full-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+
+.motion-lab-detail .av-card-full-header .av-num {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    flex: 1;
+}
+
+.motion-lab-detail .av-card-full-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.motion-lab-detail .av-card-full-footer {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-light);
+    flex-shrink: 0;
+}
+
+.motion-lab-detail .av-card-full-footer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.motion-lab-detail .av-card-full-footer-content .info-label {
+    font-size: 0.75rem;
+}
+
+.motion-lab-detail .av-card-full-footer-content .info-value {
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.motion-lab-detail .badge.tag-badge {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: var(--fluent-radius-sm);
+    font-size: 0.7rem;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    margin: 0.1rem 0.15rem 0.1rem 0;
+}
+
+/* Nav 按鈕（複製自 search.css L96-L139，scope 為 .motion-lab-detail） */
+.motion-lab-detail .av-card-full-cover-wrapper .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 64px;
+    background: rgba(0, 0, 0, 0.6);
+    border: none;
+    color: var(--text-inverse);
+    font-size: 1.4rem;
+    cursor: pointer;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+    z-index: 10;
+    border-radius: var(--fluent-radius-md);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+.motion-lab-detail .av-card-full-cover-wrapper .nav-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+    transform: translateY(-50%) scale(1.05);
+}
+
+.motion-lab-detail .av-card-full-cover-wrapper .nav-btn.prev { left: 10px; }
+.motion-lab-detail .av-card-full-cover-wrapper .nav-btn.next { right: 10px; }
+
+/* Nav indicator */
+.motion-lab-detail .av-card-full-cover-wrapper .nav-indicator {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text-inverse);
+    padding: 2px 10px;
+    border-radius: var(--fluent-radius-xl);
+    font-size: 0.8rem;
+}
+
+/* Loading 狀態 */
+.motion-lab-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* 讓 x-show 正確工作（避免 Tailwind .hidden !important 衝突） */
+.motion-lab-container [x-cloak] { display: none !important; }
+
+/* Showcase Grid（motion-lab 內聯，避免載入整份 showcase.css） */
+.motion-lab-container .showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem;
+    max-width: 100%;
+}
+@media (min-width: 1500px) {
+    .motion-lab-container .showcase-grid { grid-template-columns: repeat(5, 1fr); }
+}
+@media (min-width: 1100px) and (max-width: 1499px) {
+    .motion-lab-container .showcase-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (min-width: 900px) and (max-width: 1099px) {
+    .motion-lab-container .showcase-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 481px) and (max-width: 899px) {
+    .motion-lab-container .showcase-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+}
+@media (max-width: 480px) {
+    .motion-lab-container .showcase-grid { grid-template-columns: 1fr; padding: 1rem; }
+}
+
+/* ===== CSS Animations Tab — 內聯 critical CSS（search.css + showcase.css 未在 motion-lab 載入）===== */
+
+/* Shimmer Pulse（from search.css L670–690） */
+.css-anim-demos .skeleton-cover {
+    aspect-ratio: 3/2;
+    background: var(--color-base-300);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.css-anim-demos .shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--color-base-300) 25%,
+        var(--color-base-200) 50%,
+        var(--color-base-300) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+/* @keyframes shimmer 定義於檔尾全域 style block，此處不重複宣告 */
+
+/* Cover-Actions Reveal（from showcase.css L554–627） */
+.css-anim-demos .lightbox-cover .cover-actions {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    padding-bottom: 20px;
+    gap: 12px; /* spacingM (12px Fluent layout) */
+    background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 60%, transparent 100%);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    opacity: 0;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-decel);
+}
+.css-anim-demos .lightbox-cover:hover .cover-actions,
+.css-anim-demos .lightbox-cover:focus-within .cover-actions {
+    opacity: 1;
+}
+.css-anim-demos .lb-action-btn {
+    position: relative;
+    width: 46px; height: 46px;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: white;
+    font-size: 1.125rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--fluent-shadow-8);
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-decel),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-decel),
+                transform var(--fluent-duration-fast) var(--fluent-ease-decel),
+                box-shadow var(--fluent-duration-fast) var(--fluent-ease-decel);
+}
+.css-anim-demos .lb-action-btn:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.6);
+    transform: scale(1.08);
+    box-shadow: var(--fluent-shadow-16);
+}
+.css-anim-demos .lb-action-btn:active {
+    transform: scale(0.95);
+}
+.css-anim-demos .lb-action-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    padding: 0.25rem 0.625rem;
+    background: rgba(0,0,0,0.75);
+    color: white;
+    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--fluent-duration-fast) var(--fluent-ease-decel);
+}
+.css-anim-demos .lb-action-btn[data-tooltip]:hover::after,
+.css-anim-demos .lb-action-btn[data-tooltip]:focus-visible::after {
+    opacity: 1;
+}
+
+/* Dropdown Appear（from showcase.css L74–128） */
+.css-anim-demos .toolbar-dropdown-wrap {
+    position: relative;
+}
+.css-anim-demos .toolbar-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    min-width: 150px;
+    background: var(--surface-2);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 0.375rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 200;
+}
+.css-anim-demos .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.4rem 0.625rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-decel),
+                color var(--fluent-duration-fast) var(--fluent-ease-decel);
+    white-space: nowrap;
+}
+.css-anim-demos .dropdown-item:hover {
+    background: var(--glow-subtle);
+    color: var(--text-primary);
+}
+.css-anim-demos .dropdown-item.active {
+    background: var(--accent);
+    color: var(--color-primary-content);
+    font-weight: 500;
+}
+.css-anim-demos .dropdown-item i {
+    font-size: 0.9375rem;
+    flex-shrink: 0;
+    width: 1.125rem;
+    text-align: center;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="motion-lab-container"
+     x-data="motionLabPage"
+     x-cloak>
+
+    <!-- Header -->
+    <div class="motion-lab-header">
+        <h4>
+            <i class="bi bi-magic"></i>
+            Motion Lab
+            <span class="motion-lab-badge">DEV</span>
+        </h4>
+
+        <!-- Tab Bar -->
+        <div class="motion-lab-tab-bar">
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'search' }"
+                    @click="tab = 'search'; onResetStaging(); onResetHero(); onResetPicker()">
+                Search
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'stream' }"
+                    @click="tab = 'stream'; onResetStream(); onResetStaging(); onResetHero(); onResetPicker()">
+                Stream
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'staging' }"
+                    @click="tab = 'staging'; onResetStaging(); onResetHero(); onResetPicker()">
+                Staging Burst
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'settle' }"
+                    @click="tab = 'settle'; onResetStaging(); onResetHero(); onResetPicker()">
+                Settle
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'hero' }"
+                    @click="tab = 'hero'; onResetHero(); onResetStaging(); onResetPicker()">
+                Hero Slot
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'showcase' }"
+                    @click="tab = 'showcase'; onResetStaging(); onResetHero(); onResetPicker()">
+                Showcase
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'popover' }"
+                    @click="tab = 'popover'; onResetPicker()">
+                Popover
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'css-animations' }"
+                    @click="tab = 'css-animations'; onResetPicker()">
+                CSS Animations
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'picker' }"
+                    @click="tab = 'picker'; onResetStaging(); onResetHero()">
+                Photo Picker
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'ease-roles' }"
+                    @click="tab = 'ease-roles'; onResetStaging(); onResetHero(); onResetPicker()">
+                §5 Ease 角色
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'duration-buckets' }"
+                    @click="tab = 'duration-buckets'; onResetStaging(); onResetHero(); onResetPicker()">
+                §5 Duration Buckets
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'special-motion' }"
+                    @click="tab = 'special-motion'; onResetStaging(); onResetHero(); onResetPicker()">
+                §5 Special Motion 白名單
+            </button>
+            <button class="motion-lab-tab"
+                    :class="{ active: tab === 'constellation' }"
+                    @click="tab = 'constellation'; onResetStaging(); onResetHero(); onResetPicker()">
+                Constellation
+            </button>
+        </div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="motion-lab-controls">
+
+        <!-- Duration slider -->
+        <div class="control-group">
+            <span class="control-label">Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.2" max="2.0" step="0.05"
+                   x-model.number="params.duration">
+            <span class="control-value" x-text="params.duration.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- Stagger slider -->
+        <div class="control-group">
+            <span class="control-label">Stagger</span>
+            <input type="range" class="control-slider"
+                   min="0.01" max="0.2" step="0.01"
+                   x-model.number="params.stagger">
+            <span class="control-value" x-text="params.stagger.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- ClipReveal slider -->
+        <div class="control-group">
+            <span class="control-label">ClipReveal</span>
+            <input type="range" class="control-slider"
+                   min="0.2" max="1.0" step="0.05"
+                   x-model.number="params.clipRevealDur">
+            <span class="control-value" x-text="params.clipRevealDur.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- Burst speed slider -->
+        <div class="control-group">
+            <span class="control-label">Burst</span>
+            <input type="range" class="control-slider"
+                   min="0.1" max="2.0" step="0.1"
+                   x-model.number="params.speed">
+            <span class="control-value" x-text="params.speed.toFixed(1) + 'x'"></span>
+        </div>
+
+        <!-- Detail speed slider -->
+        <div class="control-group">
+            <span class="control-label">Detail</span>
+            <input type="range" class="control-slider"
+                   min="0.5" max="2.0" step="0.1"
+                   x-model.number="params.detailSpeed">
+            <span class="control-value" x-text="params.detailSpeed.toFixed(1) + 'x'"></span>
+        </div>
+
+        <!-- Easing select -->
+        <div class="control-group">
+            <span class="control-label">Ease</span>
+            <select class="control-select" x-model="params.easing">
+                <option value="fluent">fluent（standard，互動）</option>
+                <option value="fluent-decel">fluent-decel（enter，進場）</option>
+                <option value="fluent-accel">fluent-accel（exit，離場）</option>
+                <option value="back.out(1.2)">back.out(1.2)（pre-charter，已禁用）</option>
+                <option value="power3.out">power3.out（pre-charter，已禁用）</option>
+                <option value="elastic.out(1,0.3)">elastic.out(1,0.3)（pre-charter，已禁用）</option>
+                <option value="power2.inOut">power2.inOut（pre-charter；白名單：Burst Picker FLIP）</option>
+                <option value="none">none</option>
+            </select>
+        </div>
+
+        <!-- Flip mode select -->
+        <div class="control-group">
+            <span class="control-label">Flip</span>
+            <select class="control-select" x-model="params.flipMode">
+                <option value="Flip">Flip</option>
+                <option value="Crossfade">Crossfade</option>
+                <option value="None">None</option>
+            </select>
+        </div>
+
+        <!-- Reduced Motion sim -->
+        <div class="control-group">
+            <input type="checkbox" class="control-checkbox"
+                   id="reducedMotionSim"
+                   x-model="params.reducedMotionSim">
+            <label for="reducedMotionSim" class="control-label" style="cursor:pointer">
+                Reduced Motion Sim
+            </label>
+        </div>
+
+        <div class="control-divider"></div>
+
+        <!-- Action buttons (Search tab only) -->
+        <button class="control-btn primary"
+                :disabled="!hasVideos || tab !== 'search'"
+                @click="onPlayBurst()">
+            <i class="bi bi-stars"></i> Play Burst
+        </button>
+
+        <button class="control-btn"
+                :disabled="!hasVideos || tab !== 'search'"
+                @click="onDetailEntry()">
+            <i class="bi bi-card-image"></i> Detail Entry
+        </button>
+
+        <button class="control-btn"
+                :disabled="!hasVideos || isNavigating || isTransitioning || tab !== 'search'"
+                @click="onPrev()">
+            <i class="bi bi-chevron-left"></i> Prev
+        </button>
+
+        <button class="control-btn"
+                :disabled="!hasVideos || isNavigating || isTransitioning || tab !== 'search'"
+                @click="onNext()">
+            <i class="bi bi-chevron-right"></i> Next
+        </button>
+
+        <button class="control-btn"
+                :disabled="!hasVideos || tab !== 'search'"
+                @click="onToggleMode()">
+            <i class="bi" :class="mode === 'grid' ? 'bi-card-image' : 'bi-grid-3x3'"></i>
+            <span x-text="mode === 'grid' ? 'Detail View' : 'Grid View'"></span>
+        </button>
+
+        <button class="control-btn danger"
+                :disabled="tab !== 'search'"
+                @click="onReset()">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
+        </button>
+
+        <div class="control-divider"></div>
+
+        <!-- Stream controls -->
+        <button class="control-btn primary"
+                :disabled="streamRunning || !hasVideos || tab !== 'stream'"
+                @click="onStreamIn()">
+            <i class="bi bi-play-fill"></i> Stream In
+        </button>
+
+        <button class="control-btn danger"
+                :disabled="tab !== 'stream'"
+                @click="onResetStream()">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset Stream
+        </button>
+
+        <!-- Stream Style -->
+        <div class="control-group">
+            <span class="control-label">Style</span>
+            <select class="control-select" x-model="params.streamStyle">
+                <option value="fadeScale">fadeScale</option>
+                <option value="fadeUp">fadeUp</option>
+                <option value="reveal">reveal</option>
+            </select>
+        </div>
+
+        <!-- Stream Interval -->
+        <div class="control-group">
+            <span class="control-label">Interval</span>
+            <input type="range" class="control-slider"
+                   min="100" max="800" step="50"
+                   x-model.number="params.streamInterval">
+            <span class="control-value" x-text="params.streamInterval + 'ms'"></span>
+        </div>
+
+        <div class="control-divider"></div>
+
+        <!-- Staging Burst controls -->
+        <button class="control-btn primary"
+                :disabled="stagingRunning || _stagingExiting || !hasVideos || tab !== 'staging'"
+                @click="onStagingBurst()">
+            <i class="bi bi-collection-play-fill"></i> Staging Burst
+        </button>
+
+        <button class="control-btn danger"
+                :disabled="tab !== 'staging'"
+                @click="onResetStaging()">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
+        </button>
+
+        <!-- Batch Interval -->
+        <div class="control-group" :style="tab !== 'staging' ? 'opacity:0.4' : ''">
+            <span class="control-label">Batch ms</span>
+            <input type="range" class="control-slider"
+                   min="500" max="1500" step="100"
+                   :disabled="tab !== 'staging'"
+                   x-model.number="stagingParams.batchInterval">
+            <span class="control-value" x-text="stagingParams.batchInterval + 'ms'"></span>
+        </div>
+
+        <!-- Min Batch Count -->
+        <div class="control-group" :style="tab !== 'staging' ? 'opacity:0.4' : ''">
+            <span class="control-label">Min Batch</span>
+            <input type="range" class="control-slider"
+                   min="1" max="5" step="1"
+                   :disabled="tab !== 'staging'"
+                   x-model.number="stagingParams.minBatchCount">
+            <span class="control-value" x-text="stagingParams.minBatchCount"></span>
+        </div>
+
+        <!-- Cover Interval -->
+        <div class="control-group" :style="tab !== 'staging' ? 'opacity:0.4' : ''">
+            <span class="control-label">Cover ms</span>
+            <input type="range" class="control-slider"
+                   min="100" max="500" step="50"
+                   :disabled="tab !== 'staging'"
+                   x-model.number="stagingParams.coverInterval">
+            <span class="control-value" x-text="stagingParams.coverInterval + 'ms'"></span>
+        </div>
+
+        <!-- Burst Ease -->
+        <div class="control-group" :style="tab !== 'staging' ? 'opacity:0.4' : ''">
+            <span class="control-label">Burst Ease</span>
+            <select class="control-select"
+                    :disabled="tab !== 'staging'"
+                    x-model="stagingParams.burstEase">
+                <option value="back.out(1.2)">back.out(1.2)</option>
+                <option value="power3.out">power3.out</option>
+                <option value="elastic.out(1,0.5)">elastic.out(1,0.5)</option>
+            </select>
+        </div>
+
+        <!-- Burst Duration -->
+        <div class="control-group" :style="tab !== 'staging' ? 'opacity:0.4' : ''">
+            <span class="control-label">Burst dur</span>
+            <input type="range" class="control-slider"
+                   min="0.3" max="1.0" step="0.05"
+                   :disabled="tab !== 'staging'"
+                   x-model.number="stagingParams.burstDuration">
+            <span class="control-value" x-text="stagingParams.burstDuration.toFixed(2) + 's'"></span>
+        </div>
+
+        <div class="control-divider"></div>
+
+        <!-- Settle Pulse controls -->
+        <button class="control-btn primary"
+                :disabled="!hasVideos || tab !== 'settle'"
+                @click="MotionLab.playGridSettle($refs.settleGrid, { ...settleParams, reducedMotionSim: params.reducedMotionSim })">
+            <i class="bi bi-activity"></i> Play Settle
+        </button>
+
+        <button class="control-btn danger"
+                :disabled="tab !== 'settle'"
+                @click="gsap.killTweensOf($refs.settleGrid?.querySelectorAll('.av-card-preview-img')); gsap.set($refs.settleGrid?.querySelectorAll('.av-card-preview-img'), { clearProps: 'scale' })">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
+        </button>
+
+        <!-- Settle Ease -->
+        <div class="control-group" :style="tab !== 'settle' ? 'opacity:0.4' : ''">
+            <span class="control-label">Ease</span>
+            <select class="control-select"
+                    :disabled="tab !== 'settle'"
+                    x-model="settleParams.ease">
+                <option value="settle">settle</option>
+                <option value="power2.out">power2.out</option>
+                <option value="elastic.out(1,0.5)">elastic.out(1,0.5)</option>
+            </select>
+        </div>
+
+        <!-- Settle Duration -->
+        <div class="control-group" :style="tab !== 'settle' ? 'opacity:0.4' : ''">
+            <span class="control-label">Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.2" max="0.8" step="0.05"
+                   :disabled="tab !== 'settle'"
+                   x-model.number="settleParams.duration">
+            <span class="control-value" x-text="settleParams.duration.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- Settle Scale -->
+        <div class="control-group" :style="tab !== 'settle' ? 'opacity:0.4' : ''">
+            <span class="control-label">Scale</span>
+            <input type="range" class="control-slider"
+                   min="1.01" max="1.06" step="0.01"
+                   :disabled="tab !== 'settle'"
+                   x-model.number="settleParams.scale">
+            <span class="control-value" x-text="settleParams.scale.toFixed(2)"></span>
+        </div>
+
+        <!-- Settle Rows -->
+        <div class="control-group" :style="tab !== 'settle' ? 'opacity:0.4' : ''">
+            <span class="control-label">Rows</span>
+            <input type="range" class="control-slider"
+                   min="1" max="4" step="1"
+                   :disabled="tab !== 'settle'"
+                   x-model.number="settleParams.rows">
+            <span class="control-value" x-text="settleParams.rows"></span>
+        </div>
+
+        <div class="control-divider"></div>
+
+        <!-- Hero Slot controls -->
+        <button class="control-btn primary"
+                :disabled="_heroRunning || !hasVideos || tab !== 'hero'"
+                @click="onPlayHero()">
+            <i class="bi bi-person-badge"></i> Play Hero
+        </button>
+
+        <button class="control-btn danger"
+                :disabled="tab !== 'hero'"
+                @click="onResetHero()">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
+        </button>
+
+        <!-- Hero Delay slider -->
+        <div class="control-group" :style="tab !== 'hero' ? 'opacity:0.4' : ''">
+            <span class="control-label">Delay</span>
+            <input type="range" class="control-slider"
+                   min="0" max="5000" step="250"
+                   :disabled="tab !== 'hero'"
+                   x-model.number="heroParams.heroDelay">
+            <span class="control-value" x-text="heroParams.heroDelay + 'ms'"></span>
+        </div>
+
+        <!-- Hero Result radio -->
+        <div class="control-group" :style="tab !== 'hero' ? 'opacity:0.4' : ''">
+            <span class="control-label">Result</span>
+            <label style="font-size:0.75rem; cursor:pointer; display:flex; align-items:center; gap:2px;">
+                <input type="radio" value="found"
+                       :disabled="tab !== 'hero'"
+                       x-model="heroParams.heroResult"> found
+            </label>
+            <label style="font-size:0.75rem; cursor:pointer; display:flex; align-items:center; gap:2px;">
+                <input type="radio" value="not-found"
+                       :disabled="tab !== 'hero'"
+                       x-model="heroParams.heroResult"> not-found
+            </label>
+        </div>
+
+        <!-- Hero Reserved toggle（A/B 對比） -->
+        <div class="control-group" :style="tab !== 'hero' ? 'opacity:0.4' : ''">
+            <input type="checkbox" class="control-checkbox"
+                   :disabled="tab !== 'hero'"
+                   x-model="heroParams.heroReserved">
+            <span class="control-label" style="cursor:pointer">Reserve Slot</span>
+        </div>
+
+        <div class="control-divider"></div>
+
+        <!-- Showcase controls -->
+        <button class="control-btn primary"
+                :disabled="tab !== 'showcase'"
+                @click="MotionLab.playShowcaseEntry($refs.showcaseGrid, { ...showcaseParams, easing: params.easing, reducedMotionSim: params.reducedMotionSim })">
+            <i class="bi bi-play-fill"></i> Play
+        </button>
+
+        <button class="control-btn danger"
+                :disabled="tab !== 'showcase'"
+                @click="if ($refs.showcaseGrid) { var cards = $refs.showcaseGrid.querySelectorAll('.av-card-preview'); gsap.killTweensOf(cards); gsap.set(cards, { clearProps: 'all' }); }">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
+        </button>
+
+        <!-- Entry Style -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Style</span>
+            <select class="control-select"
+                    :disabled="tab !== 'showcase'"
+                    x-model="showcaseParams.style">
+                <option value="stagger">stagger</option>
+                <option value="fadeScale">fadeScale</option>
+                <option value="fadeUp">fadeUp</option>
+            </select>
+        </div>
+
+        <!-- Showcase Duration -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.3" max="1.0" step="0.05"
+                   :disabled="tab !== 'showcase'"
+                   x-model.number="showcaseParams.duration">
+            <span class="control-value" x-text="showcaseParams.duration.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- Showcase Stagger -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Stagger</span>
+            <input type="range" class="control-slider"
+                   min="0.02" max="0.1" step="0.01"
+                   :disabled="tab !== 'showcase'"
+                   x-model.number="showcaseParams.stagger">
+            <span class="control-value" x-text="showcaseParams.stagger.toFixed(2) + 's'"></span>
+        </div>
+
+        <div class="control-divider"></div>
+
+        <!-- Flip Sort 控制組 -->
+        <button class="control-btn"
+                :disabled="tab !== 'showcase'"
+                @click="MotionLab.playFlipReorder($refs.showcaseGrid,
+                    function(a,b){ return a.dataset.name.localeCompare(b.dataset.name) },
+                    { duration: showcaseParams.flipDuration, ease: showcaseParams.flipEase, prune: showcaseParams.flipPrune, reducedMotionSim: params.reducedMotionSim })">
+            <i class="bi bi-sort-alpha-down"></i> By Name
+        </button>
+
+        <button class="control-btn"
+                :disabled="tab !== 'showcase'"
+                @click="MotionLab.playFlipReorder($refs.showcaseGrid,
+                    function(a,b){ return Number(a.dataset.number) - Number(b.dataset.number) },
+                    { duration: showcaseParams.flipDuration, ease: showcaseParams.flipEase, prune: showcaseParams.flipPrune, reducedMotionSim: params.reducedMotionSim })">
+            <i class="bi bi-sort-numeric-down"></i> By Number
+        </button>
+
+        <button class="control-btn"
+                :disabled="tab !== 'showcase'"
+                @click="MotionLab.playFlipReorder($refs.showcaseGrid,
+                    function(){ return Math.random() - 0.5 },
+                    { duration: showcaseParams.flipDuration, ease: showcaseParams.flipEase, prune: showcaseParams.flipPrune, reducedMotionSim: params.reducedMotionSim })">
+            <i class="bi bi-shuffle"></i> Random
+        </button>
+
+        <button class="control-btn"
+                :disabled="tab !== 'showcase'"
+                @click="MotionLab.playFlipReorder($refs.showcaseGrid,
+                    'reverse',
+                    { duration: showcaseParams.flipDuration, ease: showcaseParams.flipEase, prune: showcaseParams.flipPrune, reducedMotionSim: params.reducedMotionSim })">
+            <i class="bi bi-arrow-down-up"></i> Reverse
+        </button>
+
+        <!-- Flip Duration -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Flip Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.3" max="0.8" step="0.05"
+                   :disabled="tab !== 'showcase'"
+                   x-model.number="showcaseParams.flipDuration">
+            <span class="control-value" x-text="showcaseParams.flipDuration.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- Flip Ease -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Flip Ease</span>
+            <select class="control-select"
+                    :disabled="tab !== 'showcase'"
+                    x-model="showcaseParams.flipEase">
+                <option value="power2.inOut">power2.inOut</option>
+                <option value="power3.out">power3.out</option>
+                <option value="back.out(1.2)">back.out(1.2)</option>
+            </select>
+        </div>
+
+        <!-- Prune toggle -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <input type="checkbox" class="control-checkbox"
+                   :disabled="tab !== 'showcase'"
+                   x-model="showcaseParams.flipPrune">
+            <span class="control-label" style="cursor:pointer">Prune</span>
+        </div>
+
+        <div class="control-divider"></div>
+
+        <!-- Filter Search Input -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Filter</span>
+            <input type="text" class="control-input"
+                   placeholder="Filter by name..."
+                   :disabled="tab !== 'showcase'"
+                   x-model="showcaseParams.filterQuery"
+                   @input.debounce.300ms="
+                       var query = showcaseParams.filterQuery.trim().toLowerCase();
+                       var filterFn = function(card) {
+                           if (!query) return true;
+                           return card.dataset.name.toLowerCase().includes(query);
+                       };
+                       MotionLab.playFlipFilter($refs.showcaseGrid, filterFn, {
+                           duration: showcaseParams.filterDuration,
+                           enterStyle: showcaseParams.filterEnterStyle,
+                           leaveStyle: showcaseParams.filterLeaveStyle,
+                           reducedMotionSim: params.reducedMotionSim
+                       });
+                   ">
+        </div>
+
+        <!-- Leave Style -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Leave Style</span>
+            <select class="control-select"
+                    :disabled="tab !== 'showcase'"
+                    x-model="showcaseParams.filterLeaveStyle">
+                <option value="opacityScale">opacity+scale</option>
+                <option value="opacityOnly">opacity only</option>
+            </select>
+        </div>
+
+        <!-- Enter Style -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Enter Style</span>
+            <select class="control-select"
+                    :disabled="tab !== 'showcase'"
+                    x-model="showcaseParams.filterEnterStyle">
+                <option value="opacityScale">opacity+scale</option>
+                <option value="fadeUp">fadeUp</option>
+            </select>
+        </div>
+
+        <!-- Filter Duration -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Filter Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.3" max="0.6" step="0.05"
+                   :disabled="tab !== 'showcase'"
+                   x-model.number="showcaseParams.filterDuration">
+            <span class="control-value" x-text="showcaseParams.filterDuration.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- ─── B4: Page Transition ─── -->
+        <div class="control-divider"></div>
+
+        <!-- Prev / Next -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Page</span>
+            <button class="control-btn"
+                    :disabled="tab !== 'showcase'"
+                    @click="MotionLab.playPageTransition($refs.showcaseGrid, 'prev', { duration: showcaseParams.pageDuration, stagger: showcaseParams.pageStagger, reducedMotionSim: params.reducedMotionSim })">
+                ← Prev
+            </button>
+            <button class="control-btn"
+                    :disabled="tab !== 'showcase'"
+                    @click="MotionLab.playPageTransition($refs.showcaseGrid, 'next', { duration: showcaseParams.pageDuration, stagger: showcaseParams.pageStagger, reducedMotionSim: params.reducedMotionSim })">
+                Next →
+            </button>
+        </div>
+
+        <!-- Page Duration -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Page Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.2" max="0.5" step="0.05"
+                   :disabled="tab !== 'showcase'"
+                   x-model.number="showcaseParams.pageDuration">
+            <span class="control-value" x-text="showcaseParams.pageDuration.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- Page Stagger -->
+        <div class="control-group" :style="tab !== 'showcase' ? 'opacity:0.4' : ''">
+            <span class="control-label">Page Stagger</span>
+            <input type="range" class="control-slider"
+                   min="0.01" max="0.05" step="0.005"
+                   :disabled="tab !== 'showcase'"
+                   x-model.number="showcaseParams.pageStagger">
+            <span class="control-value" x-text="showcaseParams.pageStagger.toFixed(3) + 's'"></span>
+        </div>
+
+        <!-- ===== Photo Picker 控制項 ===== -->
+        <div class="control-divider" x-show="tab === 'picker'">Photo Picker</div>
+
+        <!-- Arc Overshoot -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Arc Overshoot</span>
+            <input type="range" class="control-slider"
+                   min="0.5" max="2.5" step="0.1"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.arcOvershoot">
+            <span class="control-value" x-text="pickerParams.arcOvershoot.toFixed(1)"></span>
+        </div>
+
+        <!-- Arc Duration -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Arc Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.3" max="1.2" step="0.05"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.arcDuration">
+            <span class="control-value" x-text="pickerParams.arcDuration.toFixed(2) + 's'"></span>
+        </div>
+
+        <!-- Float Ampl Y -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Float Ampl Y</span>
+            <input type="range" class="control-slider"
+                   min="0" max="15" step="0.5"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.floatAmplY">
+            <span class="control-value" x-text="pickerParams.floatAmplY + 'px'"></span>
+        </div>
+
+        <!-- Float Ampl Rot -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Float Ampl Rot</span>
+            <input type="range" class="control-slider"
+                   min="0" max="5" step="0.1"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.floatAmplRot">
+            <span class="control-value" x-text="pickerParams.floatAmplRot.toFixed(1) + '°'"></span>
+        </div>
+
+        <!-- Float Duration -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Float Duration</span>
+            <input type="range" class="control-slider"
+                   min="0.8" max="3.0" step="0.1"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.floatDuration">
+            <span class="control-value" x-text="pickerParams.floatDuration.toFixed(1) + 's'"></span>
+        </div>
+
+        <!-- Hover Scale -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Hover Scale</span>
+            <input type="range" class="control-slider"
+                   min="1.0" max="1.5" step="0.01"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.hoverScale">
+            <span class="control-value" x-text="pickerParams.hoverScale.toFixed(2) + 'x'"></span>
+        </div>
+
+        <!-- Exit Gravity -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Exit Gravity</span>
+            <input type="range" class="control-slider"
+                   min="600" max="2000" step="50"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.exitGravity">
+            <span class="control-value" x-text="pickerParams.exitGravity + 'px/s²'"></span>
+        </div>
+
+        <!-- Stream Mode -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Stream Mode</span>
+            <select class="control-slider"
+                    :disabled="tab !== 'picker'"
+                    x-model="pickerParams.streamMode">
+                <option value="stagger">Stagger</option>
+                <option value="instant">Instant</option>
+            </select>
+            <span class="control-value" x-text="pickerParams.streamMode"></span>
+        </div>
+
+        <!-- Stream Interval -->
+        <div class="control-group" :style="tab !== 'picker' ? 'opacity:0.4' : ''">
+            <span class="control-label">Stream Interval</span>
+            <input type="range" class="control-slider"
+                   min="100" max="500" step="50"
+                   :disabled="tab !== 'picker'"
+                   x-model.number="pickerParams.streamInterval">
+            <span class="control-value" x-text="pickerParams.streamInterval + 'ms'"></span>
+        </div>
+
+        <!-- ===== §5 Ease Roles 控制項 ===== -->
+        <div class="control-divider"></div>
+
+        <button class="control-btn primary"
+                x-show="tab === 'ease-roles'"
+                x-cloak
+                @click="onPlayEaseRoles($refs)">
+            <i class="bi bi-play-fill"></i> Play Ease Roles
+        </button>
+
+        <!-- ===== §5 Duration Buckets 控制項 ===== -->
+        <button class="control-btn primary"
+                x-show="tab === 'duration-buckets'"
+                x-cloak
+                @click="onPlayDurationBuckets($refs)">
+            <i class="bi bi-play-fill"></i> Play Duration Buckets
+        </button>
+
+        <!-- ===== §5 Special Motion 白名單控制項 ===== -->
+        <button class="control-btn primary"
+                x-show="tab === 'special-motion'"
+                x-cloak
+                @click="onPlayWhitelistBurstPicker($refs)">
+            <i class="bi bi-play-fill"></i> Play Burst Picker
+        </button>
+        <button class="control-btn primary"
+                x-show="tab === 'special-motion'"
+                x-cloak
+                @click="onPlayWhitelistStagingEntry($refs)">
+            <i class="bi bi-play-fill"></i> Play Staging Entry
+        </button>
+        <button class="control-btn primary"
+                x-show="tab === 'special-motion'"
+                x-cloak
+                @click="onPlayWhitelistCheckmark($refs)">
+            <i class="bi bi-play-fill"></i> Play Checkmark
+        </button>
+        <button class="control-btn primary"
+                x-show="tab === 'special-motion'"
+                x-cloak
+                @click="onPlayWhitelistShake($refs)">
+            <i class="bi bi-play-fill"></i> Play Shake
+        </button>
+        <button class="control-btn primary"
+                x-show="tab === 'special-motion'"
+                x-cloak
+                @click="onPlayWhitelistPulse($refs)">
+            <i class="bi bi-play-fill"></i> Play Pulse
+        </button>
+    </div>
+
+    <!-- 預覽區 -->
+    <div class="motion-lab-preview" x-ref="preview">
+
+        <!-- 假搜尋框（burst 起點） -->
+        <div class="motion-lab-search-bar" x-ref="searchBar">
+            <i class="bi bi-search"></i>
+            <span>假搜尋框 — burst 起點座標參照</span>
+        </div>
+
+        <!-- Loading -->
+        <div class="motion-lab-loading" x-show="loading">
+            <i class="bi bi-arrow-repeat" style="animation: spin 1s linear infinite;"></i>
+            載入中...
+        </div>
+
+        <!-- Empty state -->
+        <div class="motion-lab-empty" x-show="!loading && !hasVideos">
+            <i class="bi bi-inbox"></i>
+            <span>資料庫無影片資料</span>
+            <span style="font-size:0.75rem; color: var(--text-muted);">請先掃描影片目錄</span>
+        </div>
+
+        <!-- Grid 區（tab=search && mode=grid） -->
+        <div class="motion-lab-grid"
+             x-ref="grid"
+             x-show="!loading && hasVideos && tab === 'search' && mode === 'grid'">
+            <template x-for="(video, index) in videos" :key="video.number + '_' + index">
+                <div class="av-card-preview"
+                     @click="selectedIndex = index; onDetailEntry()">
+                    <div class="av-card-preview-img">
+                        <template x-if="video.cover_url">
+                            <img :src="video.cover_url"
+                                 :alt="video.number"
+                                 loading="lazy"
+                                 class="img-cover-fill">
+                        </template>
+                        <template x-if="!video.cover_url">
+                            <div class="av-card-no-cover">
+                                <i class="bi bi-image"></i>
+                                <span>無封面</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="av-card-preview-footer">
+                        <span class="av-num" x-text="video.number || '-'"></span>
+                        <span class="av-actress" x-text="formatActresses(video.actresses)"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Stream Grid 區（tab=stream） -->
+        <div class="motion-lab-grid"
+             x-ref="streamGrid"
+             x-show="tab === 'stream'">
+            <template x-for="(card, index) in streamCards" :key="'stream_' + index">
+                <div class="av-card-preview">
+                    <div class="av-card-preview-img">
+                        <!-- skeleton 狀態 -->
+                        <template x-if="card === null">
+                            <div class="skeleton-cover shimmer"></div>
+                        </template>
+                        <!-- 填入狀態：有封面 -->
+                        <template x-if="card !== null && card.cover_url">
+                            <img :src="card.cover_url" :alt="card.number" loading="lazy"
+                                 class="img-cover-fill">
+                        </template>
+                        <!-- 填入狀態：無封面 -->
+                        <template x-if="card !== null && !card.cover_url">
+                            <div class="av-card-no-cover">
+                                <i class="bi bi-image"></i>
+                                <span>無封面</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="av-card-preview-footer">
+                        <span class="av-num"
+                              x-text="card !== null ? (card.number || '-') : (videos[index]?.number || '#' + (index + 1))">
+                        </span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Staging Anchor — 獨立中央容器（不佔 stagingGrid flow） -->
+        <div class="staging-anchor"
+             x-show="tab === 'staging' && stagingOverlayVisible">
+            <div class="av-card-preview rotating-border-spotlight"
+                 :class="{ active: stagingRunning && !params.reducedMotionSim }"
+                 x-ref="stagingCard">
+                <div class="av-card-preview-img">
+                    <img x-ref="stagingImg"
+                         :src="stagingCurrentCover || ''"
+                         x-show="stagingCurrentCover"
+                         class="img-cover-fill">
+                    <div class="av-card-no-cover" x-show="!stagingCurrentCover && stagingFilled === 0">
+                        <i class="bi bi-hourglass-split"></i>
+                        <span>等待中</span>
+                    </div>
+                    <div class="av-card-no-cover" x-show="!stagingCurrentCover && stagingFilled > 0">
+                        <i class="bi bi-image"></i>
+                        <span>無封面</span>
+                    </div>
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num" x-text="stagingCurrentNum || '...'"></span>
+                    <span class="staging-counter-badge"
+                          x-text="stagingFilled + ' / ' + stagingTotal"
+                          x-show="stagingFilled > 0"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Staging Burst Grid 區（tab=staging） -->
+        <div class="motion-lab-grid"
+             x-ref="stagingGrid"
+             x-show="tab === 'staging'">
+
+            <template x-for="(card, index) in stagingCards" :key="card ? card.path : 'empty_' + index">
+                <div class="av-card-preview">
+                    <div class="av-card-preview-img">
+                        <!-- skeleton 狀態 -->
+                        <template x-if="card === null">
+                            <div class="skeleton-cover shimmer"></div>
+                        </template>
+                        <!-- 填入狀態：有封面 -->
+                        <template x-if="card !== null && card.cover_url">
+                            <img :src="card.cover_url" :alt="card.number" loading="lazy"
+                                 class="img-cover-fill">
+                        </template>
+                        <!-- 填入狀態：無封面 -->
+                        <template x-if="card !== null && !card.cover_url">
+                            <div class="av-card-no-cover">
+                                <i class="bi bi-image"></i>
+                                <span>無封面</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="av-card-preview-footer">
+                        <span class="av-num"
+                              x-text="card !== null ? (card.number || '-') : ('#' + (index + 1))">
+                        </span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Settle Grid 區（tab=settle） -->
+        <div class="motion-lab-grid"
+             x-ref="settleGrid"
+             x-show="tab === 'settle'"
+             x-cloak>
+            <template x-for="(video, index) in videos" :key="'settle_' + (video.number || index)">
+                <div class="av-card-preview">
+                    <div class="av-card-preview-img">
+                        <template x-if="video.cover_url">
+                            <img :src="video.cover_url"
+                                 :alt="video.number"
+                                 loading="lazy"
+                                 class="img-cover-fill">
+                        </template>
+                        <template x-if="!video.cover_url">
+                            <div class="av-card-no-cover">
+                                <i class="bi bi-image"></i>
+                                <span>無封面</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="av-card-preview-footer">
+                        <span class="av-num" x-text="video.number || '-'"></span>
+                        <span class="av-actress" x-text="formatActresses(video.actresses)"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Hero Slot Grid 區（tab=hero） -->
+        <div class="motion-lab-grid"
+             x-ref="heroGrid"
+             x-show="tab === 'hero'"
+             x-cloak>
+
+            <!-- Hero Placeholder（skeleton 態 / 填充態） -->
+            <div class="av-card-preview hero-card"
+                 x-show="_heroSlotReserved"
+                 x-ref="heroPlaceholder">
+                <div class="av-card-preview-img" style="position:relative;">
+                    <!-- skeleton 態：shimmer -->
+                    <div class="skeleton-cover shimmer"
+                         x-show="!_heroFilled"
+                         style="position:absolute; inset:0;"></div>
+                    <!-- 填充態：模擬 actressProfile 圖片 -->
+                    <img :src="heroActressProfile?.cover_url || ''"
+                         x-show="_heroFilled && heroActressProfile?.cover_url"
+                         class="img-cover-fill">
+                    <!-- 填充態：無封面 -->
+                    <div class="av-card-no-cover"
+                         x-show="_heroFilled && heroActressProfile && !heroActressProfile.cover_url">
+                        <i class="bi bi-person-badge"></i>
+                        <span>Hero</span>
+                    </div>
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num"
+                          x-text="_heroFilled ? (heroActressProfile?.actresses?.[0] || 'Hero') : '搜尋中...'"></span>
+                </div>
+            </div>
+
+            <!-- 正常卡片（skeleton → 填充） -->
+            <template x-for="(card, index) in heroCards" :key="card ? ('hero_' + card.path) : ('hero_empty_' + index)">
+                <div class="av-card-preview">
+                    <div class="av-card-preview-img">
+                        <!-- skeleton 狀態 -->
+                        <template x-if="card === null">
+                            <div class="skeleton-cover shimmer"></div>
+                        </template>
+                        <!-- 填入狀態：有封面 -->
+                        <template x-if="card !== null && card.cover_url">
+                            <img :src="card.cover_url" :alt="card.number" loading="lazy"
+                                 class="img-cover-fill">
+                        </template>
+                        <!-- 填入狀態：無封面 -->
+                        <template x-if="card !== null && !card.cover_url">
+                            <div class="av-card-no-cover">
+                                <i class="bi bi-image"></i>
+                                <span>無封面</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="av-card-preview-footer">
+                        <span class="av-num"
+                              x-text="card !== null ? (card.number || '-') : ('#' + (index + 1))">
+                        </span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Showcase Grid 區（tab=showcase） -->
+        <div class="showcase-grid"
+             x-ref="showcaseGrid"
+             x-show="tab === 'showcase'"
+             x-cloak>
+            <div class="av-card-preview" data-flip-id="sc-1" data-name="fanart11" data-number="14">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-1.jpg"
+                         alt="Showcase 1"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">fanart11 #14</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-2" data-name="fanart12" data-number="7">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-2.jpg"
+                         alt="Showcase 2"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">fanart12 #7</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-3" data-name="fanart13" data-number="19">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-3.jpg"
+                         alt="Showcase 3"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">fanart13 #19</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-4" data-name="miru SONE-830" data-number="3">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-4.jpg"
+                         alt="Showcase 4"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">miru SONE-830 #3</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-5" data-name="miru SONE-920" data-number="11">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-5.jpg"
+                         alt="Showcase 5"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">miru SONE-920 #11</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-6" data-name="七ツ森りり SONE-917" data-number="16">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-6.jpg"
+                         alt="Showcase 6"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">七ツ森りり SONE-917 #16</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-7" data-name="三田真鈴 SONE-671" data-number="1">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-7.jpg"
+                         alt="Showcase 7"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">三田真鈴 SONE-671 #1</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-8" data-name="五日市芽依 WAAA-557" data-number="20">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-8.jpg"
+                         alt="Showcase 8"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">五日市芽依 WAAA-557 #20</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-9" data-name="五芭 FOCS-257" data-number="8">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-9.jpg"
+                         alt="Showcase 9"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">五芭 FOCS-257 #8</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-10" data-name="佐々木さき IPZZ-709" data-number="5">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-10.jpg"
+                         alt="Showcase 10"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">佐々木さき IPZZ-709 #5</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-11" data-name="倉本すみれ HMN-713" data-number="18">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-11.jpg"
+                         alt="Showcase 11"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">倉本すみれ HMN-713 #18</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-12" data-name="吉高寧々 FNS-089" data-number="12">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-12.jpg"
+                         alt="Showcase 12"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">吉高寧々 FNS-089 #12</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-13" data-name="天馬ゆい LULU-198" data-number="6">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-13.jpg"
+                         alt="Showcase 13"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">天馬ゆい LULU-198 #6</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-14" data-name="宮下玲奈 MIDA-241" data-number="9">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-14.jpg"
+                         alt="Showcase 14"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">宮下玲奈 MIDA-241 #9</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-15" data-name="小倉由菜 START-344" data-number="15">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-15.jpg"
+                         alt="Showcase 15"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">小倉由菜 START-344 #15</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-16" data-name="小倉由菜 START-370" data-number="2">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-16.jpg"
+                         alt="Showcase 16"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">小倉由菜 START-370 #2</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-17" data-name="小倉由菜 START-453" data-number="10">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-17.jpg"
+                         alt="Showcase 17"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">小倉由菜 START-453 #10</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-18" data-name="小倉由菜 唯井まひろ START-368" data-number="17">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-18.jpg"
+                         alt="Showcase 18"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">小倉由菜 唯井まひろ START-368 #17</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-19" data-name="小坂七香 SONE-238" data-number="4">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-19.jpg"
+                         alt="Showcase 19"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">小坂七香 SONE-238 #4</span>
+                </div>
+            </div>
+            <div class="av-card-preview" data-flip-id="sc-20" data-name="小島みなみ JUR-002" data-number="13">
+                <div class="av-card-preview-img">
+                    <img src="/static/img/showcase/sc-20.jpg"
+                         alt="Showcase 20"
+                         loading="lazy"
+                         class="img-cover-fill">
+                </div>
+                <div class="av-card-preview-footer">
+                    <span class="av-num">小島みなみ JUR-002 #13</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Popover 區（tab=popover） — Alpine x-transition enter/leave demo -->
+        <div x-show="tab === 'popover'"
+             x-cloak
+             style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5rem; padding: 2rem;"
+             x-data="{ showPopover1: false, showPopover2: false }">
+            <h5 style="color: var(--text-primary); font-weight: 600; margin: 0;">Help Popover — Alpine x-transition demo</h5>
+            <!-- Demo 1: 基本 -->
+            <div style="position: relative; display: inline-flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 0.875rem; color: var(--text-secondary); background: var(--color-base-200); padding: 0.5rem 1rem; border-radius: var(--fluent-radius-md);">表單欄位標籤</span>
+                <button type="button" class="help-popover-btn"
+                        @click="showPopover1 = !showPopover1"
+                        :aria-expanded="showPopover1">
+                    <i class="bi bi-question-circle"></i>
+                </button>
+                <div x-show="showPopover1" x-cloak x-transition
+                     @click.outside="showPopover1 = false"
+                     class="help-popover">
+                    <small class="help-popover__body">
+                        這是一個基本的 help popover 範例。<br>
+                        使用 Alpine <code>x-transition</code> 實現淡入淡出效果，點擊外部自動關閉。
+                    </small>
+                </div>
+            </div>
+            <!-- Demo 2: 含 code block -->
+            <div style="position: relative; display: inline-flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 0.875rem; color: var(--text-secondary); background: var(--color-base-200); padding: 0.5rem 1rem; border-radius: var(--fluent-radius-md);">進階欄位（含程式碼）</span>
+                <button type="button" class="help-popover-btn"
+                        @click="showPopover2 = !showPopover2"
+                        :aria-expanded="showPopover2">
+                    <i class="bi bi-question-circle"></i>
+                </button>
+                <div x-show="showPopover2" x-cloak x-transition
+                     @click.outside="showPopover2 = false"
+                     class="help-popover">
+                    <small class="help-popover__body">含 code block 的說明框：</small>
+                    <pre class="help-popover__code"><code>Set-ItemProperty -Path 'HKLM:\...' -Value 1</code></pre>
+                    <small class="help-popover__body">執行後重新啟動生效。</small>
+                </div>
+            </div>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">
+                背景色 <code>--color-base-200</code> 自動跟隨 Light/Dark 主題 ·
+                陰影 <code>--fluent-shadow-4</code> · 圓角 <code>--fluent-radius-xl</code> (12px)
+            </p>
+        </div>
+
+        <!-- CSS Animations 區（tab=css-animations） — Shimmer Pulse / Cover-Actions Reveal / Dropdown Appear -->
+        <div x-show="tab === 'css-animations'"
+             x-cloak
+             class="css-anim-demos"
+             style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2.5rem; padding: 2rem;">
+
+            <!-- Demo 1: Shimmer Pulse -->
+            <div>
+                <h5 style="color: var(--text-primary); font-weight: 600; margin: 0 0 1rem;">Shimmer Pulse — Skeleton Loading Animation</h5>
+                <div style="display: flex; gap: 2rem; align-items: flex-start; flex-wrap: wrap;">
+                    <!-- Card grid 封面佔位 -->
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start;">
+                        <div class="skeleton-cover shimmer" style="width: 200px;"></div>
+                        <small style="color: var(--text-muted); font-size: 0.7rem;">Card grid 封面佔位（<code>.skeleton-cover.shimmer</code>）</small>
+                    </div>
+                    <!-- 詳情封面佔位 -->
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start;">
+                        <div style="position: relative; width: 280px; aspect-ratio: 3/2;">
+                            <div class="shimmer" style="position: absolute; inset: 0; border-radius: var(--radius-sm);"></div>
+                        </div>
+                        <small style="color: var(--text-muted); font-size: 0.7rem;">詳情封面佔位（inline <code>.shimmer</code>）</small>
+                    </div>
+                </div>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin: 1rem 0 0;">
+                    keyframe 定義：<code>search.css</code> 行 687 ·
+                    timing：<code>1.5s ease-in-out infinite</code> · auto-play loop，無需觸發
+                </p>
+            </div>
+
+            <!-- Demo 2: Cover-Actions Reveal -->
+            <div>
+                <h5 style="color: var(--text-primary); font-weight: 600; margin: 0 0 1rem;">Cover-Actions Reveal — Gradient Overlay + Glass Buttons</h5>
+                <div class="lightbox-cover css-anim-cover-mock">
+                    <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #3a3a4a 0%, #555566 50%, #3a3a4a 100%);"></div>
+                    <div class="cover-actions">
+                        <button class="lb-action-btn" data-tooltip="返回詳情" type="button">
+                            <i class="bi bi-arrow-return-left"></i>
+                        </button>
+                        <button class="lb-action-btn" data-tooltip="開資料夾" type="button">
+                            <i class="bi bi-folder2-open"></i>
+                        </button>
+                        <button class="lb-action-btn" data-tooltip="來源網址" type="button">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin: 1rem 0 0;">
+                    hover 封面圖，<code>.cover-actions</code> gradient overlay fade in（<code>opacity: 0 → 1</code>） ·
+                    hover button：<code>scale(1.08)</code> + glass highlight ·
+                    CSS-only tooltip via <code>data-tooltip</code>（定義：<code>showcase.css</code> 行 555–627）
+                </p>
+            </div>
+
+            <!-- Demo 3: Dropdown Appear -->
+            <div>
+                <h5 style="color: var(--text-primary); font-weight: 600; margin: 0 0 1rem;">Dropdown Appear — Alpine x-transition Opacity Fade</h5>
+                <div x-data="{ open: false, selected: 'date' }" style="position: relative; display: inline-block;">
+                    <div class="toolbar-dropdown-wrap" @click.outside="open = false">
+                        <button type="button"
+                                class="btn-icon"
+                                @click="open = !open"
+                                :class="{ 'active': open }">
+                            <i class="bi bi-funnel"></i>
+                        </button>
+                        <div class="toolbar-dropdown"
+                             x-show="open"
+                             x-transition.opacity.duration.150ms
+                             @click.stop>
+                            <a href="#" class="dropdown-item"
+                               :class="{ 'active': selected === 'date' }"
+                               @click.prevent="selected = 'date'; open = false">
+                                <i class="bi bi-calendar"></i> 日期</a>
+                            <a href="#" class="dropdown-item"
+                               :class="{ 'active': selected === 'num' }"
+                               @click.prevent="selected = 'num'; open = false">
+                                <i class="bi bi-sort-numeric-down"></i> 番號</a>
+                            <a href="#" class="dropdown-item"
+                               :class="{ 'active': selected === 'name' }"
+                               @click.prevent="selected = 'name'; open = false">
+                                <i class="bi bi-sort-alpha-down"></i> 名稱</a>
+                        </div>
+                    </div>
+                </div>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin: 1rem 0 0;">
+                    opacity fade via <code>x-transition.opacity.duration.150ms</code> ·
+                    active item 套用 <code>.dropdown-item.active</code>（accent 背景色） ·
+                    <code>.dropdown-item</code> hover transition 定義：<code>showcase.css</code> 行 106–108
+                </p>
+            </div>
+
+        </div>
+
+        <!-- ===== Photo Picker Burst Section ===== -->
+        <div x-show="tab === 'picker'" class="motion-lab-preview picker-preview-wrap">
+
+            <!-- 模擬 lightbox（置中卡片，無 backdrop） -->
+            <div class="picker-mock-lightbox" :class="{ 'is-open': _pickerOpen }">
+                <!-- X 關閉按鈕（裝飾用，不綁邏輯，視覺對齊真 lightbox） -->
+                <button class="picker-mock-close" type="button" aria-hidden="true">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+
+                <!-- 上方：封面區（模擬 .lightbox-cover） -->
+                <div x-ref="pickerCoverArea" class="picker-cover-area">
+                    <img x-ref="pickerCoverImg"
+                         src="/static/img/picker-demo/cover.jpg"
+                         class="picker-cover-img"
+                         alt="封面（涼森れむ）">
+                    <!-- 🔄 觸發按鈕（沿用既有 cover-actions 樣式） -->
+                    <div class="cover-actions">
+                        <button class="lb-action-btn picker-refresh-btn"
+                                @click="onPickerBurst()"
+                                type="button"
+                                data-tooltip="重新爆射候選">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button class="lb-action-btn"
+                                x-show="_pickerOpen"
+                                @click="onResetPicker()"
+                                type="button"
+                                data-tooltip="取消選擇">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <!-- 當前來源 chip（右上） -->
+                    <div class="picker-current-source-label" x-show="_pickerOpen">
+                        當前：gfriends（示範）
+                    </div>
+                </div>
+
+                <!-- 下方：metadata 區（模擬 .lightbox-metadata.actress-lightbox-meta） -->
+                <div class="picker-meta-area">
+                    <!-- Row 1：名稱（picker 開啟時不淡出） -->
+                    <div class="picker-name-row">
+                        <span class="lb-name">涼森れむ</span>
+                        <span class="lb-name-en">Remu Suzumori</span>
+                    </div>
+
+                    <!-- 操作說明（picker 未開啟時顯示） -->
+                    <p class="picker-desc" x-show="!_pickerOpen">
+                        按封面 🔄 觸發爆射候選；漂浮後 Hover 或點擊選取。
+                    </p>
+
+                    <!-- 候選展開區（picker 開啟時顯示，模擬 metadata 淡出後 candidates 落入區域） -->
+                    <div x-ref="pickerCandidatesArea" class="picker-candidates-area">
+                        <template x-for="(c, i) in _pickerCandidates" :key="i">
+                            <div class="picker-candidate-card"
+                                 @mouseenter="onPickerHoverIn(i)"
+                                 @mouseleave="onPickerHoverOut(i)"
+                                 @click="onPickerSelect(i)">
+                                <img :src="c.img" class="picker-candidate-img" :alt="c.source">
+                                <div class="picker-source-badge"><i class="bi bi-check-circle-fill picker-check-icon"></i><span x-text="c.source"></span></div>
+                            </div>
+                        </template>
+                        <div x-show="_pickerCandidates.length === 0 && _pickerOpen" class="picker-empty">
+                            目前找不到候選照片
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Detail 區（tab=search && mode=detail） -->
+        <div class="motion-lab-detail"
+             x-ref="detail"
+             x-show="!loading && hasVideos && tab === 'search' && mode === 'detail'">
+            <div class="av-card-full" x-show="selectedVideo">
+                <!-- 封面 -->
+                <div class="av-card-full-cover">
+                    <div class="av-card-full-cover-wrapper">
+                        <template x-if="selectedVideo && selectedVideo.cover_url">
+                            <img class="av-card-full-cover-img"
+                                 :src="selectedVideo.cover_url"
+                                 :alt="selectedVideo?.number"
+                                 loading="lazy">
+                        </template>
+                        <template x-if="selectedVideo && !selectedVideo.cover_url">
+                            <div class="av-card-no-cover">
+                                <i class="bi bi-image"></i>
+                                <span>無封面</span>
+                            </div>
+                        </template>
+                        <!-- Nav 按鈕 -->
+                        <button class="nav-btn prev"
+                                x-show="selectedIndex > 0 && !isNavigating && !isTransitioning"
+                                @click="onPrev()"
+                                title="上一個 (←)">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <button class="nav-btn next"
+                                x-show="selectedIndex < videos.length - 1 && !isNavigating && !isTransitioning"
+                                @click="onNext()"
+                                title="下一個 (→)">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                        <div class="nav-indicator">
+                            <span x-text="selectedIndex + 1"></span> /
+                            <span x-text="videos.length"></span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 資訊：header / body / footer 三段 -->
+                <div class="av-card-full-info">
+                    <!-- Header：番號 + 來源切換（佔位，disabled） -->
+                    <div class="av-card-full-header">
+                        <h4 class="av-num" x-text="selectedVideo?.number || '-'"></h4>
+                        <button class="info-icon-btn" title="切換版本" disabled>
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                    </div>
+                    <!-- Body：演員、發行日期、片商、標籤 -->
+                    <div class="av-card-full-body">
+                        <div class="info-row">
+                            <span class="info-label">演員</span>
+                            <span class="info-value" x-text="formatActressesDetail(selectedVideo?.actresses)"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">發行日期</span>
+                            <span class="info-value" x-text="selectedVideo?.release_date || '-'"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">片商</span>
+                            <span class="info-value" x-text="selectedVideo?.maker || '-'"></span>
+                        </div>
+                        <div class="info-row" x-show="(selectedVideo?.tags || []).length > 0">
+                            <span class="info-label">標籤</span>
+                            <span class="info-value">
+                                <template x-for="tag in (selectedVideo?.tags || [])" :key="tag">
+                                    <span class="badge tag-badge" x-text="tag"></span>
+                                </template>
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Footer：標題（最底部） -->
+                    <div class="av-card-full-footer">
+                        <div class="av-card-full-footer-content">
+                            <span class="info-label">標題</span>
+                            <span class="info-value" x-text="selectedVideo?.title || '（無標題）'"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== §5 Ease Roles 並排對比 ===== -->
+        <div x-show="tab === 'ease-roles'" x-cloak class="ease-roles-panel">
+            <h5 class="ease-roles-title">§5 Ease 角色對比</h5>
+            <p class="ease-roles-desc">三條曲線同步播放，Standard S 曲線 ／ Enter 慢起快停 ／ Exit 快起慢停</p>
+            <div class="ease-roles-track">
+                <div class="ease-role-item">
+                    <div class="ease-role-label">
+                        <span class="ease-role-name">Standard</span>
+                        <code class="ease-role-code">fluent</code>
+                        <code class="ease-role-bezier">cubic-bezier(0.33, 0, 0.67, 1)</code>
+                    </div>
+                    <div class="ease-role-lane">
+                        <div class="ease-role-box" x-ref="easeBox0"></div>
+                    </div>
+                </div>
+                <div class="ease-role-item">
+                    <div class="ease-role-label">
+                        <span class="ease-role-name">Enter（進場）</span>
+                        <code class="ease-role-code">fluent-decel</code>
+                        <code class="ease-role-bezier">cubic-bezier(0, 0, 0, 1)</code>
+                    </div>
+                    <div class="ease-role-lane">
+                        <div class="ease-role-box" x-ref="easeBox1"></div>
+                    </div>
+                </div>
+                <div class="ease-role-item">
+                    <div class="ease-role-label">
+                        <span class="ease-role-name">Exit（離場）</span>
+                        <code class="ease-role-code">fluent-accel</code>
+                        <code class="ease-role-bezier">cubic-bezier(1, 0, 1, 1)</code>
+                    </div>
+                    <div class="ease-role-lane">
+                        <div class="ease-role-box" x-ref="easeBox2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== §5 Special Motion 白名單 demo ===== -->
+        <div x-show="tab === 'special-motion'" x-cloak class="special-motion-panel">
+            <h5 class="special-motion-title">§5 Special Motion 白名單</h5>
+            <p class="special-motion-desc">各條目獨立招牌動畫，ease 不走三角色，保留視覺個性</p>
+            <div class="special-motion-track">
+
+                <!-- 1. Burst Picker 候選卡彈出 -->
+                <div class="special-motion-item">
+                    <div class="special-motion-label">
+                        <span class="special-motion-name">Burst Picker 候選卡彈出</span>
+                        <code class="special-motion-ease">back.out(1.2~1.7)</code>
+                    </div>
+                    <div class="special-motion-stage">
+                        <div class="special-motion-box" x-ref="whitelistBurstPickerEl"></div>
+                    </div>
+                </div>
+
+                <!-- 2. Staging Card 進場 morph -->
+                <div class="special-motion-item">
+                    <div class="special-motion-label">
+                        <span class="special-motion-name">Staging Card 進場 morph</span>
+                        <code class="special-motion-ease">back.out(1.4) + 0.35s</code>
+                    </div>
+                    <div class="special-motion-stage">
+                        <div class="special-motion-box" x-ref="whitelistStagingEntryEl"></div>
+                    </div>
+                </div>
+
+                <!-- 3. playOrganizeSuccess checkmark -->
+                <div class="special-motion-item">
+                    <div class="special-motion-label">
+                        <span class="special-motion-name">playOrganizeSuccess checkmark</span>
+                        <code class="special-motion-ease">back.out(1.7) + 0.35s</code>
+                    </div>
+                    <div class="special-motion-stage">
+                        <div class="special-motion-checkmark" x-ref="whitelistCheckmarkEl">✓</div>
+                    </div>
+                </div>
+
+                <!-- 4. playOrganizeFail shake -->
+                <div class="special-motion-item">
+                    <div class="special-motion-label">
+                        <span class="special-motion-name">playOrganizeFail shake</span>
+                        <code class="special-motion-ease">power1.inOut + 0.08s yoyo×3</code>
+                    </div>
+                    <div class="special-motion-stage">
+                        <div class="special-motion-box" x-ref="whitelistShakeEl"></div>
+                    </div>
+                </div>
+
+                <!-- 5. SourcePulse micro feedback -->
+                <div class="special-motion-item">
+                    <div class="special-motion-label">
+                        <span class="special-motion-name">SourcePulse micro feedback</span>
+                        <code class="special-motion-ease">fluent yoyo 0.1s</code>
+                    </div>
+                    <div class="special-motion-stage">
+                        <div class="special-motion-dot" x-ref="whitelistPulseEl"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 跳過條目說明 -->
+            <div class="special-motion-skip-section">
+                <p class="whitelist-skip-note">以下條目因環境依賴無法在 motion-lab 建立獨立 demo：</p>
+                <ul class="whitelist-skip-list">
+                    <li><strong>Floating Hearts 粒子</strong>：依賴 Physics2D Plugin，見 picker tab</li>
+                    <li><strong>FLIP 排序洗牌</strong>：已有 showcase tab FLIP demo</li>
+                    <li><strong>Ghost Fly 飛行</strong>：見 Showcase tab lightbox 互動 demo</li>
+                    <li><strong>playLightboxOpen 三段</strong>：依賴 ghost-fly 並行段，見 showcase lightbox</li>
+                    <li><strong>showcaseSettle 招牌 settle</strong>：已有 settle tab demo</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- ===== §5 Duration Buckets 並排對比 ===== -->
+        <div x-show="tab === 'duration-buckets'" x-cloak class="duration-buckets-panel">
+            <h5 class="duration-buckets-title">§5 Duration Buckets 對比</h5>
+            <p class="duration-buckets-desc">四個 box 同時播放相同 ease（fluent standard），只改 duration，直觀看時長差異</p>
+            <div class="duration-buckets-track">
+                <div class="duration-bucket-item">
+                    <div class="duration-bucket-label">
+                        <span class="duration-bucket-name">fast 167ms</span>
+                        <code class="duration-bucket-code">DURATION.fast</code>
+                    </div>
+                    <div class="duration-bucket-lane">
+                        <div class="duration-bucket-box" x-ref="durBox0"></div>
+                    </div>
+                </div>
+                <div class="duration-bucket-item">
+                    <div class="duration-bucket-label">
+                        <span class="duration-bucket-name">medium 333ms</span>
+                        <code class="duration-bucket-code">DURATION.medium</code>
+                    </div>
+                    <div class="duration-bucket-lane">
+                        <div class="duration-bucket-box" x-ref="durBox1"></div>
+                    </div>
+                </div>
+                <div class="duration-bucket-item">
+                    <div class="duration-bucket-label">
+                        <span class="duration-bucket-name">emphasis 500ms</span>
+                        <code class="duration-bucket-code">DURATION.emphasis</code>
+                    </div>
+                    <div class="duration-bucket-lane">
+                        <div class="duration-bucket-box" x-ref="durBox2"></div>
+                    </div>
+                </div>
+                <div class="duration-bucket-item">
+                    <div class="duration-bucket-label">
+                        <span class="duration-bucket-name">slow 300ms (legacy)</span>
+                        <code class="duration-bucket-code">0.3</code>
+                    </div>
+                    <div class="duration-bucket-lane">
+                        <div class="duration-bucket-box" x-ref="durBox3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Constellation tab（56b-T3：從 /clip-lab 沉澱進來）===== -->
+        <!-- D-4：用 x-if 而非 x-show，切走時 DOM 銷毀 → Alpine destroy() 統一 cleanup
+                  breathingManager + GSAP context（避 ticker / tween 殘留）。 -->
+        <template x-if="tab === 'constellation'">
+            <div x-data="constellationLab" class="constellation-tab-panel" x-cloak>
+                <div class="clip-lab-stage-area">
+                    <!-- T5 (CD-T5-3)：強制 dim theme，Constellation 永遠是星空底；
+                         範圍只在 stage 容器，不污染 motion-lab section / sidebar / 其他 tab UI -->
+                    <div class="clip-lab-stage" data-theme="dim">
+
+                        <!-- Dust particle layer — 100 static circles (60 seed=56 + 40 seed=9999), z-index 0 (T5 CD-T5-1) -->
+                        <svg class="clip-lab-dust" viewBox="0 0 960 620" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <circle cx="888" cy="593" r="0.61" style="--dust-base-seed:0.086;--dust-cycle:3.14s;--dust-delay:2.39s"/>
+                            <circle cx="450" cy="256" r="0.69" style="--dust-base-seed:0.085;--dust-cycle:3.21s;--dust-delay:1.12s"/>
+                            <circle cx="607" cy="232" r="0.62" style="--dust-base-seed:0.083;--dust-cycle:2.7s;--dust-delay:2.56s"/>
+                            <circle cx="160" cy="413" r="1.28" style="--dust-base-seed:0.097;--dust-cycle:3.29s;--dust-delay:1.09s"/>
+                            <circle cx="116" cy="220" r="1.16" style="--dust-base-seed:0.078;--dust-cycle:3.88s;--dust-delay:0.55s"/>
+                            <circle cx="706" cy="84" r="1.38" style="--dust-base-seed:0.081;--dust-cycle:2.92s;--dust-delay:0.77s"/>
+                            <circle cx="582" cy="528" r="1.34" style="--dust-base-seed:0.074;--dust-cycle:3.78s;--dust-delay:0.15s"/>
+                            <circle cx="397" cy="20" r="1.47" style="--dust-base-seed:0.087;--dust-cycle:3.55s;--dust-delay:0.43s"/>
+                            <circle cx="530" cy="414" r="1.28" style="--dust-base-seed:0.079;--dust-cycle:3.27s;--dust-delay:2.26s"/>
+                            <circle cx="583" cy="531" r="1.29" style="--dust-base-seed:0.087;--dust-cycle:2.98s;--dust-delay:1.51s"/>
+                            <circle cx="734" cy="498" r="0.74" style="--dust-base-seed:0.068;--dust-cycle:2.85s;--dust-delay:1.11s"/>
+                            <circle cx="29" cy="153" r="0.63" style="--dust-base-seed:0.093;--dust-cycle:4.15s;--dust-delay:0.72s"/>
+                            <circle cx="541" cy="112" r="0.65" style="--dust-base-seed:0.083;--dust-cycle:3.85s;--dust-delay:1.27s"/>
+                            <circle cx="824" cy="426" r="0.84" style="--dust-base-seed:0.062;--dust-cycle:3.47s;--dust-delay:3.28s"/>
+                            <circle cx="328" cy="242" r="0.66" style="--dust-base-seed:0.088;--dust-cycle:3.34s;--dust-delay:4.11s"/>
+                            <circle cx="701" cy="576" r="1.39" style="--dust-base-seed:0.066;--dust-cycle:3.75s;--dust-delay:2.9s"/>
+                            <circle cx="62" cy="59" r="1.28" style="--dust-base-seed:0.079;--dust-cycle:2.79s;--dust-delay:0.59s"/>
+                            <circle cx="282" cy="172" r="1.37" style="--dust-base-seed:0.097;--dust-cycle:4.31s;--dust-delay:3.55s"/>
+                            <circle cx="929" cy="137" r="1.59" style="--dust-base-seed:0.076;--dust-cycle:3.9s;--dust-delay:4.16s"/>
+                            <circle cx="232" cy="132" r="1.35" style="--dust-base-seed:0.065;--dust-cycle:2.84s;--dust-delay:3.96s"/>
+                            <circle cx="593" cy="134" r="1.52" style="--dust-base-seed:0.077;--dust-cycle:4.29s;--dust-delay:3.15s"/>
+                            <circle cx="218" cy="263" r="1.54" style="--dust-base-seed:0.072;--dust-cycle:4.14s;--dust-delay:2.66s"/>
+                            <circle cx="102" cy="216" r="0.72" style="--dust-base-seed:0.086;--dust-cycle:3.37s;--dust-delay:3.58s"/>
+                            <circle cx="639" cy="166" r="1.44" style="--dust-base-seed:0.083;--dust-cycle:4.32s;--dust-delay:2.38s"/>
+                            <circle cx="921" cy="432" r="1.4" style="--dust-base-seed:0.088;--dust-cycle:4.03s;--dust-delay:1.98s"/>
+                            <circle cx="794" cy="407" r="1.48" style="--dust-base-seed:0.074;--dust-cycle:3.28s;--dust-delay:1.35s"/>
+                            <circle cx="483" cy="149" r="1.03" style="--dust-base-seed:0.093;--dust-cycle:3.25s;--dust-delay:1.36s"/>
+                            <circle cx="564" cy="41" r="1.31" style="--dust-base-seed:0.077;--dust-cycle:3.38s;--dust-delay:1.27s"/>
+                            <circle cx="651" cy="259" r="1.49" style="--dust-base-seed:0.076;--dust-cycle:2.84s;--dust-delay:1.74s"/>
+                            <circle cx="346" cy="565" r="1.41" style="--dust-base-seed:0.091;--dust-cycle:4.39s;--dust-delay:3.41s"/>
+                            <circle cx="73" cy="481" r="1.18" style="--dust-base-seed:0.094;--dust-cycle:3.24s;--dust-delay:3.41s"/>
+                            <circle cx="46" cy="496" r="0.77" style="--dust-base-seed:0.089;--dust-cycle:4.35s;--dust-delay:0.42s"/>
+                            <circle cx="825" cy="181" r="0.95" style="--dust-base-seed:0.067;--dust-cycle:3.46s;--dust-delay:4.12s"/>
+                            <circle cx="594" cy="485" r="1.21" style="--dust-base-seed:0.096;--dust-cycle:4.38s;--dust-delay:0.96s"/>
+                            <circle cx="779" cy="502" r="1.1" style="--dust-base-seed:0.096;--dust-cycle:2.98s;--dust-delay:3.87s"/>
+                            <circle cx="403" cy="46" r="0.84" style="--dust-base-seed:0.076;--dust-cycle:3.18s;--dust-delay:0.28s"/>
+                            <circle cx="435" cy="350" r="0.82" style="--dust-base-seed:0.072;--dust-cycle:3.71s;--dust-delay:2.49s"/>
+                            <circle cx="71" cy="125" r="1.09" style="--dust-base-seed:0.082;--dust-cycle:3.81s;--dust-delay:0.53s"/>
+                            <circle cx="939" cy="345" r="1.13" style="--dust-base-seed:0.09;--dust-cycle:3.93s;--dust-delay:1.2s"/>
+                            <circle cx="211" cy="363" r="0.88" style="--dust-base-seed:0.09;--dust-cycle:3.03s;--dust-delay:4.16s"/>
+                            <circle cx="701" cy="331" r="1.23" style="--dust-base-seed:0.076;--dust-cycle:3.46s;--dust-delay:3.39s"/>
+                            <circle cx="517" cy="328" r="1.58" style="--dust-base-seed:0.082;--dust-cycle:4.13s;--dust-delay:0.74s"/>
+                            <circle cx="168" cy="340" r="0.96" style="--dust-base-seed:0.096;--dust-cycle:2.74s;--dust-delay:1.24s"/>
+                            <circle cx="919" cy="439" r="0.79" style="--dust-base-seed:0.065;--dust-cycle:3.06s;--dust-delay:1.46s"/>
+                            <circle cx="551" cy="579" r="0.7" style="--dust-base-seed:0.067;--dust-cycle:3.35s;--dust-delay:1.83s"/>
+                            <circle cx="790" cy="253" r="1.14" style="--dust-base-seed:0.09;--dust-cycle:3.99s;--dust-delay:4.07s"/>
+                            <circle cx="836" cy="583" r="1.41" style="--dust-base-seed:0.081;--dust-cycle:2.73s;--dust-delay:3.11s"/>
+                            <circle cx="824" cy="365" r="1.29" style="--dust-base-seed:0.094;--dust-cycle:3.02s;--dust-delay:0.71s"/>
+                            <circle cx="176" cy="38" r="0.63" style="--dust-base-seed:0.064;--dust-cycle:2.68s;--dust-delay:3.54s"/>
+                            <circle cx="160" cy="181" r="1.2" style="--dust-base-seed:0.077;--dust-cycle:3.36s;--dust-delay:2.17s"/>
+                            <circle cx="716" cy="558" r="0.6" style="--dust-base-seed:0.089;--dust-cycle:3.12s;--dust-delay:4.08s"/>
+                            <circle cx="887" cy="98" r="0.64" style="--dust-base-seed:0.067;--dust-cycle:3.75s;--dust-delay:0.62s"/>
+                            <circle cx="937" cy="338" r="0.71" style="--dust-base-seed:0.088;--dust-cycle:2.94s;--dust-delay:3.43s"/>
+                            <circle cx="138" cy="461" r="1.15" style="--dust-base-seed:0.099;--dust-cycle:3.52s;--dust-delay:3.47s"/>
+                            <circle cx="169" cy="264" r="1.47" style="--dust-base-seed:0.1;--dust-cycle:3.94s;--dust-delay:3.51s"/>
+                            <circle cx="541" cy="301" r="0.87" style="--dust-base-seed:0.089;--dust-cycle:3.5s;--dust-delay:3.57s"/>
+                            <circle cx="665" cy="353" r="1.46" style="--dust-base-seed:0.062;--dust-cycle:3.89s;--dust-delay:0.58s"/>
+                            <circle cx="21" cy="587" r="1.1" style="--dust-base-seed:0.095;--dust-cycle:2.78s;--dust-delay:3.33s"/>
+                            <circle cx="24" cy="146" r="0.75" style="--dust-base-seed:0.071;--dust-cycle:4.05s;--dust-delay:1.45s"/>
+                            <circle cx="24" cy="295" r="1.1" style="--dust-base-seed:0.081;--dust-cycle:4.26s;--dust-delay:2.68s"/>
+                            <!-- T5 (CD-T5-1)：新增 40 顆 dust（seed=9999），共 100 顆 -->
+                            <circle cx="874" cy="147" r="0.76" style="--dust-base-seed:0.063;--dust-cycle:4.02s;--dust-delay:1.26s"/>
+                            <circle cx="214" cy="330" r="1.23" style="--dust-base-seed:0.069;--dust-cycle:3.55s;--dust-delay:0.37s"/>
+                            <circle cx="640" cy="504" r="1.04" style="--dust-base-seed:0.092;--dust-cycle:3.63s;--dust-delay:4.26s"/>
+                            <circle cx="695" cy="206" r="1.55" style="--dust-base-seed:0.097;--dust-cycle:3.67s;--dust-delay:0.7s"/>
+                            <circle cx="20" cy="517" r="1.48" style="--dust-base-seed:0.098;--dust-cycle:3.37s;--dust-delay:1.06s"/>
+                            <circle cx="627" cy="600" r="1.24" style="--dust-base-seed:0.088;--dust-cycle:3.62s;--dust-delay:1.16s"/>
+                            <circle cx="583" cy="411" r="0.63" style="--dust-base-seed:0.081;--dust-cycle:3.77s;--dust-delay:1.4s"/>
+                            <circle cx="767" cy="279" r="0.73" style="--dust-base-seed:0.067;--dust-cycle:3.54s;--dust-delay:3.09s"/>
+                            <circle cx="757" cy="32" r="1.38" style="--dust-base-seed:0.094;--dust-cycle:3.19s;--dust-delay:3.04s"/>
+                            <circle cx="490" cy="339" r="1.08" style="--dust-base-seed:0.067;--dust-cycle:3.37s;--dust-delay:3.66s"/>
+                            <circle cx="315" cy="313" r="0.81" style="--dust-base-seed:0.072;--dust-cycle:3.95s;--dust-delay:2.62s"/>
+                            <circle cx="824" cy="99" r="1.0" style="--dust-base-seed:0.064;--dust-cycle:3.53s;--dust-delay:3.67s"/>
+                            <circle cx="482" cy="510" r="1.54" style="--dust-base-seed:0.071;--dust-cycle:4.03s;--dust-delay:4.27s"/>
+                            <circle cx="54" cy="392" r="1.47" style="--dust-base-seed:0.063;--dust-cycle:3.78s;--dust-delay:0.22s"/>
+                            <circle cx="131" cy="395" r="0.89" style="--dust-base-seed:0.091;--dust-cycle:4.13s;--dust-delay:4.0s"/>
+                            <circle cx="171" cy="272" r="1.18" style="--dust-base-seed:0.091;--dust-cycle:2.87s;--dust-delay:2.37s"/>
+                            <circle cx="435" cy="168" r="0.8" style="--dust-base-seed:0.092;--dust-cycle:3.72s;--dust-delay:0.98s"/>
+                            <circle cx="556" cy="295" r="1.5" style="--dust-base-seed:0.07;--dust-cycle:4.37s;--dust-delay:0.9s"/>
+                            <circle cx="621" cy="256" r="1.29" style="--dust-base-seed:0.081;--dust-cycle:3.51s;--dust-delay:1.74s"/>
+                            <circle cx="803" cy="548" r="1.33" style="--dust-base-seed:0.097;--dust-cycle:3.28s;--dust-delay:0.12s"/>
+                            <circle cx="767" cy="117" r="0.69" style="--dust-base-seed:0.068;--dust-cycle:3.27s;--dust-delay:0.86s"/>
+                            <circle cx="432" cy="308" r="0.72" style="--dust-base-seed:0.096;--dust-cycle:4.08s;--dust-delay:3.81s"/>
+                            <circle cx="648" cy="560" r="0.97" style="--dust-base-seed:0.081;--dust-cycle:2.62s;--dust-delay:1.46s"/>
+                            <circle cx="376" cy="391" r="0.69" style="--dust-base-seed:0.093;--dust-cycle:3.53s;--dust-delay:3.99s"/>
+                            <circle cx="222" cy="147" r="1.48" style="--dust-base-seed:0.097;--dust-cycle:3.43s;--dust-delay:3.9s"/>
+                            <circle cx="27" cy="538" r="1.35" style="--dust-base-seed:0.066;--dust-cycle:3.69s;--dust-delay:1.41s"/>
+                            <circle cx="385" cy="557" r="1.43" style="--dust-base-seed:0.093;--dust-cycle:3.49s;--dust-delay:0.07s"/>
+                            <circle cx="847" cy="119" r="1.51" style="--dust-base-seed:0.098;--dust-cycle:3.4s;--dust-delay:2.45s"/>
+                            <circle cx="273" cy="110" r="1.27" style="--dust-base-seed:0.095;--dust-cycle:4.13s;--dust-delay:4.19s"/>
+                            <circle cx="322" cy="164" r="1.21" style="--dust-base-seed:0.097;--dust-cycle:3.32s;--dust-delay:3.06s"/>
+                            <circle cx="268" cy="330" r="0.97" style="--dust-base-seed:0.083;--dust-cycle:3.44s;--dust-delay:0.05s"/>
+                            <circle cx="601" cy="355" r="1.57" style="--dust-base-seed:0.088;--dust-cycle:3.73s;--dust-delay:4.18s"/>
+                            <circle cx="733" cy="336" r="1.12" style="--dust-base-seed:0.063;--dust-cycle:3.73s;--dust-delay:1.59s"/>
+                            <circle cx="377" cy="422" r="0.98" style="--dust-base-seed:0.069;--dust-cycle:4.12s;--dust-delay:0.25s"/>
+                            <circle cx="763" cy="390" r="1.34" style="--dust-base-seed:0.093;--dust-cycle:3.63s;--dust-delay:4.03s"/>
+                            <circle cx="526" cy="170" r="0.65" style="--dust-base-seed:0.07;--dust-cycle:3.37s;--dust-delay:3.32s"/>
+                            <circle cx="235" cy="91" r="1.17" style="--dust-base-seed:0.087;--dust-cycle:2.64s;--dust-delay:2.59s"/>
+                            <circle cx="417" cy="363" r="1.25" style="--dust-base-seed:0.071;--dust-cycle:2.75s;--dust-delay:2.22s"/>
+                            <circle cx="170" cy="140" r="0.73" style="--dust-base-seed:0.075;--dust-cycle:2.98s;--dust-delay:1.43s"/>
+                            <circle cx="598" cy="411" r="0.62" style="--dust-base-seed:0.079;--dust-cycle:2.68s;--dust-delay:2.57s"/>
+                        </svg>
+
+                        <!-- SVG Rail Lines (12 lines, rail--hidden 初始隱藏) + sweep-line siblings -->
+                        <svg class="clip-lab-rails" viewBox="0 0 960 620" xmlns="http://www.w3.org/2000/svg">
+                            <line id="rail-01" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-01" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-02" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-02" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-03" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-03" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-04" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-04" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-05" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-05" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-06" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-06" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-07" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-07" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-08" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-08" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-09" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-09" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-10" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-10" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-11" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-11" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="rail-12" class="clip-lab-rail rail--hidden" x1="480" y1="310" x2="480" y2="310" />
+                            <line id="sweep-12" class="clip-lab-rail-sweep" x1="480" y1="310" x2="480" y2="310" />
+                        </svg>
+
+                        <!-- 12 Slot Cards (永遠 mount，slot--hidden 控制可見性) -->
+                        <div id="card-01" class="clip-lab-slot slot--hidden" @click="onCardClick('#01')" x-on:mouseenter="onHoverEnter('#01')" x-on:mouseleave="onHoverLeave('#01')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-02" class="clip-lab-slot slot--hidden" @click="onCardClick('#02')" x-on:mouseenter="onHoverEnter('#02')" x-on:mouseleave="onHoverLeave('#02')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-03" class="clip-lab-slot slot--hidden" @click="onCardClick('#03')" x-on:mouseenter="onHoverEnter('#03')" x-on:mouseleave="onHoverLeave('#03')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-04" class="clip-lab-slot slot--hidden" @click="onCardClick('#04')" x-on:mouseenter="onHoverEnter('#04')" x-on:mouseleave="onHoverLeave('#04')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-05" class="clip-lab-slot slot--hidden" @click="onCardClick('#05')" x-on:mouseenter="onHoverEnter('#05')" x-on:mouseleave="onHoverLeave('#05')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-06" class="clip-lab-slot slot--hidden" @click="onCardClick('#06')" x-on:mouseenter="onHoverEnter('#06')" x-on:mouseleave="onHoverLeave('#06')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-07" class="clip-lab-slot slot--hidden" @click="onCardClick('#07')" x-on:mouseenter="onHoverEnter('#07')" x-on:mouseleave="onHoverLeave('#07')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-08" class="clip-lab-slot slot--hidden" @click="onCardClick('#08')" x-on:mouseenter="onHoverEnter('#08')" x-on:mouseleave="onHoverLeave('#08')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-09" class="clip-lab-slot slot--hidden" @click="onCardClick('#09')" x-on:mouseenter="onHoverEnter('#09')" x-on:mouseleave="onHoverLeave('#09')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-10" class="clip-lab-slot slot--hidden" @click="onCardClick('#10')" x-on:mouseenter="onHoverEnter('#10')" x-on:mouseleave="onHoverLeave('#10')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-11" class="clip-lab-slot slot--hidden" @click="onCardClick('#11')" x-on:mouseenter="onHoverEnter('#11')" x-on:mouseleave="onHoverLeave('#11')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+                        <div id="card-12" class="clip-lab-slot slot--hidden" @click="onCardClick('#12')" x-on:mouseenter="onHoverEnter('#12')" x-on:mouseleave="onHoverLeave('#12')">
+                            <img class="clip-lab-slot-img" alt="">
+                        </div>
+
+                        <!-- Main Halo sibling DOM（T2fix3）— outer glow + inner ring，z-index 18/19，低於 main-img(20) -->
+                        <div id="main-halo-outer" class="clip-lab-main-halo clip-lab-main-halo--outer" aria-hidden="true"></div>
+                        <div id="main-halo-inner" class="clip-lab-main-halo clip-lab-main-halo--inner" aria-hidden="true"></div>
+
+                        <!-- Main Image (中心) — T4 visual probe：host 透過 onMainSwap hook 在 t=0.30 切 src -->
+                        <div id="main-img" class="clip-lab-main" @click="onExit()">
+                            <img id="main-img-photo" class="clip-lab-main-img" alt="">
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </template>
+
+    </div>
+
+</div>
+
+<style>
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Cover-Actions Reveal demo mock cover（T1.5.3：inline style → class） */
+.css-anim-cover-mock {
+    position: relative;
+    width: 280px;
+    aspect-ratio: 3/2;
+    overflow: hidden;
+    border-radius: var(--fluent-radius-xl);
+    background: var(--color-base-300);
+    cursor: pointer;
+    display: block;
+}
+
+/* Stream-in Skeleton */
+.skeleton-cover {
+    width: 100%;
+    aspect-ratio: 3/2;
+    background: var(--bg-tertiary);
+    border-radius: 0;
+}
+
+.shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--bg-tertiary) 25%,
+        var(--bg-secondary) 50%,
+        var(--bg-tertiary) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Hero Slot: hero-card 邊框提示 */
+.hero-card {
+    border: 2px solid var(--accent-secondary);
+    border-radius: var(--fluent-radius-xl);
+}
+
+.hero-card .av-card-preview-footer {
+    background: color-mix(in srgb, var(--accent-secondary) 15%, transparent);
+}
+
+/* ===== Photo Picker Burst 樣式 — 模擬 actress lightbox 形式 ===== */
+.picker-preview-wrap {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+/* Picker tab：候選卡 1 row 溢出 lightbox 邊界（fix3 需求 1） */
+.motion-lab-preview.picker-preview-wrap { overflow: visible; }
+
+/* 模擬 .lightbox-content：置中卡片，無 backdrop */
+.picker-mock-lightbox {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    width: min(560px, 90vw);
+    background: var(--surface-2);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--fluent-shadow-28);
+}
+
+/* X 關閉按鈕（裝飾用） */
+.picker-mock-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: var(--text-inverse, #fff);
+    font-size: 1rem;
+    cursor: default;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Cover 區（模擬 .lightbox-cover） */
+.picker-cover-area {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.picker-cover-img {
+    max-width: 100%;
+    max-height: 380px;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    display: block;
+}
+
+.picker-current-source-label {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.65);
+    color: oklch(100% 0 0);
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: var(--fluent-radius-md);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+}
+
+/* Metadata 區（模擬 .lightbox-metadata） */
+.picker-meta-area {
+    width: 100%;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--stroke-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.picker-name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+}
+.picker-name-row .lb-name { font-size: 1.1rem; font-weight: 600; }
+.picker-name-row .lb-name-en { font-size: 0.9rem; opacity: 0.7; }
+
+.picker-desc {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+/* 候選展開區 — 在 metadata 區內 */
+.picker-candidates-area {
+    position: relative;
+    display: flex;
+    flex-wrap: nowrap;            /* 改：原 wrap → nowrap，6 卡強制 1 row */
+    gap: 0.75rem;
+    min-height: 100px;
+    justify-content: center;      /* 改：原 flex-start → center，溢出對稱左右 */
+    overflow: visible;            /* 新增：避免父 overflow 截斷 */
+}
+
+.picker-candidate-card {
+    position: relative;
+    width: 100px;
+    flex: 0 0 100px;  /* fix3: 防止 flex container 把 6 卡 shrink 到 lightbox 寬度（Codex P1）*/
+    cursor: pointer;
+    border-radius: var(--fluent-radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border-primary, var(--stroke-default));
+    will-change: transform;
+    /* CSS transition: none — GSAP 管理，避免 C21 幽靈動畫 */
+    transition: none;
+    /* fix3: 預設 opacity:0 避免 Alpine render 後、GSAP set 起點前的 1-frame paint
+       讓用戶誤看到「先到落點再跳回中央射出」的雙重出現 bug。
+       GSAP burst 起點 set 為 opacity:0.5 即接手顯示。 */
+    opacity: 0;
+}
+
+.picker-candidate-img {
+    width: 100%;
+    aspect-ratio: 3/4;
+    object-fit: cover;
+    object-position: 100% 20%;  /* 對 sc-N 橫式封面：右側 + 上方 20%（spec v1 right-crop） */
+    display: block;
+}
+
+.picker-source-badge {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.65);
+    color: oklch(100% 0 0);
+    font-size: 0.65rem;
+    text-align: center;
+    padding: 2px 4px;
+    transition: background 0.15s;
+}
+
+/* fix3 需求 2：hover 時 badge 變綠 + 顯 check icon */
+.picker-check-icon {
+    opacity: 0;
+    margin-right: 3px;
+    font-size: 0.6rem;
+    transition: opacity 0.15s;
+}
+.picker-candidate-card:hover .picker-source-badge {
+    background: var(--color-success);
+    color: oklch(100% 0 0);
+}
+.picker-candidate-card:hover .picker-check-icon {
+    opacity: 1;
+}
+
+.picker-empty {
+    width: 100%;
+    text-align: center;
+    color: var(--text-muted);
+    padding: 1rem;
+    font-size: 0.85rem;
+}
+
+.picker-refresh-btn {
+    /* 繼承 lb-action-btn 樣式 */
+}
+
+/* ===== Task A：picker-open 時候選區輕蓋封面下緣 ~10% ===== */
+/* 方案 D：name-row 改 absolute overlay 貼到 cover 上，從 flow 移除；
+   candidates-area 因此緊貼 cover 下緣，-38px 真正壓入封面底部 10% */
+.picker-mock-lightbox.is-open {
+    gap: 0;  /* 拿掉 cover-area 與 meta-area 之間的 1rem flex gap */
+}
+
+.picker-mock-lightbox.is-open .picker-meta-area {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 0;
+    gap: 0;
+    /* 不設 position：避免成為 .picker-name-row absolute 的 anchor，
+       讓 name chip 真正錨到 .picker-mock-lightbox（左上角） */
+}
+
+/* name-row chip 浮在 lightbox 左上角（錨點：.picker-mock-lightbox，已是 position:relative） */
+.picker-mock-lightbox.is-open .picker-name-row {
+    position: absolute;
+    top: 1.5rem;       /* lightbox padding 對應，視覺上貼齊封面左上角 */
+    left: 1.5rem;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: oklch(100% 0 0);
+    padding: 4px 12px;
+    border-radius: var(--fluent-radius-md);
+    z-index: 10;
+    pointer-events: none;
+}
+.picker-mock-lightbox.is-open .picker-name-row .lb-name,
+.picker-mock-lightbox.is-open .picker-name-row .lb-name-en {
+    color: inherit;  /* chip 統一白字（dark bg 上） */
+}
+
+/* candidates-area 負 margin 上移，真正壓到封面下緣 ~38px（封面 max-height 380px 的 ~10%） */
+.picker-mock-lightbox.is-open .picker-candidates-area {
+    margin-top: -38px;
+    position: relative;
+    z-index: 5;
+}
+
+/* C21 配套：ghost-fly 飛行期間停用 cover-img CSS transition */
+.picker-cover-img.gsap-animating {
+    transition: none !important;
+}
+
+/* ===== §5 Special Motion 白名單 demo 面板 ===== */
+.special-motion-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 2rem 1.5rem;
+    width: 100%;
+}
+
+.special-motion-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.special-motion-desc {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.special-motion-track {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: min(640px, 90vw);
+}
+
+.special-motion-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.special-motion-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 200px;
+}
+
+.special-motion-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.special-motion-ease {
+    font-size: 0.75rem;
+    color: var(--accent-secondary);
+    background: var(--surface-1);
+    border-radius: var(--fluent-radius-sm);
+    padding: 0.1rem 0.35rem;
+    width: fit-content;
+}
+
+.special-motion-stage {
+    flex: 1;
+    height: 80px;
+    background: var(--surface-1);
+    border-radius: var(--radius-md);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--stroke-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.special-motion-box {
+    width: 64px;
+    height: 48px;
+    background: var(--accent-secondary);
+    border-radius: var(--fluent-radius-md);
+    opacity: 0.85;
+}
+
+.special-motion-checkmark {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--color-success);
+    line-height: 1;
+}
+
+.special-motion-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent-secondary);
+    opacity: 0.9;
+}
+
+.special-motion-skip-section {
+    width: min(640px, 90vw);
+    padding: 1rem;
+    background: var(--surface-1);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--stroke-subtle);
+}
+
+.whitelist-skip-note {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.whitelist-skip-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+/* ===== §5 Ease Roles 並排對比面板 ===== */
+.ease-roles-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 2rem 1.5rem;
+    width: 100%;
+}
+
+.ease-roles-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ease-roles-desc {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.ease-roles-track {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: min(640px, 90vw);
+}
+
+.ease-role-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.ease-role-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 200px;
+}
+
+.ease-role-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ease-role-code {
+    font-size: 0.75rem;
+    color: var(--accent-secondary);
+    background: var(--surface-1);
+    border-radius: var(--fluent-radius-sm);
+    padding: 0.1rem 0.35rem;
+    width: fit-content;
+}
+
+.ease-role-bezier {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    background: transparent;
+    padding: 0;
+}
+
+.ease-role-lane {
+    flex: 1;
+    height: 80px;
+    background: var(--surface-1);
+    border-radius: var(--radius-md);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--stroke-subtle);
+}
+
+.ease-role-box {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 80px;
+    height: 48px;
+    background: var(--accent-secondary);
+    border-radius: var(--fluent-radius-md);
+    opacity: 0.85;
+}
+
+/* ===== §5 Duration Buckets 並排對比面板 ===== */
+.duration-buckets-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 2rem 1.5rem;
+    width: 100%;
+}
+
+.duration-buckets-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.duration-buckets-desc {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.duration-buckets-track {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: min(640px, 90vw);
+}
+
+.duration-bucket-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.duration-bucket-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 200px;
+}
+
+.duration-bucket-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.duration-bucket-code {
+    font-size: 0.75rem;
+    color: var(--accent-secondary);
+    background: var(--surface-1);
+    border-radius: var(--fluent-radius-sm);
+    padding: 0.1rem 0.35rem;
+    width: fit-content;
+}
+
+.duration-bucket-lane {
+    flex: 1;
+    height: 80px;
+    background: var(--surface-1);
+    border-radius: var(--radius-md);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--stroke-subtle);
+}
+
+.duration-bucket-box {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 60px;
+    height: 48px;
+    background: var(--accent-secondary);
+    border-radius: var(--fluent-radius-md);
+    opacity: 0.85;
+}
+
+/* ========== Constellation tab（56b-T3：從 clip_lab.html 搬遷）==========
+   star token 定義在 input.css :root + [data-theme="dim"]，本檔不重複宣告
+   保留 .clip-lab-* class 命名以對齊 shared/constellation/ 模組 selector。 */
+
+.constellation-tab-panel {
+    display: flex;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+}
+
+/* Stage container: 960×620 absolute positioning canvas */
+.clip-lab-stage {
+    position: relative;
+    width: 960px;
+    height: 620px;
+    margin: 0 auto;
+    overflow: visible;
+    background:
+        radial-gradient(ellipse at 30% 40%, color-mix(in oklch, var(--star-line-bright) 8%, transparent) 0%, transparent 55%),
+        radial-gradient(ellipse at 70% 65%, color-mix(in oklch, var(--star-glow) 6%, transparent) 0%, transparent 50%),
+        var(--color-base-200);
+    border-radius: var(--fluent-radius-xl);
+    box-shadow: var(--fluent-shadow-16);
+}
+
+.clip-lab-stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+    background: radial-gradient(ellipse at 50% 50%,
+        transparent 35%,
+        color-mix(in oklch, var(--color-base-300) 60%, transparent) 100%);
+}
+
+[data-theme="dim"] .clip-lab-stage::before {
+    background: radial-gradient(ellipse at 50% 50%,
+        transparent 30%,
+        rgba(0, 0, 0, 0.45) 100%);
+}
+
+.clip-lab-dust {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.7;
+    z-index: 0;
+}
+/* T4fix dust twinkle：CSS animation 走 GPU compositor、零 JS frame；
+   indirection 模型（codex P1a-r2）：inline 寫 --dust-base-seed，CSS rule 用
+   --dust-base: var(--dust-base-seed) 計算 resolved value，dim selector 才能
+   override --dust-base 而非永遠輸給 inline */
+.clip-lab-dust circle {
+    --dust-base: var(--dust-base-seed, 0.08);
+    fill: var(--star-line-fade);
+    opacity: var(--dust-base);
+    animation: dust-twinkle var(--dust-cycle, 6s) ease-in-out var(--dust-delay, 0s) infinite;
+}
+
+@keyframes dust-twinkle {
+    0%, 100% { opacity: var(--dust-base); }
+    50%      { opacity: calc(var(--dust-base) * 1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .clip-lab-dust circle {
+        animation: none;
+        opacity: var(--dust-base);
+    }
+}
+
+/* dim theme override（codex P2b / P1a-r2）：override --dust-base（非 seed），
+   indirection 確保 cascade 生效；移除舊 opacity: 0.5 寫死 */
+[data-theme="dim"] .clip-lab-dust circle {
+    fill: var(--star-line-bright);
+    --dust-base: 0.10;
+}
+
+/* T6 (CD-T6-2)：Hover constellation bright state — C2 indirection 模型
+   覆寫 stylesheet 級 --dust-base（不動 inline --dust-base-seed）；
+   keyframe dust-twinkle-bright 引用 var(--dust-base)，自動拉高 peak。
+   add/remove .in-constellation 即可切換，無需 GSAP tween opacity。 */
+.clip-lab-dust circle.in-constellation {
+    --dust-base: 0.70;
+    --dust-halo-opacity: 0.45;
+    filter: drop-shadow(0 0 4px rgba(232, 201, 137, var(--dust-halo-opacity)));
+    /* Fluent token：0.30s ≈ var(--fluent-duration-slow) (300ms)；ease 走 standard 曲線 */
+    transition: filter var(--fluent-duration-slow) var(--fluent-ease-standard);
+    animation-name: dust-twinkle-bright;
+}
+
+@keyframes dust-twinkle-bright {
+    0%, 100% { opacity: var(--dust-base); }
+    50%      { opacity: 1.00; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .clip-lab-dust circle.in-constellation {
+        animation: none;
+        opacity: var(--dust-base);
+    }
+}
+
+/* T6 (CD-T6-2)：dim theme + .in-constellation specificity tie 防呆 (0,3,1)
+   既有 [data-theme="dim"] .clip-lab-dust circle (0,2,1) 與
+   .clip-lab-dust circle.in-constellation (0,2,1) 同階 tie；本規則 (0,3,1)
+   勝出，order-independent 確保 dim + bright 不被夾死 */
+[data-theme="dim"] .clip-lab-dust circle.in-constellation {
+    --dust-base: 0.70;
+}
+
+/* T7 (CD-T7-3 / Codex round-2 P1-3)：pulse 期間暫停 CSS dust-twinkle，
+   讓 GSAP inline opacity / scale 生效。
+   CSS active animation 對 animated property 的優先權高於 inline style，
+   若不暫停，gsap.to(el, { opacity: 0.95 }) 會被 dust-twinkle / dust-twinkle-bright
+   keyframe 覆蓋變不可見。 */
+.clip-lab-dust circle.dust-pulsing {
+    animation: none;
+}
+
+.clip-lab-rails {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 2;
+}
+
+/* T5 rails (CD-T5-2 / CD-T5-4)：純實線 baseline，idle 走 stroke-level 透明（spec §2.6 C1）
+   - dasharray 移除：T4fix 點珠模式整體棄案（CD-T5-4），slip-through DrawSVG 進場更乾淨
+   - stroke-opacity: 0：idle 完全不可見，element opacity 仍 1（mount lifecycle 不衝突）
+   - hover guide / slip-through enter 透過 strokeOpacity tween 浮現，動畫結束 clearProps 落回 baseline 0
+   - hover state 由 .rail--bright / .rail--neighbor class 接管（§C state model） */
+.clip-lab-rail {
+    stroke: var(--star-line-fade);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-opacity: 0;
+    fill: none;
+    /* T4fix codex round 4 P2-2：不加 transition: stroke-opacity —
+       GSAP 直接動 strokeOpacity（railFocusPulse / railClickedPulse / shimmer），
+       CSS transition 會與 GSAP tick 賽跑，抹平 ease 並讓 0.20s entry pulse 不再 deterministic */
+}
+
+.clip-lab-slot {
+    position: absolute;
+    width: 107px;
+    height: 150px;
+    transform: translate(-50%, -50%);
+    background: var(--color-base-100);
+    border-radius: var(--fluent-radius-xl);
+    box-shadow: var(--fluent-shadow-4);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    --card-glow-opacity: 0;
+    overflow: visible;
+    border: 1px solid color-mix(in oklch, var(--color-base-content) 15%, transparent);
+    transition: box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    z-index: 10;
+}
+
+.clip-lab-slot::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: var(--fluent-radius-xl);
+    background: radial-gradient(ellipse at 50% 50%,
+        color-mix(in oklch, var(--star-glow) 55%, transparent) 0%,
+        transparent 70%);
+    opacity: var(--card-glow-opacity);
+    pointer-events: none;
+    z-index: -1;
+    will-change: opacity;
+}
+
+.clip-lab-slot:hover {
+    box-shadow: var(--fluent-shadow-8);
+}
+
+.slot--hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.rail--hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.clip-lab-rail-sweep {
+    stroke: var(--star-line-bright);
+    stroke-width: 2;
+    stroke-linecap: round;
+    fill: none;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* T4fix hover steady state（§C state model）：CSS class 接 hover 期間亮度
+   inline GSAP strokeOpacity 收尾必 clearProps:'strokeOpacity'，class 才能生效 */
+.clip-lab-rail.rail--bright {
+    stroke: var(--star-line-bright);
+    stroke-opacity: 0.85;
+}
+
+.clip-lab-rail.rail--neighbor {
+    stroke: var(--star-line-bright);
+    stroke-opacity: 0.55;
+}
+
+.clip-lab-main-halo {
+    position: absolute;
+    left: 480px;
+    top: 310px;
+    pointer-events: none;
+    border-radius: var(--fluent-radius-xl);
+    transform: translate(-50%, -50%) scale(var(--main-halo-scale, 1));
+    opacity: var(--main-halo-opacity, 0.55);
+    transition: none;
+    will-change: transform, opacity;
+}
+.clip-lab-main-halo--outer {
+    --main-halo-scale: 1;
+    --main-halo-opacity: 0.55;
+    width: 272px;
+    height: 322px;
+    background: radial-gradient(ellipse at 50% 50%,
+        color-mix(in oklch, var(--star-glow) 35%, transparent) 0%,
+        transparent 65%);
+    z-index: 18;
+}
+.clip-lab-main-halo--inner {
+    --main-halo-scale: 1;
+    --main-halo-opacity: 0.6;
+    width: 212px;
+    height: 262px;
+    border: 2px solid color-mix(in oklch, var(--star-line-bright) 50%, transparent);
+    background: transparent;
+    z-index: 19;
+}
+
+.clip-lab-main {
+    position: absolute;
+    left: 480px;
+    top: 310px;
+    width: 178px;
+    height: 250px;
+    transform: translate(-50%, -50%);
+    background: var(--color-base-100);
+    border-radius: var(--fluent-radius-xl);
+    box-shadow:
+        0 0 28px color-mix(in oklch, var(--star-glow) 60%, transparent),
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 10%, transparent),
+        var(--fluent-shadow-28);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    overflow: hidden;
+    border: 2px solid var(--star-line-bright);
+}
+
+/* T4 visual probe：slot / main 真實封面圖 — poster-crop 右裁慣例（75a-US2：object-position right center，橫式 sc-N 露封面正面對直式 box） */
+.clip-lab-slot-img {
+    position: relative;
+    z-index: 0;
+}
+.clip-lab-slot-img,
+.clip-lab-main-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: right center;
+    display: block;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+/* 56c-T4fix7: dim overlay — ::after opacity tween via --slot-dim-opacity CSS var。
+   取代 filter: brightness() 兩段式 race，消除 enter→enter 亮閃。
+   gotchas C21：transition: none — 動畫純走 GSAP CSS var tween，禁加 CSS transition。
+   z-index 1 蓋在 .clip-lab-slot-img (z=0) 之上；::before halo 既有 z=-1 不受影響。 */
+.clip-lab-slot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: rgba(0, 0, 0, 0.45);
+    opacity: var(--slot-dim-opacity, 0);
+    pointer-events: none;
+    z-index: 1;
+    transition: none;
+}
+
+/* < 960px：stage 寬 960px，視窗不足以完整顯示，隱藏 stage（沿用 motion-lab 慣例：無 mobile notice） */
+@media (max-width: 959px) {
+    .clip-lab-stage-area { display: none; }
+}
+
+</style>
+{% endblock %}
+
+{% block pre_alpine_module %}
+<script type="module" src="/static/js/pages/motion-lab/constellation-host.js"></script>
+{% endblock %}
+
+{% block extra_js %}
+<!-- GSDevTools — 沙盒 debug only（不放 base.html） -->
+<script defer src="https://cdn.jsdelivr.net/npm/gsap@3.14/dist/GSDevTools.min.js"></script>
+<!-- Motion Lab 動畫控制（直接呼叫 GSAP，在 lint allowlist 內） -->
+<script defer src="/static/js/pages/motion-lab.js"></script>
+<!-- Motion Lab Alpine state factory（non-defer：確保 motionLabPage() 在 Alpine boot 前定義） -->
+<script src="/static/js/pages/motion-lab-state.js"></script>
+{% endblock %}

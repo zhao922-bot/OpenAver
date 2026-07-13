@@ -1,0 +1,1204 @@
+/* Settings 頁面專屬元件（非共用，不納入 Design System）*/
+
+/* 保護 settings 頁內所有 .hidden（避免被自定義 CSS 覆蓋）*/
+#settings-components .hidden { display: none !important; }
+
+.settings-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.settings-header h4 {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+/* Modern Card Styling（theme.css 未納入 #settings-components scope）*/
+#settings-components .card {
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--radius-lg);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-4);
+    overflow: visible;
+    background: color-mix(in oklch, var(--color-base-200) 80%, transparent);
+}
+
+[data-theme="dim"] #settings-components .card {
+    background: color-mix(in oklch, var(--color-base-200) 60%, transparent);
+}
+
+#settings-components .settings-card-header {
+    background: color-mix(in oklch, var(--color-base-content) 2%, transparent);
+    border-bottom: 1px solid var(--stroke-subtle);
+    font-weight: 600;
+    padding: 1rem 1.25rem;
+}
+
+#settings-components .settings-card-header i {
+    color: var(--accent);
+    margin-right: 0.5rem;
+}
+
+#settings-components .card-body {
+    padding: 1.25rem;
+}
+
+/* Divider */
+#settings-components hr {
+    border-color: var(--border-light);
+    opacity: 0.5;
+}
+
+/* ========== 長文字換行策略（全域，不需 media query）========== */
+
+#settings-components .settings-hint {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#settings-components .row-label,
+#settings-components .version-text {
+    overflow-wrap: anywhere;
+}
+
+
+/* 64b-5: .settings-tab-bar / .settings-tab CSS 已移除（HTML 於 64b-1 拆除）。
+   64c-2: quick-jump nav（64b-2）整組回捲（CD-64-B12）。 */
+
+/* ========== Responsive: 行動版（窄螢幕）RWD ========== */
+
+/* Tablet / Mobile: 768px 以下 */
+@media (max-width: 768px) {
+    /* 1. Settings Form Row - 垂直堆疊 */
+    #settings-components .settings-form-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    /* 直排模式下，所有子元素佔滿寬度 */
+    #settings-components .settings-form-row > * {
+        width: 100%;
+    }
+
+    #settings-components .row-label {
+        min-width: unset;
+        padding-top: 0;
+    }
+
+    #settings-components .select {
+        max-width: none;
+    }
+
+    /* 2. Folder Layers Row - 垂直堆疊 */
+    #settings-components .folder-layers-row {
+        flex-direction: column;
+        gap: 8px; /* §4 layout 8pt — 對齊 .settings-form-row gap (L72) */
+    }
+
+    #settings-components .folder-separator {
+        display: none; /* 垂直排列時不需要 / 符號 */
+    }
+
+    #settings-components .folder-layer-group {
+        width: 100%;
+    }
+
+    /* 4. 雙 Select 橫排佈局 - 強制垂直 */
+    #settings-components .sort-row {
+        flex-direction: column !important;
+    }
+
+    #settings-components .sort-row > .select {
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    /* Folder Preview - 縮小文字 */
+    #settings-components .folder-preview .preview-text {
+        font-size: 0.75rem;
+        word-break: break-all;
+    }
+
+}
+
+/* Small Mobile: 480px 以下 */
+@media (max-width: 480px) {
+    /* 3. Variable Input Group - 小螢幕改為可換行，避免欄位高度異常 */
+    #settings-components .variable-input-group {
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    /* 輸入框/下拉可縮，避免擠壓造成溢出 */
+    #settings-components .variable-input-group > .input,
+    #settings-components .variable-input-group > .select {
+        flex: 1 1 12rem;
+        min-width: 0;
+    }
+
+    /* 按鈕保持自然寬度，避免像 sample.png 那樣變成超高全寬按鈕 */
+    #settings-components .variable-input-group > .btn,
+    #settings-components .variable-input-group > .btn-variable {
+        width: auto;
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    /* 5. Input Group Inline - 縮小 number input */
+    #settings-components .input-group-inline .input {
+        width: 80px;
+    }
+
+    /* Settings Hint - 減少左縮排（toggle 區塊） */
+    #settings-components .settings-form-group .settings-hint {
+        margin-left: 0; /* 移除 48px 縮排，節省空間 */
+    }
+
+    /* API Key Alert - 縮小 padding */
+    #settings-components .api-key-alert {
+        padding: 8px 16px; /* §4 layout 8pt grid */
+        font-size: 0.75rem;
+    }
+
+    #settings-components .api-key-alert > i {
+        font-size: 0.9rem;
+    }
+
+    /* Collapsible Trigger - 縮小文字 */
+    #settings-components .collapsible-title {
+        font-size: 0.8rem;
+    }
+
+    /* Version Text - 縮小字體 */
+    #settings-components .version-text {
+        font-size: 0.8rem;
+    }
+
+    /* Update Check Wrapper - 垂直堆疊 */
+    #settings-components .update-check-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    /* 81-T5：外部媒體管理器 segmented 在 360px 不被壓扁（保 4 鈕水平），hint 整段換到下一列 */
+    #settings-components .settings-form-row--external-manager .settings-sources-segmented {
+        flex-shrink: 0;
+    }
+
+    #settings-components .settings-form-row--external-manager .settings-sources-segmented button {
+        white-space: nowrap; /* 每顆鈕文字不被拆字 */
+    }
+
+    #settings-components .settings-form-row--external-manager .settings-hint {
+        flex-basis: 100%;     /* 換到 segmented 下方獨佔一行 */
+        white-space: normal;  /* 保險：覆寫任何 nowrap，整段正常換行非直條 */
+    }
+
+    /* 81b-T2: 極窄屏 inline 串（ip:port + ⧉ + ?）放不下時降第二列，
+       row1 = 標題+膠囊，row2 = ip:port+⧉+?，不橫向溢出 sticky header（AC-8）。 */
+    #settings-components .settings-header-left .settings-server-inline {
+        flex-basis: 100%;
+        min-width: 0;
+    }
+}
+
+/* scroll-margin-top：sticky header 高度補償，避免標題被遮 */
+#settings-components .settings-section {
+    scroll-margin-top: 5rem;   /* 與 .settings-header 高度對齊，實作後目視微調 */
+}
+
+/* ==================== Quick-toggle Row（64b-3, CD-64-B8）==================== */
+
+#settings-components .settings-quick-toggle-row {
+    display: flex;
+    flex-wrap: wrap;                   /* 窄畫面自動換行 */
+    align-items: flex-start;
+    gap: 0.75rem 2rem;                 /* row-gap 0.75rem，column-gap 2rem */
+    padding: 0.75rem 0;
+    margin-bottom: 1rem;               /* 與第一個 section 卡片分開 */
+    border-bottom: 1px solid var(--stroke-subtle);  /* 視覺分隔線 */
+}
+
+/* 內含的 settings-form-group 維持 flex-col，不需覆蓋 */
+#settings-components .settings-quick-toggle-row .settings-form-group {
+    flex-shrink: 0;                    /* 避免被 flex container 縮小 */
+}
+
+/* ==================== Settings Header + Actions (Font Size + Theme) ==================== */
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    /* T8.2: Acrylic 材質 */
+    background: var(--bg-header);
+    backdrop-filter: blur(var(--fluent-blur-light)) saturate(120%);
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light)) saturate(120%);
+    border-bottom: 1px solid var(--stroke-subtle);
+    padding-bottom: 1rem;
+    margin-bottom: 0.5rem;
+    /* 64b-1: sticky header（tab-bar 移除後，header 接管釘頂；z-index 31 > 舊 tab-bar 30）*/
+    position: sticky;
+    top: 0;
+    z-index: 31;
+}
+
+.settings-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Locale Toggle Button — 與 theme toggle 同款 */
+.settings-locale-toggle {
+    flex-shrink: 0;
+}
+
+.settings-locale-toggle .locale-toggle-btn {
+    padding: 0.5rem 0.75rem;
+    min-width: 44px;
+    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+    border: 1px solid var(--border-light);
+    border-radius: var(--fluent-radius-lg);
+    box-shadow: var(--fluent-shadow-4);
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard),
+                transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+    text-align: center;
+}
+
+.settings-locale-toggle .locale-toggle-btn:hover {
+    background: var(--color-base-200);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), var(--fluent-shadow-8);
+    transform: translateY(-2px);
+}
+
+.settings-theme-toggle {
+    flex-shrink: 0;
+}
+
+.settings-theme-toggle .theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+    border: 1px solid var(--border-light);
+    border-radius: var(--fluent-radius-lg);
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard),
+                transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+[data-theme="dim"] .settings-theme-toggle .theme-toggle-btn {
+    background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+}
+
+.settings-theme-toggle .theme-toggle-btn:hover {
+    background: var(--color-base-200);
+    border-color: var(--accent);
+    box-shadow:
+        0 0 0 1px var(--accent),
+        0 0 20px rgba(var(--ds-glow-rgb), 0.2),
+        var(--fluent-shadow-8);
+    transform: translateY(-2px);
+}
+
+.settings-theme-toggle .theme-toggle-btn:active {
+    transform: translateY(0);
+    box-shadow: var(--fluent-shadow-2);
+}
+
+.settings-theme-toggle .theme-toggle-btn i {
+    font-size: 1.1rem;
+    color: var(--accent);
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.settings-theme-toggle .theme-toggle-btn:hover i {
+    transform: rotate(15deg);
+}
+
+.settings-theme-toggle .theme-toggle-label {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+    .settings-theme-toggle .theme-toggle-label {
+        display: none;
+    }
+
+    .settings-theme-toggle .theme-toggle-btn {
+        padding: 0.5rem;
+        width: 40px;
+        height: 40px;
+        justify-content: center;
+    }
+
+    /* P2(Codex): settings-header 換行防溢出（需在 .settings-header base rule 之後，避免被 cascade 覆蓋）*/
+
+    /* scroll-margin-top 加大：sticky header 換兩列後高度增加，避免遮蓋段頭 */
+    #settings-components .settings-section {
+        scroll-margin-top: 9rem;
+    }
+
+    /* header 整體允許換行，h4 佔第一列全寬，actions 落第二列 */
+    .settings-header {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    /* 81b-T2: h4 已包進 .settings-header-left，不再是 .settings-header 直接 flex item。
+       換行接力改由 .settings-header-left 佔第一列全寬；h4 在 cluster 內仍可佔行（標題獨佔，膠囊/inline 落次行）。 */
+    .settings-header-left {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .settings-header-left h4 {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .settings-header-actions {
+        flex: 1 1 100%;
+        min-width: 0;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* quick-toggle-row 子 form-group：窄屏允許縮小（覆蓋 flex-shrink:0），避免橫向溢出 */
+    #settings-components .settings-quick-toggle-row .settings-form-group {
+        max-width: 100%;
+        min-width: 0;
+    }
+}
+
+/* ========== 掃描來源 Active Row (Zone A) — 61c-1 structure ========== */
+/* Productionized from POC .smock-* classes (commit 1b941dc). */
+
+/* ─── Batch operations bar ─── */
+#settings-components .settings-sources-batchbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 0.95rem;
+    margin-bottom: 1rem;
+    background: color-mix(in oklch, var(--surface-1) 55%, transparent);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: var(--fluent-radius-lg);
+}
+
+#settings-components .settings-sources-batchbar-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+#settings-components .settings-sources-batchbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ─── Cap counter (tabular-nums prevents digit jitter on toggle) ─── */
+#settings-components .settings-sources-counter {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+#settings-components .settings-sources-counter strong {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+#settings-components .settings-sources-counter .cap-divider {
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+#settings-components .settings-sources-counter .cap-value {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+#settings-components .settings-sources-counter .cap-tag {
+    margin-left: 0.4rem;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: color-mix(in oklch, var(--surface-2) 60%, transparent);
+    border-radius: var(--fluent-radius-sm);
+}
+
+/* ─── 無碼模式 toggle placeholder (61c-3 wires uncensoredMode) ─── */
+#settings-components .settings-sources-uncensored-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.25rem 0.55rem 0.25rem 0.3rem;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-sources-uncensored-toggle:hover {
+    background: color-mix(in oklch, var(--surface-2) 60%, transparent);
+}
+
+#settings-components .settings-sources-uncensored-toggle .track {
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 22px;
+    background: color-mix(in oklch, var(--text-secondary) 22%, transparent);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: var(--radius-pill);
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                border-color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-sources-uncensored-toggle .thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: var(--surface-0);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--fluent-shadow-2);
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-decel);
+}
+
+#settings-components .settings-sources-uncensored-toggle.is-on .track {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+#settings-components .settings-sources-uncensored-toggle.is-on .thumb {
+    transform: translateX(16px);
+}
+
+#settings-components .settings-sources-uncensored-toggle .lbl {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ─── 全開 mini button ─── */
+#settings-components .settings-sources-mini-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    background: var(--surface-0);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: var(--fluent-radius-md);
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-sources-mini-btn:hover {
+    color: var(--text-primary);
+    background: color-mix(in oklch, var(--surface-2) 70%, transparent);
+}
+
+/* ─── Flat pill row (flex-wrap → B3 30+ providers wrap) ─── */
+#settings-components .settings-sources-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 2.5rem;
+}
+
+/* ─── Source pill visuals moved to components/source-pill.css (TASK-62a-0,
+ *     cross-page shared, unscoped). Container .settings-sources-pills stays here. ─── */
+
+/* ─── Cap-block alert ─── */
+#settings-components .settings-sources-cap-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    padding: 0.8rem 1rem;
+    margin-top: 0.85rem;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    line-height: 1.45;
+    background: color-mix(in oklch, var(--color-warning) 10%, transparent);
+    border: 1px solid color-mix(in oklch, var(--color-warning) 38%, transparent);
+    border-radius: var(--fluent-radius-md);
+}
+
+#settings-components .settings-sources-cap-alert > i {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    font-size: 1.15rem;
+    color: var(--color-warning);
+}
+
+#settings-components .settings-sources-cap-alert strong {
+    display: block;
+    margin-bottom: 0.18rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+#settings-components .settings-sources-cap-alert p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* ─── Full-disabled warning ─── */
+#settings-components .settings-sources-warn {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.9rem;
+    margin-top: 0.9rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: var(--color-warning);
+    background: color-mix(in oklch, var(--color-warning) 12%, transparent);
+    border: 1px solid color-mix(in oklch, var(--color-warning) 35%, transparent);
+    border-radius: var(--fluent-radius-md);
+}
+
+#settings-components .settings-sources-warn i {
+    flex: 0 0 auto;
+    font-size: 1rem;
+}
+
+/* ─── Segmented control (64e-2): 全開 | 無碼模式 capsule ─── */
+/* pill 白名單：.settings-sources-segmented（搜尋來源卡 segmented 藥丸型分段控件容器） */
+#settings-components .settings-sources-segmented {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-pill);
+    background: color-mix(in oklch, var(--surface-1) 60%, transparent);
+    border: 1px solid var(--stroke-subtle);
+}
+
+#settings-components .settings-sources-segmented button {
+    padding: 0.25rem 0.75rem;
+    border-radius: calc(var(--radius-pill) - 2px);
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-sm, 0.85rem);
+    font-weight: 500;
+    line-height: 1.4;
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-sources-segmented button:hover:not(.is-on) {
+    color: var(--text-primary);
+    background: color-mix(in oklch, var(--surface-2) 50%, transparent);
+}
+
+#settings-components .settings-sources-segmented button.is-on {
+    background: color-mix(in oklch, var(--surface-2) 80%, transparent);
+    backdrop-filter: blur(var(--fluent-blur-light));
+    -webkit-backdrop-filter: blur(var(--fluent-blur-light));
+    color: var(--text-primary);
+    box-shadow: var(--fluent-shadow-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #settings-components .settings-sources-segmented button {
+        transition: none;
+    }
+}
+
+/* ─── Section 3 wrapper (Zone B) — 61c-4 fills content ─── */
+#settings-components .settings-sources-section3 {
+    margin-top: 1.25rem;
+}
+
+/* idle: connection form (Server URL + Bearer Token + 連線) */
+#settings-components .settings-mt-connect-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1rem 1.1rem;
+    background: color-mix(in oklch, var(--surface-1) 45%, transparent);
+    border: 1px dashed var(--stroke-subtle);
+    border-radius: var(--fluent-radius-lg);
+}
+
+#settings-components .settings-mt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+#settings-components .settings-mt-field > span {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+}
+
+#settings-components .settings-mt-field input {
+    font-size: 0.85rem;
+    padding: 0.55rem 0.75rem;
+    color: var(--text-primary);
+    background: var(--surface-0);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: var(--fluent-radius-md);
+    transition: border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-mt-field input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 22%, transparent);
+}
+
+#settings-components .settings-mt-connect-btn {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.5rem 1.1rem;
+    color: var(--text-on-accent, oklch(100% 0 0));
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard),
+                transform var(--fluent-duration-fast) var(--fluent-ease-decel);
+}
+
+#settings-components .settings-mt-connect-btn:hover {
+    box-shadow: var(--fluent-shadow-4);
+    transform: translateY(-1px);
+}
+
+#settings-components .settings-mt-connect-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* connected: status row */
+#settings-components .settings-mt-connect-status {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    padding: 0.7rem 0.95rem;
+    margin-bottom: 0.85rem;
+    background: color-mix(in oklch, var(--color-success) 8%, var(--surface-1));
+    border: 1px solid color-mix(in oklch, var(--color-success) 30%, transparent);
+    border-radius: var(--fluent-radius-md);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+#settings-components .settings-mt-connect-status > i:first-child {
+    color: var(--color-success);
+    font-size: 1.1rem;
+    flex: 0 0 auto;
+}
+
+#settings-components .settings-mt-connect-status .status-text {
+    flex: 1 1 auto;
+}
+
+#settings-components .settings-mt-connect-status code {
+    font-size: 0.78rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--fluent-radius-sm);
+    background: color-mix(in oklch, var(--surface-2) 60%, transparent);
+    /* 81-T5：長 URL（IP:port / domain）任意長度皆斷，不撐破卡片 */
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+/* connected: tier hint */
+#settings-components .settings-mt-tier-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.65rem 0.9rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: color-mix(in oklch, var(--accent) 7%, var(--surface-1));
+    border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
+    border-radius: var(--fluent-radius-md);
+}
+
+#settings-components .settings-mt-tier-hint > i {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--accent);
+}
+
+/* connected: Parts Bin collapsible header */
+#settings-components .settings-mt-partsbin-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    margin: 0.4rem 0 0.7rem;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.83rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+    background: transparent;
+    border: none;
+    border-radius: var(--fluent-radius-md);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--fluent-duration-fast) var(--fluent-ease-standard),
+                color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-mt-partsbin-head > i:first-child {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    transition: transform var(--fluent-duration-fast) var(--fluent-ease-decel);
+}
+
+#settings-components .settings-mt-partsbin-head:hover {
+    background: color-mix(in oklch, var(--surface-2) 55%, transparent);
+    color: var(--text-primary);
+}
+
+#settings-components .settings-mt-partsbin-head:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+#settings-components .settings-mt-partsbin-count {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    padding: 0.15rem 0.45rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in oklch, var(--surface-2) 60%, transparent);
+}
+
+/* connected: probe progress line — shown while probe is running (CD-63b-4 C1).
+   Mirrors .settings-mt-tier-hint: same font-size, muted color, flex row with gap. */
+#settings-components .settings-mt-probe-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem 0.9rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+#settings-components .settings-mt-probe-progress > i {
+    flex: 0 0 auto;
+    color: var(--text-secondary);
+}
+
+#settings-components .settings-mt-probe-progress .probe-counter {
+    color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* static hourglass — no spin animation added; keep simple per task spec */
+}
+
+/* connected: probe-hint <details> — subordinate explanatory aside (CD-63b-4 C1).
+   summary acts as a small muted clickable hint line; ul uses comfortable list spacing. */
+#settings-components .settings-mt-probe-hint {
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+#settings-components .settings-mt-probe-hint > summary {
+    cursor: pointer;
+    padding: 0.25rem 0;
+    color: var(--text-secondary);
+    list-style: disclosure-closed;
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-mt-probe-hint[open] > summary {
+    list-style: disclosure-open;
+}
+
+#settings-components .settings-mt-probe-hint > summary:hover {
+    color: var(--text-primary);
+}
+
+#settings-components .settings-mt-probe-hint > ul {
+    margin: 0.4rem 0 0;
+    padding-left: 1.25rem;
+    line-height: 1.55;
+}
+
+#settings-components .settings-mt-probe-hint > ul > li {
+    margin-bottom: 0.25rem;
+    color: var(--text-secondary);
+}
+
+/* Parts Bin pill (.source-pill.is-partsbin) moved to components/source-pill.css (TASK-62a-0). */
+
+@media (prefers-reduced-motion: reduce) {
+    #settings-components .settings-sources-uncensored-toggle .track,
+    #settings-components .settings-sources-uncensored-toggle .thumb {
+        transition: none !important;
+    }
+}
+
+/* ==================== Font Size Control ==================== */
+
+.font-size-control {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+    border: 1px solid var(--border-light);
+    border-radius: var(--fluent-radius-lg);
+    flex-shrink: 0;
+}
+
+[data-theme="dim"] .font-size-control {
+    background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+}
+
+.font-size-btn {
+    padding: 0.25rem 0.5rem;
+    border: none;
+    border-radius: var(--fluent-radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 600;
+    line-height: 1;
+    transition: all var(--fluent-duration-fast) var(--fluent-ease-standard);
+    min-width: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.font-size-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-overlay);
+}
+
+.font-size-btn.active {
+    background: var(--accent);
+    color: var(--color-primary-content);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+@media (max-width: 768px) {
+    .font-size-control {
+        padding: 1px;
+        gap: 1px;
+    }
+
+    .font-size-btn {
+        padding: 0.2rem 0.35rem;
+        min-width: 28px;
+        font-size: 0.7rem;
+    }
+}
+
+/* ==================== Suffix Tag 輸入 ==================== */
+
+.suffix-tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.suffix-tag {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--text-primary);
+    cursor: default;
+}
+
+.suffix-tag-remove {
+    cursor: pointer;
+    margin-left: 4px;
+    opacity: 0.5;
+}
+
+.suffix-tag-remove:hover {
+    opacity: 1;
+}
+
+.suffix-input-inline {
+    display: inline-flex;
+    gap: 2px;
+    align-items: center;
+}
+
+/* ==================== §6 Override: .input / .select P1b 規格（Radius/Surface/Stroke/Shadow）==================== */
+
+#settings-components .input {
+    /* §6 Checkpoint 1 Radius */
+    border-radius: var(--fluent-radius-md);         /* 4px */
+    /* §6 Checkpoint 2 Surface */
+    background: var(--surface-1);
+    /* §6 Checkpoint 3 Stroke — width/style only，不固定 color（保留 DaisyUI variant 顏色機制）*/
+    border-width: 1px;
+    border-style: solid;
+    /* §6 Checkpoint 4 Shadow — dual-layer: 頂部內高光 + 外縱深 */
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-2);
+    /* §5 transition fluent 化 */
+    transition:
+        border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+        box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    /* §6 Checkpoint 5 Focus：theme.css L2161 input:focus-visible 2px outline + 4px glow ✅，不重複 */
+}
+
+#settings-components .select {
+    /* §6 Checkpoint 1 Radius */
+    border-radius: var(--fluent-radius-md);         /* 4px */
+    /* §6 Checkpoint 2 Surface — 用 background-color 不用 background shorthand，
+       否則會把 DaisyUI v5 .select 的 background-image gradient chevron 殺掉 */
+    background-color: var(--surface-1);
+    /* §6 Checkpoint 3 Stroke — width/style only，不固定 color（保留 DaisyUI variant 顏色機制）*/
+    border-width: 1px;
+    border-style: solid;
+    /* §6 Checkpoint 4 Shadow — dual-layer: 頂部內高光 + 外縱深 */
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-2);
+    /* §5 transition fluent 化 */
+    transition:
+        border-color var(--fluent-duration-fast) var(--fluent-ease-standard),
+        box-shadow var(--fluent-duration-fast) var(--fluent-ease-standard);
+    /* §6 Checkpoint 5 Focus：theme.css L2162 select:focus-visible 2px outline + 4px glow ✅，不重複 */
+    /* 版面屬性 flex:1; max-width:300px 由 theme.css L1670 提供，本 block 不覆寫 */
+}
+
+/* ==================== Form Loading State ==================== */
+
+/* 載入期間視覺提示：半透明 + wait cursor */
+#settingsForm[inert] {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+/* ==================== View Transition: theme 圓弧展開 ====================
+ * feature/76 T1a（CD-7/F7）：加 html.theme-transition-active 前綴作用域化。
+ * cross-doc VT 偽元素由「目的地新頁」樣式化 → 裸 root 規則會汙染導航「到」
+ * /settings、/design-system 的 root crossfade（砍成 animation:none）。前綴後
+ * 此抑制只在 theme-transition.js 主題切換期間（class 在）生效、不外溢跨頁。 */
+html.theme-transition-active::view-transition-old(root),
+html.theme-transition-active::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.theme-transition-active::view-transition-old(root),
+    html.theme-transition-active::view-transition-new(root) {
+        animation: none;
+    }
+
+}
+
+/* ==================== Dark theme (dim) calibration — feature/69 T3 ====================
+ * 近黑 dim surface 吃光低% color-mix tint（research §2 Factor A）+ segmented 選中態
+ * 純靠 surface 對比（無語義色）。修法：警告/連線 banner 提 tint% + border% + 3px solid 左
+ * 色條作結構信號；segmented 選中態走亮面 + accent 環（L3 純結構，色彩物理救不了）。
+ * ⚠️ tint/border 的 mix partner 一律用 transparent（同 base 慣例）：dim surface 帶藍
+ * 色相(264°)，oklch 與暖色(warning 70°)mix 會沿色相環插值變調(amber→紫)；transparent
+ * 無色相 → 精準保留語義色。左色條/box-shadow 用 solid token 不受影響。
+ * specificity：[data-theme="dim"] 多一屬性選擇器穩定勝 base。狀態色全走命名 token。 */
+
+/* P15: segmented 選中態（純 surface 對比，dim 兩段皆近黑幾乎無差）—
+   亮面提對比（surface+white，無語義色不受插值影響）+ 1.5px inset accent 環作明確選中指示 */
+[data-theme="dim"] #settings-components .settings-sources-segmented button.is-on {
+    background: color-mix(in oklch, var(--surface-2), white 16%);
+    box-shadow: var(--fluent-shadow-2), inset 0 0 0 1.5px var(--accent);
+}
+
+/* P16: suffix-tag（base 用 srgb 20% 無對比，dim 最糟）— 改 oklch 提 tint 28% + accent 邊 55% */
+[data-theme="dim"] .suffix-tag {
+    background: color-mix(in oklch, var(--accent) 28%, transparent);
+    border: 1px solid color-mix(in oklch, var(--accent) 55%, transparent);
+}
+
+/* P9/P10: metatube 已連線 status banner — 提 tint + border + 3px solid 左色條（綠態明確可辨） */
+[data-theme="dim"] #settings-components .settings-mt-connect-status {
+    background: color-mix(in oklch, var(--color-success) 16%, transparent);
+    border-color: color-mix(in oklch, var(--color-success) 45%, transparent);
+    border-left: 3px solid var(--color-success);
+}
+
+/* P11/P12: 來源上限警告 banner — 提 tint + border + 3px solid 左色條 */
+[data-theme="dim"] #settings-components .settings-sources-cap-alert {
+    background: color-mix(in oklch, var(--color-warning) 18%, transparent);
+    border-color: color-mix(in oklch, var(--color-warning) 50%, transparent);
+    border-left: 3px solid var(--color-warning);
+}
+
+/* P13/P14: 全部停用警告 banner — 提 tint + border */
+[data-theme="dim"] #settings-components .settings-sources-warn {
+    background: color-mix(in oklch, var(--color-warning) 18%, transparent);
+    border-color: color-mix(in oklch, var(--color-warning) 50%, transparent);
+}
+
+/* P17/P18: tier-hint — 提 tint + border（資訊性，icon 已救，補結構清晰） */
+[data-theme="dim"] #settings-components .settings-mt-tier-hint {
+    background: color-mix(in oklch, var(--accent) 16%, transparent);
+    border-color: color-mix(in oklch, var(--accent) 40%, transparent);
+}
+
+/* P19: mt-field focus 環 — box-shadow 提至 40%（暗底上 22% 不可見；solid border 已救） */
+[data-theme="dim"] #settings-components .settings-mt-field input:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 40%, transparent);
+}
+
+/* ─── Server Mode (80a-T3) ─── */
+
+/* 81b-T2: 左 cluster — 標題 + 膠囊 + 連線 inline 同排靠左；
+   space-between 把 .settings-header-actions 推到右側。flex-wrap 讓窄屏可分列。 */
+.settings-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;             /* 與 .settings-header-actions 同節奏 */
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+/* 膠囊容器（header-actions 對齊），最小化包裹，只控制外距 */
+#settings-components .settings-server-mode {
+    display: inline-flex;
+    align-items: center;
+}
+
+/* 81b-T2: server active 段琥珀（--color-warning）填底/邊框，scope 緊收到
+   .settings-server-mode，不碰來源卡 .settings-sources-segmented 膠囊。
+   local 段 [data-mode="local"].is-on 不寫 rule → fall through 共用中性態。 */
+#settings-components .settings-server-mode .settings-sources-segmented button.is-on[data-mode="server"] {
+    color: var(--color-warning);
+    background: color-mix(in oklch, var(--color-warning) 18%, transparent);
+    border: 1px solid color-mix(in oklch, var(--color-warning) 45%, transparent);
+}
+
+/* 81b-T2: dim 下把共用 is-on 的 accent(藍) inset 環換成 warning(琥珀) 環，
+   否則 dim server active 仍顯藍環，與「曝露/live」語意衝突（對齊 L1048/L1050 機制）。 */
+[data-theme="dim"] #settings-components .settings-server-mode .settings-sources-segmented button.is-on[data-mode="server"] {
+    background: color-mix(in oklch, var(--color-warning) 22%, transparent);
+    box-shadow: var(--fluent-shadow-2), inset 0 0 0 1.5px var(--color-warning);
+}
+
+/* 81b-T2: 連線資訊 inline 區塊 — ip:port + 複製 icon + ? popover 同排；
+   flex-wrap 讓窄屏可各自退讓。x-show 驅動顯示，無 CSS display 衝突。 */
+#settings-components .settings-server-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* URL + 複製鈕 行 */
+#settings-components .settings-server-info-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+/* 區網 URL 顯示（等寬字，行動裝置安全換行） */
+#settings-components .settings-server-url {
+    font-family: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+/* 複製鈕 — 81b-T2: icon-only 方形鈕（行內 icon 節奏，inline 緊湊） */
+#settings-components .settings-server-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: var(--fluent-radius-sm);
+    border: 1px solid var(--stroke-subtle);
+    background: color-mix(in oklch, var(--surface-2) 60%, transparent);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard),
+                background var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+#settings-components .settings-server-copy-btn:hover {
+    color: var(--text-primary);
+    background: color-mix(in oklch, var(--surface-2) 90%, transparent);
+}
+
+/* lanIp 空白提示 */
+#settings-components .settings-server-no-ip {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #settings-components .settings-server-copy-btn {
+        transition: none;
+    }
+}
+
+/* T3: 行動版 toast 移至底部（避免被 mobile browser chrome 遮住） */
+@media (max-width: 480px) {
+  .toast.toast-top {
+    top: auto;
+    bottom: 1rem;
+  }
+}

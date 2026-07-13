@@ -1,0 +1,485 @@
+"""
+NFO Updater - 批次更新 NFO 檔案中缺失的欄位
+整合到 Gallery 頁面使用
+"""
+
+import os
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Generator
+
+from core.logger import get_logger
+from core.nfo_utils import sanitize_nfo_bytes
+from core.path_utils import uri_to_fs_path
+from core.scraper import search_jav
+
+logger = get_logger(__name__)
+
+
+def update_nfo_user_tags(nfo_path: str, user_tags: List[str]) -> bool:
+    """
+    Surgical update — 只改 <user_tag> 元素，保留 NFO 中所有其他內容。
+
+    這避免了用 generate_nfo() 全量重寫 NFO 時清掉 <website>、
+    <tag>中文字幕</tag>、sidecar 欄位等既有資料的問題。
+
+    Args:
+        nfo_path: NFO 檔案路徑（native FS path）
+        user_tags: 完整的 user_tags 列表（取代現有所有 <user_tag> 元素）
+
+    Returns:
+        True 代表寫入成功，False 代表 NFO 不存在或解析失敗。
+        stub 場景（NFO 不存在）：回傳 False，不建立空殼 NFO。
+    """
+    if not os.path.exists(nfo_path):
+        return False
+    try:
+        raw = Path(nfo_path).read_bytes()
+        raw = sanitize_nfo_bytes(raw)
+        root = ET.fromstring(raw)
+        # 移除所有現有 <user_tag>
+        for old in list(root.findall("user_tag")):
+            root.remove(old)
+        # 新增 <user_tag>
+        for tag in user_tags:
+            elem = ET.SubElement(root, "user_tag")
+            elem.text = tag
+        tree = ET.ElementTree(root)
+        tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
+        return True
+    except Exception as e:
+        logger.warning("[update_nfo_user_tags] NFO 更新失敗: %s — %s", nfo_path, e)
+        return False
+
+
+def needs_update(info: dict, has_nfo: bool = True) -> Tuple[bool, List[str]]:
+    """檢查影片是否需要更新
+
+    Args:
+        info: VideoInfo.to_dict() 的結果
+        has_nfo: 是否有 NFO 檔案（從 cache 的 nfo_mtime > 0 判斷）
+
+    Returns:
+        Tuple[bool, List[str]]: (是否需要更新, 缺失欄位列表)
+    """
+    # 必須有 NFO 且有番號才檢查
+    if not has_nfo or not info.get('num'):
+        return False, []
+
+    missing = []
+
+    # 檢查各欄位
+    if not info.get('title'):
+        missing.append('title')
+    if not info.get('date'):
+        missing.append('date')
+    if not info.get('actor'):
+        missing.append('actor')
+    if not info.get('genre'):
+        missing.append('genre')
+    if not info.get('maker'):
+        missing.append('maker')
+    if not info.get('director'):
+        missing.append('director')
+    if info.get('duration') is None:   # 0 是有效值，不能用 not
+        missing.append('duration')
+    # series / label 不檢查：許多影片本身就沒有系列或廠牌，無法區分「未抓」vs「來源沒有」
+    # 需要時可用 AI agent 逐片 enrich-single 補齊
+
+    return len(missing) > 0, missing
+
+
+def check_cache_needs_update(cache: Dict[str, dict]) -> Dict:
+    """檢查 cache 中需要更新的影片
+
+    只檢查有 NFO 檔案的影片（nfo_mtime > 0）
+
+    Args:
+        cache: gallery_output_cache.json 的內容
+
+    Returns:
+        統計資訊字典
+    """
+    stats = {
+        'need_update': 0,
+        'no_title': 0,
+        'no_date': 0,
+        'no_actor': 0,
+        'no_genre': 0,
+        'no_maker': 0,
+        'has_nfo_count': 0,  # 有 NFO 的影片數
+        'paths': []  # 需要更新的影片路徑
+    }
+
+    for path, data in cache.items():
+        if path.startswith('_'):  # 跳過 metadata
+            continue
+
+        # 檢查是否有 NFO 檔案（nfo_mtime > 0 表示有）
+        nfo_mtime = data.get('nfo_mtime', 0)
+        has_nfo = nfo_mtime > 0
+
+        if has_nfo:
+            stats['has_nfo_count'] += 1
+
+        info = data.get('info', {})
+        need, missing = needs_update(info, has_nfo)
+
+        if need:
+            stats['need_update'] += 1
+            stats['paths'].append(path)
+
+            for field in missing:
+                key = f'no_{field}'
+                if key in stats:
+                    stats[key] += 1
+
+    return stats
+
+
+def get_nfo_path_from_video(video_path: str) -> Optional[str]:
+    """從影片路徑取得對應的 NFO 檔案路徑
+
+    Args:
+        video_path: 影片檔案路徑（可能是 file:/// URL 或任意格式路徑）
+
+    Returns:
+        NFO 檔案的路徑，不存在則返回 None
+    """
+    video_path = uri_to_fs_path(video_path)
+
+    # 取得 NFO 路徑
+    video_p = Path(video_path)
+    nfo_path = video_p.with_suffix('.nfo')
+
+    if nfo_path.exists():
+        return str(nfo_path)
+
+    return None
+
+
+def parse_nfo(nfo_path: str) -> Tuple[Optional[ET.ElementTree], Optional[ET.Element]]:
+    """解析 NFO 檔案"""
+    try:
+        raw = Path(nfo_path).read_bytes()
+        raw = sanitize_nfo_bytes(raw)
+        root = ET.fromstring(raw)
+        tree = ET.ElementTree(root)
+        return tree, root
+    except Exception as e:
+        logger.warning(f"NFO 解析失敗: {nfo_path} - {e}")
+        return None, None
+
+
+def get_element_text(root: ET.Element, tag: str) -> str:
+    """取得元素文字"""
+    elem = root.find(tag)
+    if elem is not None and elem.text:
+        return elem.text.strip()
+    return ''
+
+
+def set_element_text(root: ET.Element, tag: str, text: str, after_tag: str = None):
+    """設定或新增元素文字"""
+    elem = root.find(tag)
+    if elem is not None:
+        elem.text = text
+    else:
+        new_elem = ET.Element(tag)
+        new_elem.text = text
+        if after_tag:
+            for i, child in enumerate(root):
+                if child.tag == after_tag:
+                    root.insert(i + 1, new_elem)
+                    return
+        root.append(new_elem)
+
+
+def add_actor(root: ET.Element, actor_name: str):
+    """新增演員元素"""
+    # 檢查是否已存在
+    for actor_elem in root.findall('.//actor/name'):
+        if actor_elem.text and actor_elem.text.strip() == actor_name:
+            return False
+
+    actor = ET.SubElement(root, 'actor')
+    name = ET.SubElement(actor, 'name')
+    name.text = actor_name
+    return True
+
+
+def add_tags_and_genres(root: ET.Element, new_tags: List[str]) -> int:
+    """新增 tag 和 genre 元素"""
+    existing_tags = set()
+    existing_genres = set()
+
+    for elem in root.findall('tag'):
+        if elem.text:
+            existing_tags.add(elem.text.strip())
+    for elem in root.findall('genre'):
+        if elem.text:
+            existing_genres.add(elem.text.strip())
+
+    added_count = 0
+    for tag_text in new_tags:
+        tag_text = tag_text.strip()
+        if not tag_text:
+            continue
+        if tag_text not in existing_tags:
+            tag_elem = ET.SubElement(root, 'tag')
+            tag_elem.text = tag_text
+            existing_tags.add(tag_text)
+            added_count += 1
+        if tag_text not in existing_genres:
+            genre_elem = ET.SubElement(root, 'genre')
+            genre_elem.text = tag_text
+            existing_genres.add(tag_text)
+
+    return added_count
+
+
+def indent_xml(elem: ET.Element, level: int = 0):
+    """格式化 XML 縮排"""
+    i = "\n" + level * "  "
+    if len(elem):
+        if not elem.text or not elem.text.strip():
+            elem.text = i + "  "
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = i
+        for child in elem:
+            indent_xml(child, level + 1)
+        if not child.tail or not child.tail.strip():
+            child.tail = i
+    else:
+        if level and (not elem.tail or not elem.tail.strip()):
+            elem.tail = i
+
+
+def update_nfo_file(nfo_path: str, metadata: dict, info: dict) -> Tuple[bool, str]:
+    """更新單個 NFO 檔案
+
+    只補全空欄位，不覆蓋已有資料
+
+    Args:
+        nfo_path: NFO 檔案路徑
+        metadata: 從 search_jav() 取得的 metadata
+        info: 原始 VideoInfo 資料（用於判斷哪些欄位需要補）
+
+    Returns:
+        Tuple[bool, str]: (是否有修改, 訊息)
+    """
+    tree, root = parse_nfo(nfo_path)
+    if root is None:
+        return False, "無法解析 NFO"
+
+    modified = False
+    changes = []
+
+    # 補標題
+    if not info.get('title') and metadata.get('title'):
+        # 保留 originaltitle
+        existing_title = get_element_text(root, 'title')
+        if existing_title and not get_element_text(root, 'originaltitle'):
+            set_element_text(root, 'originaltitle', existing_title, after_tag='title')
+        set_element_text(root, 'title', metadata['title'])
+        modified = True
+        changes.append('title')
+
+    # 補日期
+    if not info.get('date') and metadata.get('date'):
+        set_element_text(root, 'premiered', metadata['date'])
+        modified = True
+        changes.append('date')
+
+    # 補演員
+    if not info.get('actor') and metadata.get('actors'):
+        for actor_name in metadata['actors']:
+            if actor_name:
+                add_actor(root, actor_name)
+        modified = True
+        changes.append('actors')
+
+    # 補標籤
+    if not info.get('genre') and metadata.get('tags'):
+        added = add_tags_and_genres(root, metadata['tags'])
+        if added > 0:
+            modified = True
+            changes.append(f'tags({added})')
+
+    # 補片商
+    if not info.get('maker') and metadata.get('maker'):
+        set_element_text(root, 'studio', metadata['maker'])
+        modified = True
+        changes.append('maker')
+
+    # 補導演
+    if not info.get('director') and metadata.get('director'):
+        set_element_text(root, 'director', metadata['director'])
+        modified = True
+        changes.append('director')
+
+    # 補時長（duration=0 也要寫入）
+    if info.get('duration') is None and metadata.get('duration') is not None:
+        set_element_text(root, 'runtime', str(metadata['duration']))
+        modified = True
+        changes.append('runtime')
+
+    # 補系列（<set><name> 巢狀結構）
+    if not info.get('series') and metadata.get('series'):
+        set_elem = root.find('set')
+        if set_elem is None:
+            set_elem = ET.SubElement(root, 'set')
+        name_elem = set_elem.find('name')
+        if name_elem is None:
+            name_elem = ET.SubElement(set_elem, 'name')
+        name_elem.text = metadata['series']
+        modified = True
+        changes.append('series')
+
+    # 補廠牌標籤
+    if not info.get('label') and metadata.get('label'):
+        set_element_text(root, 'label', metadata['label'])
+        modified = True
+        changes.append('label')
+
+    # 補 plot（63c-5 / CD-63c-10：metatube _summary carrier → <plot>）
+    # fill-if-missing：現 NFO 無 <plot> 且 metadata 帶 _summary
+    # 注意：set_element_text 透過 ET element.text 賦值，ET 寫出時自動 escape；
+    # 此處不需 html.escape 前置處理（避免雙重 escape）。
+    _summary = metadata.get('_summary', '')
+    if not get_element_text(root, 'plot') and _summary:
+        set_element_text(root, 'plot', _summary, after_tag='premiered')
+        modified = True
+        changes.append('plot')
+
+    # 補 rating（63c-5 / CD-63c-10：metatube _rating carrier × 2 → Jellyfin 0-10 scale）
+    # fill-if-missing：現 NFO 無 <rating> 且 metadata._rating > 0
+    _rating = metadata.get('_rating')
+    if not get_element_text(root, 'rating') and _rating is not None and _rating > 0:
+        set_element_text(root, 'rating', f"{_rating * 2:.1f}", after_tag='plot')
+        modified = True
+        changes.append('rating')
+
+    # 補 mpaa（63c-5：所有 JAV 共通 JP-18+，fill-if-missing 不覆蓋既有值）
+    # 與 generate_nfo 無條件寫不同，此處僅在缺失時補入，保守策略對齊 update_nfo_file 語意。
+    if not get_element_text(root, 'mpaa'):
+        set_element_text(root, 'mpaa', 'JP-18+', after_tag='rating')
+        modified = True
+        changes.append('mpaa')
+
+    if modified:
+        indent_xml(root)
+        tree.write(nfo_path, encoding='utf-8', xml_declaration=True)
+        return True, ','.join(changes)
+
+    return False, "無需更新"
+
+
+def update_videos_generator(
+    cache: Dict[str, dict],
+    paths: List[str]
+) -> Generator[dict, None, dict]:
+    """更新影片的生成器（用於 SSE 串流）
+
+    Args:
+        cache: gallery_output_cache.json 的內容
+        paths: 需要更新的影片路徑列表
+
+    Yields:
+        進度訊息 dict
+
+    Returns:
+        統計結果 dict
+    """
+    stats = {
+        'total': len(paths),
+        'success': 0,
+        'failed': 0,
+        'skipped': 0,
+        'no_nfo': 0,
+        'no_metadata': 0,
+    }
+
+    for i, path in enumerate(paths, 1):
+        data = cache.get(path, {})
+        info = data.get('info', {})
+        num = info.get('num', '')
+
+        yield {
+            'type': 'progress',
+            'current': i,
+            'total': len(paths),
+            'num': num,
+            'status': f'處理 {num}'
+        }
+
+        # 取得 NFO 路徑
+        nfo_path = get_nfo_path_from_video(path)
+        if not nfo_path:
+            yield {
+                'type': 'log',
+                'level': 'warn',
+                'message': f'[{i}] {num}: NFO 不存在'
+            }
+            stats['no_nfo'] += 1
+            stats['skipped'] += 1
+            continue
+
+        # 從網路取得 metadata
+        yield {
+            'type': 'log',
+            'level': 'info',
+            'message': f'[{i}] {num}: 搜尋中...'
+        }
+
+        try:
+            metadata = search_jav(num)
+        except Exception:
+            logger.exception("搜尋 JAV 資料失敗: %s", num)
+            yield {
+                'type': 'log',
+                'level': 'error',
+                'message': f'[{i}] {num}: 搜尋發生錯誤'
+            }
+            stats['failed'] += 1
+            continue
+
+        if not metadata:
+            yield {
+                'type': 'log',
+                'level': 'warn',
+                'message': f'[{i}] {num}: 找不到資料'
+            }
+            stats['no_metadata'] += 1
+            stats['skipped'] += 1
+            continue
+
+        # 更新 NFO
+        try:
+            updated, msg = update_nfo_file(nfo_path, metadata, info)
+            if updated:
+                yield {
+                    'type': 'log',
+                    'level': 'info',
+                    'message': f'[{i}] {num}: 已更新 ({msg})'
+                }
+                stats['success'] += 1
+            else:
+                yield {
+                    'type': 'log',
+                    'level': 'info',
+                    'message': f'[{i}] {num}: {msg}'
+                }
+                stats['skipped'] += 1
+        except Exception:
+            logger.exception("更新 NFO 失敗: %s", num)
+            yield {
+                'type': 'log',
+                'level': 'error',
+                'message': f'[{i}] {num}: 更新 NFO 發生錯誤'
+            }
+            stats['failed'] += 1
+
+    return stats
+
+

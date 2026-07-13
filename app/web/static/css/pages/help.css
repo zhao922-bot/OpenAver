@@ -1,0 +1,94 @@
+/* ========== Help 頁面 — Surface Elevation (T8.3) ========== */
+
+.help-card {
+    background: color-mix(in oklch, var(--color-base-200) 80%, transparent);
+    border: 1px solid var(--stroke-default);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 8%, transparent),
+        var(--fluent-shadow-4);
+}
+
+[data-theme="dim"] .help-card {
+    background: color-mix(in oklch, var(--color-base-200) 60%, transparent);
+}
+
+/* ========== AI 整合入口 — Terminal box（固定深色，不隨 theme 切換）========== */
+
+.hero-terminal {
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border: 1px solid var(--stroke-default);
+    border-radius: var(--fluent-radius-lg, 8px);
+    box-shadow:
+        inset 0 1px 0 color-mix(in oklch, var(--color-base-content) 6%, transparent),
+        var(--fluent-shadow-4);
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+    font-size: 0.9rem;
+    padding: 0.75rem 1rem;
+    position: relative;
+    /* 81-T5：curl 長 URL（server 模式 lan_ip:port）窄螢幕不水平溢出 */
+    overflow-x: auto;
+    word-break: break-all;
+}
+
+.terminal-prompt {
+    color: var(--color-success);
+    margin-right: 0.4em;
+    user-select: none;
+}
+
+.terminal-copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: var(--fluent-radius-md);
+    transition: color var(--fluent-duration-fast) var(--fluent-ease-standard), background var(--fluent-duration-fast) var(--fluent-ease-standard);
+}
+
+.terminal-copy-btn:hover {
+    color: var(--text-primary);
+    background: var(--surface-1);
+}
+
+/* ========== 工作流程 ========== */
+
+.workflow-arrow {
+    color: var(--color-success);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    min-width: 1.5rem;
+}
+
+.workflow-step-num {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%; /* shape: circle (icon badge, §1 白名單：比例值語義明確) */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: var(--color-success);
+    color: oklch(100% 0 0);
+    margin-right: 0.3rem;
+}
+
+.workflow-step-icon {
+    font-size: 1.5rem;
+}
+
+/* dim mode: terminal box 固定深色（保留終端機視覺語意） */
+[data-theme="dim"] .hero-terminal {
+    background: oklch(15% 0.005 250);  /* design-intent: 深底，比 surface-2 dim 值更深 */
+    color: oklch(90% 0.02 180);        /* design-intent: 偏青綠終端字 */
+    border-color: oklch(28% 0.005 250); /* design-intent: 深邊框固定色 */
+}

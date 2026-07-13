@@ -1,0 +1,331 @@
+/**
+ * SearchUI - UI 模組
+ * 狀態顯示、結果展示、導航、標題編輯
+ */
+
+// === 版本切換功能 ===
+
+/**
+ * 來源順序（從後端 API 載入，此為預設值）
+ */
+let SOURCE_ORDER = ['dmm', 'javbus', 'jav321', 'javdb', 'd2pass', 'heyzo', 'fc2', 'avsox'];
+
+/**
+ * 來源顯示名稱對照
+ */
+let SOURCE_NAMES = {
+    'dmm':     'DMM',
+    'javbus':  'JavBus',
+    'jav321':  'Jav321',
+    'javdb':   'JavDB',
+    'd2pass':  'D2Pass',
+    'heyzo':   'HEYZO',
+    'fc2':     'FC2',
+    'avsox':   'AVSOX',
+};
+
+/**
+ * 從後端載入來源配置
+ * @returns {Promise<void>}
+ */
+async function loadSourceConfig() {
+    try {
+        const response = await fetch('/api/search/sources');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // 更新來源順序
+        if (data.order && Array.isArray(data.order)) {
+            SOURCE_ORDER = data.order;
+
+        }
+
+        // 從 sources 更新顯示名稱
+        if (data.sources && Array.isArray(data.sources)) {
+            const newNames = {};
+            for (const source of data.sources) {
+                if (source.id && source.id !== 'auto') {
+                    newNames[source.id] = source.name;
+                }
+            }
+            if (Object.keys(newNames).length > 0) {
+                SOURCE_NAMES = newNames;
+            }
+        }
+    } catch (error) {
+        console.warn('[SourceConfig] 載入失敗，使用預設值:', error.message);
+        // 保留預設值
+    }
+}
+
+/**
+ * 取得當前來源順序
+ * @returns {string[]}
+ */
+function getSourceOrder() {
+    return SOURCE_ORDER;
+}
+
+
+/**
+ * 切換狀態結構（每個番號獨立）
+ * key: 番號, value: { sourceIdx, variantIdx, cache: { source: [...variants] | [] | undefined } }
+ */
+const switchStateMap = new Map();
+
+/**
+ * 取得或初始化某番號的切換狀態
+ */
+function getSwitchState(number) {
+    if (!switchStateMap.has(number)) {
+        switchStateMap.set(number, {
+            sourceIdx: 0,
+            variantIdx: 0,
+            cache: {}  // { 'javbus': [...], 'jav321': [], ... }
+        });
+    }
+    return switchStateMap.get(number);
+}
+
+/**
+ * 推進位置（同站下一版本 → 下一來源）
+ * @returns {boolean} 是否切換了來源
+ */
+function advancePosition(state) {
+    const currentSource = SOURCE_ORDER[state.sourceIdx];
+    const variants = state.cache[currentSource] || [];
+
+    // 同站有下一版本
+    if (state.variantIdx < variants.length - 1) {
+        state.variantIdx++;
+        return false;  // 未切換來源
+    }
+
+    // 切換到下一來源
+    state.sourceIdx = (state.sourceIdx + 1) % SOURCE_ORDER.length;
+    state.variantIdx = 0;
+    return true;  // 切換了來源
+}
+
+/**
+ * 懶加載：確保指定來源已查詢過（支援多版本）
+ */
+async function ensureCached(state, number) {
+    const source = SOURCE_ORDER[state.sourceIdx];
+
+    // undefined = 還沒查，[] = 查過沒資料，[...] = 有資料
+    if (state.cache[source] !== undefined) {
+        return;
+    }
+
+
+    try {
+        const resp = await fetch(`/api/search?q=${encodeURIComponent(number)}&mode=exact&source=${source}`);
+        const json = await resp.json();
+
+        if (json.success && json.data && json.data.length > 0) {
+            const firstResult = json.data[0];
+            const allVariantIds = firstResult._all_variant_ids || [];
+            const firstVariantId = firstResult._variant_id;
+
+            if (allVariantIds.length <= 1) {
+                // 只有 1 個版本
+                state.cache[source] = [{ ...firstResult, _source: source }];
+            } else {
+                // 多版本：按 allVariantIds 順序獲取
+                const variants = [];
+
+                for (const variantId of allVariantIds) {
+                    if (variantId === firstVariantId) {
+                        // 已有的結果，直接使用
+                        variants.push({ ...firstResult, _source: source });
+                    } else {
+                        // 需要額外獲取
+                        try {
+                            const vResp = await fetch(`/api/search?q=${encodeURIComponent(number)}&variant_id=${encodeURIComponent(variantId)}`);
+                            const vJson = await vResp.json();
+                            if (vJson.success && vJson.data?.[0]) {
+                                variants.push({ ...vJson.data[0], _source: source });
+                            }
+                        } catch (e) {
+                            console.warn(`[SwitchSource] 獲取版本 ${variantId} 失敗:`, e);
+                        }
+                    }
+                }
+
+                state.cache[source] = variants.length > 0 ? variants : [{ ...firstResult, _source: source }];
+
+            }
+        } else {
+            // 沒資料
+            state.cache[source] = [];
+        }
+    } catch (err) {
+        console.error(`[SwitchSource] 查詢 ${source} 失敗:`, err);
+        state.cache[source] = [];
+    }
+}
+
+/**
+ * T6b: 顯示來源切換提示（直接使用 alpineContext，T4 後無需 bridge）
+ * @param {Object} alpineContext - Alpine component context
+ * @param {string} source - 來源 ID
+ */
+function showSourceToast(alpineContext, source) {
+    const name = SOURCE_NAMES[source] || source;
+    const msg = `來自 ${name}`;
+    alpineContext.showToast(msg, 'info', 2000);
+}
+
+// V1d: shakeButton() 已移除，改用 Alpine reactive class binding
+
+/**
+ * 多來源循環切換（Alpine-ready version）
+ *
+ * 邏輯流程：
+ * 1. 先在同站搜尋其他版本
+ * 2. 同站沒有 → 去下一個來源搜尋
+ * 3. 來源循環：javbus → jav321 → javdb → javbus...
+ * 4. 自動跳過沒有資料的來源
+ * 5. 跨來源切換時顯示 Toast
+ *
+ * @param {Object} alpineContext - Alpine component context
+ * @param {string} number - 番號
+ * @returns {Promise<void>}
+ */
+async function switchSource(alpineContext, number) {
+    if (!number) {
+        console.warn('[SwitchSource] 無番號資訊');
+        return;
+    }
+
+    // 取得切換狀態
+    const state = getSwitchState(number);
+
+    // 記錄起始位置（用於檢測循環回起點）
+    const startPos = `${state.sourceIdx}:${state.variantIdx}`;
+
+    // Alpine reactive loading state
+    alpineContext.isSwitchingSource = true;
+    alpineContext.switchSourceShake = false;
+
+    try {
+        // 先確保當前來源已快取（避免第一次按 ⟳ 跳過當前來源）
+        await ensureCached(state, number);
+
+        while (true) {
+            // 推進位置
+            const changedSource = advancePosition(state);
+
+            // 檢查是否循環回起點
+            const currentPos = `${state.sourceIdx}:${state.variantIdx}`;
+            if (currentPos === startPos) {
+
+                // Trigger shake animation via Alpine state
+                alpineContext.switchSourceShake = true;
+                setTimeout(() => {
+                    alpineContext.switchSourceShake = false;
+                }, 300);
+                return;
+            }
+
+            // 懶加載查詢
+            await ensureCached(state, number);
+
+            // 取得當前來源的版本列表
+            const source = SOURCE_ORDER[state.sourceIdx];
+            const variants = state.cache[source] || [];
+
+            // 檢查是否有資料
+            if (variants.length > state.variantIdx) {
+                const variant = variants[state.variantIdx];
+
+                // 更新 Alpine state（Alpine template 自動反應）
+                if (alpineContext.searchResults.length > 0) {
+                    alpineContext.searchResults[alpineContext.currentIndex] = variant;
+                    // U8 fix: cover 可能改變，重置 cover state（#20）
+                    alpineContext._resetCoverState();
+                }
+
+                // 跨來源時顯示 Toast
+                if (changedSource) {
+                    showSourceToast(alpineContext, source);
+                }
+
+                // 保存狀態
+                alpineContext.saveState();
+
+
+                return;
+            }
+
+            // 沒資料，繼續下一個位置
+
+        }
+    } catch (err) {
+        console.error('[SwitchSource] 切換失敗:', err);
+    } finally {
+        alpineContext.isSwitchingSource = false;
+    }
+}
+
+// === 狀態切換 ===
+// T4: showState 已移除（改為各 mixin 直接 this.pageState = x）
+
+// === 結果顯示 ===
+// T1c: displayResult 遷移至 Alpine（已由 template binding 接管）
+
+// === 導航 ===
+// T4: preloadImages 已搬入 state/navigation.js mixin method
+
+// T1c: updateNavigation 已遷移至 Alpine computed（showNavigation, navIndicatorText, canGoPrev, canGoNext）
+
+// === 標題編輯功能 ===
+// T1c: 所有編輯函數已遷移至 Alpine state.js
+
+// T1c: Removed - updateEditButtonState, startEditTitle, confirmEditTitle, cancelEditTitle, restoreTitleDisplay
+// T1c: Removed - startEditChineseTitle, confirmEditChineseTitle, cancelEditChineseTitle, restoreChineseTitleDisplay
+// T1c: Removed - updateChineseTitleDisplay, showTranslateError, updateTranslatedTitle, showBatchTranslatingState
+
+// === 本地標記功能 ===
+// T1c: 所有本地標記函數已遷移至 Alpine state.js
+// Removed: showLocalBadge, copyLocalPath, showToast, hideLocalBadge, updateLocalBadges
+// Note: updateLocalBadges still called by core.js checkLocalStatus(), but now no-ops via Alpine reactivity
+
+// === 用戶標籤功能 ===
+// T1c: 所有標籤函數已遷移至 Alpine state.js
+// Removed: showAddTagInput, confirmAddTag, cancelAddTag, addUserTag, removeUserTag
+
+/**
+ * 62c-3 鎖定#4：手動挑來源成功後 seed cycle state，讓下次 🔄 tap 從選定來源接續循環。
+ *
+ * switchStateMap 為模組私有 → 從 ui.js export 此 helper（picker 經 window.SearchUI.seedSwitchState
+ * 呼叫，不直接戳 Map；封裝 + 守衛可斷言 export）。
+ *
+ * @param {string} number  - 番號
+ * @param {string} picked  - 選定來源 id（'auto' / 'metatube:*' → SOURCE_ORDER.indexOf 回 -1 → 跳過 seed，
+ *                            下次 tap 從頭循環，degenerate 可接受）
+ * @param {Object} result  - 寫進 slot 的 variant dict（已 strip success）
+ */
+function seedSwitchState(number, picked, result) {
+    if (!number) return;
+    const sourceIdx = SOURCE_ORDER.indexOf(picked);
+    if (sourceIdx < 0) return;          // metatube / auto：跳過 seed
+    const state = getSwitchState(number);
+    state.sourceIdx = sourceIdx;
+    state.variantIdx = 0;
+    state.cache[picked] = [{ ...result, _source: picked }];   // mirror ensureCached single-variant shape
+}
+
+// === 暴露介面 ===
+window.SearchUI = {
+    loadSourceConfig,
+    getSourceOrder,
+    seedSwitchState
+};
+
+// V1d: 暴露 core 函數（供 Alpine wrapper 呼叫）
+window.switchSourceCore = switchSource;

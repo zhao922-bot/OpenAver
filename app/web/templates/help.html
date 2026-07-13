@@ -1,0 +1,754 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('help.hero.page_title') }} - OpenAver{% endblock %}
+
+{% block extra_css %}
+<link href="/static/css/pages/help.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="help-container container mx-auto px-4 max-w-screen-2xl" x-data="helpPage">
+    <!-- Hero Card — 置頂區 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body flex flex-col lg:flex-row">
+            <!-- 左欄：現有內容不動 -->
+            <div class="flex-1">
+                <h2 class="card-title text-lg">
+                    <i class="bi bi-info-circle"></i>
+                    <span>OpenAver <span x-text="appVersion || 'v{{ version }}'">v{{ version }}</span></span>
+                </h2>
+                <p class="text-base-content/60 text-sm mb-1">{{ t('help.hero.subtitle') }}</p>
+                <p class="text-base-content/60 text-sm mb-3">
+                    {{ t('help.hero.privacy') }}
+                </p>
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- 主 CTA -->
+                    <button class="btn btn-primary btn-sm"
+                            @click="window.location.href = '/scanner?tutorial=restart'">
+                        <i class="bi bi-play-circle"></i> {{ t('help.hero.btn_tutorial') }}
+                    </button>
+                    <!-- 次 CTA -->
+                    <button class="btn btn-outline btn-neutral btn-sm"
+                            @click="checkUpdate()"
+                            :disabled="checkUpdateLoading">
+                        <span x-show="checkUpdateLoading" class="loading loading-spinner loading-sm"></span>
+                        <span x-show="checkUpdateLoading">{{ t('help.hero.btn_check_update') }}</span>
+                        <span x-show="!checkUpdateLoading"><i class="bi bi-cloud-download"></i></span>
+                        <span x-show="!checkUpdateLoading">{{ t('help.hero.btn_check_update_idle') }}</span>
+                    </button>
+                    <!-- 更新結果 inline -->
+                    <template x-if="checkDone && !errorMsg && hasUpdate">
+                        <a :href="downloadUrl" target="_blank" rel="noopener noreferrer" class="text-success text-sm">
+                            <i class="bi bi-download"></i> {{ t('help.hero.update_available_prefix') }} <span x-text="latestVersion"></span> {{ t('help.hero.update_available_suffix') }}
+                        </a>
+                    </template>
+                    {% if is_desktop %}
+                    <template x-if="checkDone && !errorMsg && hasUpdate">
+                        <button class="btn btn-warning btn-sm"
+                                @click="triggerUpdate()"
+                                :disabled="updateLoading">
+                            <span x-show="updateLoading" class="loading loading-spinner loading-sm"></span>
+                            {{ t('help.update_modal.trigger_btn') }}
+                        </button>
+                    </template>
+                    {% endif %}
+                    <template x-if="checkDone && !errorMsg && !hasUpdate">
+                        <span class="text-base-content/50 text-sm">
+                            <i class="bi bi-check-circle"></i> {{ t('help.hero.up_to_date') }}
+                        </span>
+                    </template>
+                    <template x-if="checkDone && errorMsg">
+                        <span class="text-error text-sm">
+                            <i class="bi bi-exclamation-circle"></i> <span x-text="errorMsg"></span>
+                        </span>
+                    </template>
+                    <!-- 外部連結 -->
+                    <a class="btn btn-ghost btn-sm" href="https://github.com/slive777/OpenAver"
+                       target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-github"></i> GitHub
+                    </a>
+                    <a class="btn btn-ghost btn-sm" href="https://t.me/+J-U2l96gv0FjZTBl"
+                       target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-telegram"></i> Telegram
+                    </a>
+                </div>
+            </div>
+            <!-- 右欄：AI 整合入口 -->
+            <div class="flex-1 lg:pl-6 mt-4 lg:mt-0">
+                <div class="hero-terminal relative" data-capabilities-base="{{ base_url }}">
+                    <span class="terminal-prompt">$</span>
+                    curl -s {{ base_url }}/api/capabilities
+                    <button class="terminal-copy-btn" @click="copyCurlCommand()"
+                            :title="window.t('help.hero.copy_curl')"
+                            :aria-label="window.t('help.hero.copy_curl')">
+                        <i class="bi bi-clipboard" x-show="!curlCopied"></i>
+                        <span x-show="curlCopied">✓</span>
+                    </button>
+                </div>
+                <p class="text-sm text-base-content/70 mt-3">
+                    🤖 {{ t('help.hero.ai_instruction') }}
+                </p>
+                <p class="text-xs text-base-content/50 mt-1">
+                    {{ t('help.hero.ai_tools') }}
+                </p>
+                <p class="text-xs text-base-content/40 mt-0.5">
+                    {{ t('help.hero.ai_hint_unsupported') }}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 工作流程 — 3步卡片 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body py-3 px-5">
+            <h3 class="text-sm font-bold mb-3">{{ t('help.workflow.title') }} <span class="font-normal opacity-50">— {{ t('help.workflow.subtitle') }}</span></h3>
+            <div class="flex flex-col lg:flex-row items-stretch lg:items-center gap-3 lg:gap-4">
+                <!-- Step 1 -->
+                <div class="flex-1 rounded-xl bg-base-200 p-6 text-center">
+                    <i class="bi bi-folder-plus workflow-step-icon"></i>
+                    <div class="font-bold text-lg mt-1"><span class="workflow-step-num">1</span> {{ t('help.workflow.step1_title') }}</div>
+                    <div class="text-base opacity-50 mt-0.5">{{ t('help.workflow.step1_desc') }}</div>
+                </div>
+                <!-- Arrow -->
+                <div class="workflow-arrow text-xl leading-none">▶</div>
+                <!-- Step 2 -->
+                <div class="flex-1 rounded-xl bg-base-200 p-6 text-center">
+                    <i class="bi bi-file-earmark-play workflow-step-icon"></i>
+                    <div class="font-bold text-lg mt-1"><span class="workflow-step-num">2</span> {{ t('help.workflow.step2_title') }}</div>
+                    <div class="text-base opacity-50 mt-0.5">{{ t('help.workflow.step2_desc') }}</div>
+                </div>
+                <!-- Arrow -->
+                <div class="workflow-arrow text-xl leading-none">▶</div>
+                <!-- Step 3 -->
+                <div class="flex-1 rounded-xl bg-base-200 p-6 text-center">
+                    <i class="bi bi-magic workflow-step-icon"></i>
+                    <div class="font-bold text-lg mt-1"><span class="workflow-step-num">3</span> {{ t('help.workflow.step3_title') }}</div>
+                    <div class="text-base opacity-50 mt-0.5">{{ t('help.workflow.step3_desc') }}</div>
+                </div>
+            </div>
+
+            <!-- Next Steps mini-list -->
+            <div class="mt-4">
+                <h6 class="text-sm font-bold mb-2">{{ t('help.workflow.next_steps_title') }}</h6>
+                <ul class="text-sm opacity-80">
+                    <li>{{ t('help.workflow.next_steps_similar') }}</li>
+                    <li>{{ t('help.workflow.next_steps_favorite') }}</li>
+                    <li>{{ t('help.workflow.next_steps_tag_alias') }}</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 想要更多控制？分流段 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body py-3 px-5">
+            <h3 class="text-base font-bold mb-2">{{ t('help.power_user.title') }}</h3>
+            <p class="text-sm opacity-80 mb-0">{{ t('help.power_user.intro') }}</p>
+        </div>
+    </div>
+
+    <!-- 影片列表生成 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-list-ul"></i> {{ t('help.scanner.title') }}
+            </h2>
+            <h6>{{ t('help.scanner.h6_features') }}</h6>
+            <ul>
+                <li>{{ t('help.scanner.feat_scan') }}</li>
+                <li>{{ t('help.scanner.feat_nfo') }}</li>
+                <li>{{ t('help.scanner.feat_nfo_fill') }}</li>
+                <li>{{ t('help.scanner.feat_terminal') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scanner.h6_output') }}</h6>
+            <ul>
+                <li>{{ t('help.scanner.output_html') | safe }}</li>
+                <li>{{ t('help.scanner.output_copy') | safe }}</li>
+                <li>{{ t('help.scanner.output_darkmode') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scanner.h6_subtitle') }}</h6>
+            <ul>
+                <li>{{ t('help.scanner.subtitle_detect') | safe }}</li>
+                <li>{{ t('help.scanner.subtitle_move') | safe }}</li>
+                <li>{{ t('help.scanner.subtitle_nfo') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scanner.h6_jellyfin') }}</h6>
+            <ul>
+                <li>{{ t('help.scanner.jellyfin_enable') | safe }}</li>
+                <li>{{ t('help.scanner.jellyfin_showcase') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scanner.h6_multiversion') }}</h6>
+            <p>{{ t('help.scanner.multiversion_intro') }}</p>
+            <pre class="bg-base-200 rounded-lg p-3 text-sm overflow-x-auto"><code>ABC-123/
+  ABC-123 - 有碼.mp4
+  ABC-123 - 無碼流出.mp4
+  ABC-123 - 中文字幕.mp4
+  ABC-123.nfo
+  ABC-123-poster.jpg</code></pre>
+            <ul>
+                <li>{{ t('help.scanner.multiversion_rule1') | safe }}</li>
+                <li>{{ t('help.scanner.multiversion_rule2') | safe }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 影片瀏覽 Showcase -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-collection-play"></i> {{ t('help.showcase.title') }}
+            </h2>
+            <p>{{ t('help.showcase.intro') | safe }}</p>
+
+            <h6 class="mt-4">{{ t('help.showcase.h6_modes') }}</h6>
+            <ul>
+                <li>{{ t('help.showcase.mode_grid') | safe }}</li>
+                <li>{{ t('help.showcase.mode_list') | safe }}</li>
+                <li>{{ t('help.showcase.mode_table') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.showcase.h6_sort') }}</h6>
+            <ul>
+                <li>{{ t('help.showcase.sort_sort') | safe }}</li>
+                <li>{{ t('help.showcase.sort_search') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.showcase.h6_other') }}</h6>
+            <ul>
+                <li>{{ t('help.showcase.other_lightbox') | safe }}</li>
+                <li>{{ t('help.showcase.other_lightbox_detail') }}</li>
+                <li>{{ t('help.showcase.other_table_cols') }}</li>
+                <li>{{ t('help.showcase.other_gallery') }}</li>
+                <li>{{ t('help.showcase.other_per_page') | safe }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 相似影片探索 -->
+    <div class="card help-card fluent-rounded-xl mb-4" id="similar">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-magic"></i> {{ t('help.similar.title') }}
+            </h2>
+            <p>{{ t('help.similar.intro') | safe }}</p>
+
+            <h6 class="mt-4">{{ t('help.similar.h6_what') }}</h6>
+            <ul>
+                <li>{{ t('help.similar.what_principle') | safe }}</li>
+                <li>{{ t('help.similar.what_crop') | safe }}</li>
+                <li>{{ t('help.similar.what_diversity') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.similar.h6_use') }}</h6>
+            <ul>
+                <li>{{ t('help.similar.use_lightbox') | safe }}</li>
+                <li>{{ t('help.similar.use_constellation') | safe }}</li>
+                <li>{{ t('help.similar.use_mobile') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.similar.h6_beta') }}</h6>
+            <ul>
+                <li>{{ t('help.similar.beta_uncensored') | safe }}</li>
+                <li>{{ t('help.similar.beta_compilation') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.similar.h6_manage') }}</h6>
+            <ul>
+                <li>{{ t('help.similar.manage_enable') | safe }}</li>
+                <li>{{ t('help.similar.manage_scanner') | safe }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Tag 別名管理 -->
+    <div class="card help-card fluent-rounded-xl mb-4" id="tag-alias">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-tags"></i> {{ t('help.tag_alias.title') }}
+            </h2>
+            <p>{{ t('help.tag_alias.intro') }}</p>
+
+            <h6 class="mt-4">{{ t('help.tag_alias.h6_scanner') }}</h6>
+            <ul>
+                <li>{{ t('help.tag_alias.scanner_chipwall') }}</li>
+                <li>{{ t('help.tag_alias.scanner_ai_hint') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.tag_alias.h6_showcase') }}</h6>
+            <ul>
+                <li>{{ t('help.tag_alias.showcase_expand') }}</li>
+                <li>{{ t('help.tag_alias.showcase_click') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.tag_alias.h6_tips') }}</h6>
+            <ul>
+                <li>{{ t('help.tag_alias.tip_ranker') }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 女優功能 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-person-circle"></i> {{ t('help.actress.title') }}
+            </h2>
+            <h6>{{ t('help.actress.h6_search') }}</h6>
+            <ul>
+                <li>{{ t('help.actress.search_hero') }}</li>
+                <li>{{ t('help.actress.search_favorite') }}</li>
+                <li>{{ t('help.actress.search_grid') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.actress.h6_showcase') }}</h6>
+            <ul>
+                <li>{{ t('help.actress.showcase_toggle') }}</li>
+                <li>{{ t('help.actress.showcase_grid') }}</li>
+                <li>{{ t('help.actress.showcase_lightbox') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.actress.h6_manage') }}</h6>
+            <ul>
+                <li>{{ t('help.actress.manage_add') }}</li>
+                <li>{{ t('help.actress.manage_alias') }}</li>
+                <li>{{ t('help.actress.manage_enrich') }}</li>
+                <li>{{ t('help.actress.manage_photo_path') }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 搜尋功能 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-search"></i> {{ t('help.search.title') }}
+            </h2>
+            <h6>{{ t('help.search.h6_methods') }}</h6>
+            <ul>
+                <li>{{ t('help.search.method_full') | safe }}</li>
+                <li>{{ t('help.search.method_partial') | safe }}</li>
+                <li>{{ t('help.search.method_series') | safe }}</li>
+                <li>{{ t('help.search.method_actress') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.search.h6_dragdrop') }}</h6>
+            <ul>
+                <li>{{ t('help.search.drag_auto') }}</li>
+                <li>{{ t('help.search.drag_batch') }}</li>
+                <li>{{ t('help.search.drag_generate') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.search.h6_grid') }}</h6>
+            <ul>
+                <li>{{ t('help.search.grid_switch') }}</li>
+                <li>{{ t('help.search.grid_lightbox') | safe }}</li>
+                <li>{{ t('help.search.grid_detail') }}</li>
+                <li>{{ t('help.search.grid_gallery') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.search.h6_badge') }}</h6>
+            <ul>
+                <li>{{ t('help.search.badge_keywords') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.search.h6_advanced_picker') }}</h6>
+            <ul>
+                <li>{{ t('help.search.picker_longpress') }}</li>
+                <li>{{ t('help.search.picker_panel_switch') }}</li>
+                <li>{{ t('help.search.picker_showcase_enrich') }}</li>
+                <li>{{ t('help.search.picker_lightbox_gear') }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 批次檔案搜尋 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-files"></i> {{ t('help.batch.title') }}
+            </h2>
+            <h6>{{ t('help.batch.h6_add') }}</h6>
+            <ul>
+                <li>{{ t('help.batch.add_folder') | safe }}</li>
+                <li>{{ t('help.batch.add_filter') | safe }}</li>
+                <li>{{ t('help.batch.add_batch') | safe }}</li>
+                <li>{{ t('help.batch.add_progress') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.batch.h6_favorite') }}</h6>
+            <ul>
+                <li>{{ t('help.batch.fav_settings') | safe }}</li>
+                <li>{{ t('help.batch.fav_load') }}</li>
+                <li>{{ t('help.batch.fav_auto') }}</li>
+                <li>{{ t('help.batch.fav_nfo_skip') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.batch.h6_pause') }}</h6>
+            <ul>
+                <li>{{ t('help.batch.pause_pause') }}</li>
+                <li>{{ t('help.batch.pause_resume') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.batch.h6_generate_all') }}</h6>
+            <ul>
+                <li>{{ t('help.batch.generate_all') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.batch.h6_badge') }}</h6>
+            <ul>
+                <li>{{ t('help.batch.badge_suffix') | safe }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 伺服器模式 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-hdd-network"></i> {{ t('help.server_mode.title') }}
+            </h2>
+
+            <h6>{{ t('help.server_mode.h6_what') }}</h6>
+            <ul>
+                <li>{{ t('help.server_mode.what_single') }}</li>
+                <li>{{ t('help.server_mode.what_server') }}</li>
+                <li>{{ t('help.server_mode.what_where') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.server_mode.h6_how') }}</h6>
+            <ul>
+                <li>{{ t('help.server_mode.how_url') | safe }}</li>
+                <li>{{ t('help.server_mode.how_copy') }}</li>
+                <li>{{ t('help.server_mode.how_off') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.server_mode.h6_security') }}</h6>
+            <ul>
+                <li>{{ t('help.server_mode.security_lan') }}</li>
+                <li>{{ t('help.server_mode.security_vpn') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.server_mode.h6_firewall') }}</h6>
+            <ul>
+                <li>{{ t('help.server_mode.firewall_allow') | safe }}</li>
+                <li>{{ t('help.server_mode.firewall_why') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.server_mode.h6_recover') }}</h6>
+            <ul>
+                <li>{{ t('help.server_mode.recover_win_intro') }}</li>
+                <li>{{ t('help.server_mode.recover_win_1') | safe }}</li>
+                <li>{{ t('help.server_mode.recover_win_2') }}</li>
+                <li>{{ t('help.server_mode.recover_win_3') | safe }}</li>
+                <li>{{ t('help.server_mode.recover_win_4') }}</li>
+                <li>{{ t('help.server_mode.recover_mac') }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 格式變數一覽表 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-braces"></i> {{ t('help.format.title') }}
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>{{ t('help.format.col_var') }}</th><th>{{ t('help.format.col_desc') }}</th><th>{{ t('help.format.col_example') }}</th><th>{{ t('help.format.col_fallback') }}</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>{num}</code></td><td>{{ t('help.format.var_num_desc') }}</td><td>SONE-205</td><td>—</td></tr>
+                        <tr><td><code>{title}</code></td><td>{{ t('help.format.var_title_desc') }}</td><td>新人出道...</td><td>{{ t('help.format.fallback_unknown_title') }}</td></tr>
+                        <tr><td><code>{actor}</code></td><td>{{ t('help.format.var_actor_desc') }}</td><td>三上悠亜</td><td>{{ t('help.format.fallback_unknown_actor') }}</td></tr>
+                        <tr><td><code>{actors}</code></td><td>{{ t('help.format.var_actors_desc') }}</td><td>三上悠亜, 明日花</td><td>{{ t('help.format.fallback_unknown_actor') }}</td></tr>
+                        <tr><td><code>{maker}</code></td><td>{{ t('help.format.var_maker_desc') }}</td><td>S1</td><td>{{ t('help.format.fallback_unknown_maker') }}</td></tr>
+                        <tr><td><code>{date}</code></td><td>{{ t('help.format.var_date_desc') }}</td><td>2024-01-15</td><td>{{ t('help.format.fallback_unknown_date') }}</td></tr>
+                        <tr><td><code>{year}</code></td><td>{{ t('help.format.var_year_desc') }}</td><td>2024</td><td>{{ t('help.format.fallback_unknown_year') }}</td></tr>
+                        <tr><td><code>{month}</code></td><td>{{ t('help.format.var_month_desc') }}</td><td>01</td><td>{{ t('help.format.fallback_unknown_month') }}</td></tr>
+                        <tr><td><code>{day}</code></td><td>{{ t('help.format.var_day_desc') }}</td><td>15</td><td>{{ t('help.format.fallback_unknown_day') }}</td></tr>
+                        <tr><td><code>{suffix}</code></td><td>{{ t('help.format.var_suffix_desc') }}</td><td>-4k</td><td>{{ t('help.format.fallback_empty') }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <h6 class="mt-4">{{ t('help.format.h6_default') }}</h6>
+            <ul>
+                <li>{{ t('help.format.default_filename') | safe }}</li>
+                <li>{{ t('help.format.default_folder') | safe }}</li>
+            </ul>
+            <h6 class="mt-4">{{ t('help.format.h6_fallback') }}</h6>
+            <ul>
+                <li>{{ t('help.format.fallback_folder_rule') }}</li>
+                <li>{{ t('help.format.fallback_filename_rule') }}</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 快捷鍵 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-keyboard"></i> {{ t('help.shortcuts.title') }}
+            </h2>
+
+            <h6>{{ t('help.shortcuts.h6_search') }}</h6>
+            <p class="text-base-content/60 text-sm mb-2">{{ t('help.shortcuts.search_hint') }}</p>
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>{{ t('help.shortcuts.col_key') }}</th><th>{{ t('help.shortcuts.col_context') }}</th><th>{{ t('help.shortcuts.col_action') }}</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">Esc</kbd></td>
+                            <td>{{ t('help.shortcuts.ctx_lightbox_open') }}</td>
+                            <td>{{ t('help.shortcuts.action_close_lightbox') }}</td>
+                        </tr>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">←</kbd> <kbd class="kbd kbd-sm">→</kbd></td>
+                            <td>{{ t('help.shortcuts.ctx_lightbox_open') }}</td>
+                            <td>{{ t('help.shortcuts.action_prev_next_video') }}</td>
+                        </tr>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">←</kbd> <kbd class="kbd kbd-sm">→</kbd></td>
+                            <td>{{ t('help.shortcuts.search_arrow2_ctx') }}</td>
+                            <td>{{ t('help.shortcuts.search_arrow2_action') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h6 class="mt-4">{{ t('help.shortcuts.h6_showcase') }}</h6>
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>{{ t('help.shortcuts.col_key') }}</th><th>{{ t('help.shortcuts.col_context') }}</th><th>{{ t('help.shortcuts.col_action') }}</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">←</kbd> <kbd class="kbd kbd-sm">→</kbd></td>
+                            <td>{{ t('help.shortcuts.ctx_lightbox_closed') }}</td>
+                            <td>{{ t('help.shortcuts.showcase_arrow_action') }}</td>
+                        </tr>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">A</kbd></td>
+                            <td>{{ t('help.shortcuts.ctx_lightbox_closed') }}</td>
+                            <td>{{ t('help.shortcuts.showcase_a_action') }}</td>
+                        </tr>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">S</kbd></td>
+                            <td>{{ t('help.shortcuts.showcase_s_ctx') }}</td>
+                            <td>{{ t('help.shortcuts.showcase_s_action') }}</td>
+                        </tr>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">Esc</kbd></td>
+                            <td>{{ t('help.shortcuts.ctx_lightbox_open') }}</td>
+                            <td>{{ t('help.shortcuts.action_close_lightbox') }}</td>
+                        </tr>
+                        <tr>
+                            <td><kbd class="kbd kbd-sm">←</kbd> <kbd class="kbd kbd-sm">→</kbd></td>
+                            <td>{{ t('help.shortcuts.ctx_lightbox_open') }}</td>
+                            <td>{{ t('help.shortcuts.action_prev_next_video') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scraper 來源說明 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-globe"></i> {{ t('help.scraper.title') }}
+            </h2>
+
+            <h6>{{ t('help.scraper.h6_censored') }}</h6>
+            <ul>
+                <li>{{ t('help.scraper.censored_dmm') | safe }}</li>
+                <li>{{ t('help.scraper.censored_others') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scraper.h6_uncensored') }}</h6>
+            <ul>
+                <li>{{ t('help.scraper.uncensored_d2pass') | safe }}</li>
+                <li>{{ t('help.scraper.uncensored_heyzo') | safe }}</li>
+                <li>{{ t('help.scraper.uncensored_fc2') | safe }}</li>
+                <li>{{ t('help.scraper.uncensored_avsox') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scraper.h6_default_source') }}</h6>
+            <ul>
+                <li>{{ t('help.scraper.default_source_set') | safe }}</li>
+                <li>{{ t('help.scraper.default_source_effect') }}</li>
+                <li>{{ t('help.scraper.fuzzy_always_on') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scraper.h6_dmm_fuzzy') }}</h6>
+            <ul>
+                <li>{{ t('help.scraper.dmm_fuzzy_trigger') }}</li>
+                <li>{{ t('help.scraper.dmm_fuzzy_prereq') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scraper.h6_proxy_direct') }}</h6>
+            <ul>
+                <li>{{ t('help.scraper.proxy_direct_vpn') }}</li>
+                <li>{{ t('help.scraper.proxy_direct_how') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scraper.h6_toggle') }}</h6>
+            <ul>
+                <li>{{ t('help.scraper.toggle_uncensored') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.scraper.h6_format') }}</h6>
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>{{ t('help.scraper.col_source') }}</th><th>{{ t('help.scraper.col_format') }}</th><th>{{ t('help.scraper.col_example') }}</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Caribbeancom</td><td><code>DDMMYY-NNN</code></td><td><code>010125-001</code></td></tr>
+                        <tr><td>1Pondo</td><td><code>DDMMYY_NNN</code></td><td><code>010125_001</code></td></tr>
+                        <tr><td>HEYZO</td><td><code>HEYZO-NNNN</code></td><td><code>HEYZO-3510</code></td></tr>
+                        <tr><td>FC2</td><td><code>FC2-PPV-NNNNNN</code></td><td><code>FC2-PPV-1723984</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metatube 教學 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-plug"></i> {{ t('help.metatube.title') }}
+            </h2>
+
+            <h6>{{ t('help.metatube.h6_what') }}</h6>
+            <ul>
+                <li>{{ t('help.metatube.what_desc') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.metatube.h6_enable') }}</h6>
+            <ul>
+                <li>{{ t('help.metatube.enable_gate') }}</li>
+                <li>{{ t('help.metatube.enable_url') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.metatube.h6_sources') }}</h6>
+            <ul>
+                <li>{{ t('help.metatube.sources_promote') }}</li>
+                <li>{{ t('help.metatube.sources_offline') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.metatube.h6_lan') }}</h6>
+            <ul>
+                <li>{{ t('help.metatube.lan_ssrf') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.metatube.h6_limits') }}</h6>
+            <ul>
+                <li>{{ t('help.metatube.limits_picker') }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.metatube.h6_db') }}</h6>
+            <ul>
+                <li>{{ t('help.metatube.db_hint') }}</li>
+            </ul>
+
+            <p class="text-sm text-base-content/50 mt-2">↗ {{ t('help.metatube.crossref_picker') }}</p>
+        </div>
+    </div>
+
+    <!-- 疑難排解 -->
+    <div class="card help-card fluent-rounded-xl mb-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <i class="bi bi-tools"></i> {{ t('help.troubleshooting.title') }}
+            </h2>
+            <h6>{{ t('help.troubleshooting.h6_crash') }}</h6>
+            <p>{{ t('help.troubleshooting.crash_cause') | safe }}</p>
+            <p>{{ t('help.troubleshooting.crash_fix_label') | safe }}</p>
+            <ol>
+                <li>{{ t('help.troubleshooting.crash_fix_1') }}</li>
+                <li>{{ t('help.troubleshooting.crash_fix_2') }}</li>
+                <li>{{ t('help.troubleshooting.crash_fix_3') }}</li>
+            </ol>
+
+            <h6 class="mt-4">{{ t('help.troubleshooting.h6_display') }}</h6>
+            <p>{{ t('help.troubleshooting.display_cause') | safe }}</p>
+            <p>{{ t('help.troubleshooting.display_fix') | safe }}</p>
+
+            <h6 class="mt-4">{{ t('help.troubleshooting.h6_report') }}</h6>
+            <p>{{ t('help.troubleshooting.report_log_path') | safe }}</p>
+            <p>{{ t('help.troubleshooting.report_debug_label') | safe }}</p>
+            <ol>
+                <li>{{ t('help.troubleshooting.report_debug_1') | safe }}</li>
+                <li>{{ t('help.troubleshooting.report_debug_2') }}</li>
+                <li>{{ t('help.troubleshooting.report_debug_3') | safe }}</li>
+            </ol>
+
+            <h6 class="mt-4">{{ t('help.troubleshooting.h6_dmm') }}</h6>
+            <ul>
+                <li>{{ t('help.troubleshooting.dmm_proxy') | safe }}</li>
+                <li>{{ t('help.troubleshooting.dmm_direct') | safe }}</li>
+            </ul>
+
+            <h6 class="mt-4">{{ t('help.troubleshooting.h6_translate') }}</h6>
+            <ul>
+                <li>{{ t('help.troubleshooting.translate_ollama') | safe }}</li>
+                <li>{{ t('help.troubleshooting.translate_gemini') | safe }}</li>
+                <li>{{ t('help.troubleshooting.translate_openai') | safe }}</li>
+            </ul>
+        </div>
+    </div>
+    {% if is_desktop %}
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': showUpdateModal }"
+            @click.self="!updateLoading && cancelUpdate()"
+            @keydown.escape.window="!updateLoading && cancelUpdate()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title">{{ t('help.update_modal.title') }}</h3>
+            <!-- 情況 A：預設路徑 -->
+            <p x-show="isDefaultPath" class="fluent-modal-body text-sm">
+                {{ t('help.update_modal.case_a_body') }}
+            </p>
+            <!-- 情況 B：非預設路徑（whitespace-pre-line 保留換行） -->
+            <p x-show="!isDefaultPath" class="fluent-modal-body text-sm whitespace-pre-line">
+                {{ t('help.update_modal.case_b_body') }}
+            </p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost btn-sm"
+                        @click="cancelUpdate()"
+                        :disabled="updateLoading">
+                    {{ t('help.update_modal.cancel_btn') }}
+                </button>
+                <button type="button" class="btn btn-warning btn-sm"
+                        @click="confirmUpdate()"
+                        :disabled="updateLoading">
+                    <span x-show="updateLoading" class="loading loading-spinner loading-sm"></span>
+                    {{ t('help.update_modal.confirm_btn') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+    {% endif %}
+
+    <!-- Toast 通知（update 成功/失敗回饋） -->
+    <div class="toast toast-end toast-top z-[9999]" x-show="_toast.visible" x-cloak x-transition>
+        <div class="alert" :class="`alert-${_toast.type}`">
+            <span x-text="_toast.message"></span>
+            <button type="button" class="btn btn-sm btn-circle btn-ghost" @click="_toast.visible = false">✕</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block extra_js %}
+<script src="/static/js/pages/help.js"></script>
+{% endblock %}

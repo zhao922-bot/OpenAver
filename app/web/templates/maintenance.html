@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('nav.maintenance') }} - OpenAver{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/pages/maintenance.css">
+{% endblock %}
+
+{% block content %}
+<div class="operations" x-data="operations" x-init="init()">
+    <header class="operations-header">
+        <div>
+            <h1><i class="bi bi-activity"></i> 运维中心</h1>
+            <p x-text="build.display_version || build.version || ''"></p>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" @click="refreshAll()" :disabled="loading" title="刷新">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+    </header>
+
+    <div class="operations-tabs" role="tablist">
+        <button type="button" :class="{active: tab === 'issues'}" @click="tab='issues'"><i class="bi bi-exclamation-circle"></i> 问题</button>
+        <button type="button" :class="{active: tab === 'inbox'}" @click="tab='inbox'"><i class="bi bi-inbox"></i> 新文件</button>
+        <button type="button" :class="{active: tab === 'tasks'}" @click="tab='tasks'"><i class="bi bi-list-task"></i> 任务</button>
+        <button type="button" :class="{active: tab === 'names'}" @click="tab='names'"><i class="bi bi-person-check"></i> 女优名称</button>
+        <button type="button" :class="{active: tab === 'backups'}" @click="tab='backups'"><i class="bi bi-shield-check"></i> 备份</button>
+    </div>
+
+    <div class="alert operations-message" x-show="message" x-cloak :class="messageType === 'error' ? 'alert-error' : 'alert-success'">
+        <span x-text="message"></span>
+        <button class="btn btn-xs btn-circle btn-ghost" type="button" @click="message=''" aria-label="关闭"><i class="bi bi-x"></i></button>
+    </div>
+
+    <section x-show="tab === 'issues'" x-cloak>
+        <div class="operations-metrics">
+            <div><strong x-text="dashboard.summary.total || 0"></strong><span>影片</span></div>
+            <div><strong x-text="dashboard.summary.unresolved || 0"></strong><span>待完善</span></div>
+            <div><strong x-text="dashboard.summary.high_confidence || 0"></strong><span>高完整度</span></div>
+            <div><strong x-text="health.issue_count || 0"></strong><span>文件问题</span></div>
+        </div>
+        <div class="operations-toolbar">
+            <button class="btn btn-sm btn-primary" type="button" @click="repairSelected()" :disabled="!selectedPaths.length || repairing">
+                <i class="bi bi-tools"></i> 批量补全 <span x-show="selectedPaths.length" x-text="`(${selectedPaths.length})`"></span>
+            </button>
+        </div>
+        <div class="operations-list">
+            <template x-for="item in dashboard.items" :key="item.path">
+                <div class="operations-row">
+                    <input type="checkbox" class="checkbox checkbox-sm" :value="item.path" x-model="selectedPaths" aria-label="选择影片">
+                    <div class="operations-row-main">
+                        <strong x-text="item.number || '未知番号'"></strong>
+                        <span x-text="item.title || item.path"></span>
+                        <small x-text="`缺少：${item.missing.join('、')}`"></small>
+                    </div>
+                    <span class="operations-score" x-text="`${Math.round(item.score * 100)}%`"></span>
+                </div>
+            </template>
+            <p class="operations-empty" x-show="!dashboard.items.length">当前没有待完善项目。</p>
+        </div>
+    </section>
+
+    <section x-show="tab === 'inbox'" x-cloak>
+        <div class="operations-toolbar">
+            <label class="operations-toggle"><input type="checkbox" class="toggle toggle-sm" x-model="watchEnabled" @change="saveWatch()"> 自动监控新文件</label>
+            <button class="btn btn-sm btn-outline" type="button" @click="scanNow()"><i class="bi bi-search"></i> 立即检查</button>
+        </div>
+        <div class="operations-list">
+            <template x-for="item in queueItems" :key="item.id">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="item.number"></strong>
+                        <span x-text="item.preview?.title || item.path"></span>
+                        <small x-show="item.preview?.actresses?.length" x-text="item.preview.actresses.join('、')"></small>
+                    </div>
+                    <div class="operations-actions">
+                        <button x-show="item.status === 'pending'" class="btn btn-xs btn-outline" type="button" @click="previewQueue(item)" title="预览"><i class="bi bi-eye"></i></button>
+                        <button x-show="item.status === 'pending' && item.preview?.found" class="btn btn-xs btn-primary" type="button" @click="applyQueue(item)" title="确认整理"><i class="bi bi-check-lg"></i></button>
+                        <button x-show="item.status === 'pending'" class="btn btn-xs btn-ghost" type="button" @click="dismissQueue(item)" title="忽略"><i class="bi bi-x"></i></button>
+                        <button x-show="item.status === 'completed'" class="btn btn-xs btn-outline" type="button" @click="rollbackQueue(item)" title="回退"><i class="bi bi-arrow-counterclockwise"></i></button>
+                        <span class="badge badge-sm" x-text="item.status"></span>
+                    </div>
+                </div>
+            </template>
+            <p class="operations-empty" x-show="!queueItems.length">没有发现待整理的新文件。</p>
+        </div>
+    </section>
+
+    <section x-show="tab === 'tasks'" x-cloak>
+        <div class="operations-list">
+            <template x-for="task in tasks" :key="task.id">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="task.type"></strong>
+                        <span x-text="task.message"></span>
+                        <small x-text="`已处理 ${task.processed || 0}，成功 ${task.created || 0}，失败 ${task.failed || 0}`"></small>
+                    </div>
+                    <div class="operations-actions">
+                        <button x-show="task.status === 'running'" class="btn btn-xs btn-outline" @click="controlTask(task,'pause')" title="暂停"><i class="bi bi-pause"></i></button>
+                        <button x-show="task.status === 'paused'" class="btn btn-xs btn-outline" @click="controlTask(task,'resume')" title="继续"><i class="bi bi-play"></i></button>
+                        <button x-show="['running','paused','queued'].includes(task.status)" class="btn btn-xs btn-ghost" @click="controlTask(task,'cancel')" title="取消"><i class="bi bi-x"></i></button>
+                        <span class="badge badge-sm" x-text="task.status"></span>
+                    </div>
+                </div>
+            </template>
+            <p class="operations-empty" x-show="!tasks.length">目前没有后台任务。</p>
+        </div>
+    </section>
+
+    <section x-show="tab === 'names'" x-cloak>
+        <div class="operations-metrics operations-metrics--compact">
+            <div><strong x-text="actressNames.length"></strong><span>名称组</span></div>
+            <div><strong x-text="actressUnverified"></strong><span>待确认</span></div>
+        </div>
+        <div class="operations-list">
+            <template x-for="item in actressNames" :key="item.primary_name">
+                <div class="operations-row operations-row--name">
+                    <div class="operations-row-main">
+                        <strong x-text="item.primary_name"></strong>
+                        <span x-text="item.aliases.join('、') || '无别名'"></span>
+                        <small x-text="`本地作品 ${item.usage_count} 部`"></small>
+                    </div>
+                    <input class="input input-sm input-bordered operations-url" x-model="item.source_url" placeholder="常用名称来源网址">
+                    <label class="operations-toggle"><input type="checkbox" class="checkbox checkbox-sm" x-model="item.verified"> 已确认</label>
+                    <button class="btn btn-xs btn-outline" type="button" @click="saveEvidence(item)" title="保存"><i class="bi bi-floppy"></i></button>
+                </div>
+            </template>
+        </div>
+    </section>
+
+    <section x-show="tab === 'backups'" x-cloak>
+        <div class="operations-toolbar">
+            <button class="btn btn-sm btn-primary" type="button" @click="createBackup()" :disabled="backupBusy"><i class="bi bi-plus-lg"></i> 创建备份</button>
+            <span>恢复操作会先自动创建当前状态的保险备份。</span>
+        </div>
+        <div class="operations-list">
+            <template x-for="backup in backups" :key="backup.name">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="backup.name"></strong>
+                        <span x-text="backup.reason"></span>
+                        <small x-text="backup.created_at || ''"></small>
+                    </div>
+                    <div class="operations-actions">
+                        <a x-show="backup.download" class="btn btn-xs btn-outline" :href="backup.download" title="导出"><i class="bi bi-download"></i></a>
+                        <button class="btn btn-xs btn-outline" type="button" @click="restoreBackup(backup)" title="恢复"><i class="bi bi-clock-history"></i></button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block pre_alpine_module %}
+<script type="module" src="/static/js/pages/maintenance.js"></script>
+{% endblock %}
