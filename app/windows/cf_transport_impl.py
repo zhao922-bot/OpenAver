@@ -157,6 +157,8 @@ class PyWebViewCfTransport:
         self._cf_url = None  # Backward-compatible pointer to the latest challenge URL.
         self._cf_urls: dict[str, str] = {}
         self._active_cache_key = "javlibrary"
+        self._last_navigation_target = ""
+        self._last_navigation_at = 0.0
         # Backstop: if the window is genuinely destroyed (crash / OS-forced / app
         # teardown) despite the closing-intercept in standalone.py, mark dead so
         # subsequent calls fail-fast instead of raising opaque errors on a dead window.
@@ -303,10 +305,27 @@ class PyWebViewCfTransport:
             logger.info("[CF-DIAG] begin_solve → _dead=True, raising unavailable")
             raise CfTransportUnavailable("JavLibrary CF window was unexpectedly destroyed (crash / forced close); restart OpenAver to use JavLibrary again")
         target = self._cf_urls.get(cache_key) or origin_url
+        now = time.monotonic()
+        is_duplicate_navigation = (
+            cache_key == self._active_cache_key
+            and target == self._last_navigation_target
+            and not self._bridge_ready()
+            and now - self._last_navigation_at < 5.0
+        )
         self._active_cache_key = cache_key
         self._cf_url = target
-        logger.info("[CF-DIAG] begin_solve → show + load_url (target=%s) %s", target, self._event_states())
         self._win.show()
+        if is_duplicate_navigation:
+            logger.debug(
+                "[CF-DIAG] begin_solve: navigation already in progress "
+                "(target=%s) %s",
+                target,
+                self._event_states(),
+            )
+            return
+        self._last_navigation_target = target
+        self._last_navigation_at = now
+        logger.info("[CF-DIAG] begin_solve → show + load_url (target=%s) %s", target, self._event_states())
         self._win.load_url(target)
         # ROOT-CAUSE FIX (0.9.9c): deliberately NO evaluate_js here. Setting the
         # over18 cookie via evaluate_js right after navigating to a (CF-challenged)

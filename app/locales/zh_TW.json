@@ -100,7 +100,7 @@
       "concurrent_downloads": "同時下載數量",
       "fragment_threads": "單個影片執行緒數",
       "settings_saved": "下載設定已儲存",
-      "complete_browser_check": "請在彈出的頁面中完成網站驗證",
+      "complete_browser_check": "正在連線 Jable；頁面正常開啟後會自動讀取標題，請不要關閉視窗",
       "lookup_timeout": "標題查詢等待逾時",
       "no_titles": "沒有找到可用標題",
       "titles_loaded": "公開標題已載入",

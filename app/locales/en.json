@@ -94,7 +94,7 @@
       "concurrent_downloads": "Concurrent Downloads",
       "fragment_threads": "Threads per Video",
       "settings_saved": "Download settings saved",
-      "complete_browser_check": "Complete the site check in the window that opened",
+      "complete_browser_check": "Connecting to Jable; keep the window open and titles will load automatically once the page is ready",
       "lookup_timeout": "Title lookup timed out",
       "no_titles": "No usable titles were found",
       "titles_loaded": "Public titles loaded",

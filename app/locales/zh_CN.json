@@ -94,7 +94,7 @@
       "concurrent_downloads": "同时下载数量",
       "fragment_threads": "单个视频线程数",
       "settings_saved": "下载设置已保存",
-      "complete_browser_check": "请在弹出的页面中完成网站验证",
+      "complete_browser_check": "正在连接 Jable；页面正常打开后会自动读取标题，请不要关闭窗口",
       "lookup_timeout": "标题查询等待超时",
       "no_titles": "没有找到可用标题",
       "titles_loaded": "公开标题已载入",
