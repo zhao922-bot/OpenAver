@@ -66,9 +66,22 @@ def _redact_log_text(text: str) -> str:
     """Redact secrets and signed media URLs from free-form log text."""
     if not text:
         return text
-    # key=value secrets
+    # Authorization: Bearer <token>  or  Authorization: <token>
+    # Must run before generic key=value so the whole header value is covered.
     text = re.sub(
-        r"(api[_-]?key|token|Bearer|password|secret|lan_token)\s*[:=]\s*\S+",
+        r"(?i)\bAuthorization\s*[:=]\s*(?:Bearer\s+)?\S+",
+        "Authorization: ***REDACTED***",
+        text,
+    )
+    # Standalone Bearer tokens (HTTP header value without Authorization key)
+    text = re.sub(
+        r"(?i)\bBearer\s+\S+",
+        "Bearer ***REDACTED***",
+        text,
+    )
+    # key=value secrets (api_key=..., token: ..., password=...)
+    text = re.sub(
+        r"(api[_-]?key|token|password|secret|lan_token)\s*[:=]\s*\S+",
         r"\1=***REDACTED***",
         text,
         flags=re.IGNORECASE,

@@ -46,6 +46,27 @@ class DiagnosticPackTests(unittest.TestCase):
         self.assertNotIn("token=abc", u)
         self.assertIn("media.example", u)
 
+    def test_redact_authorization_bearer(self) -> None:
+        """Authorization: Bearer xxx must not leak into diagnostic packs."""
+        cases = [
+            "Authorization: Bearer super-secret-token-abc",
+            "authorization: Bearer xyz123",
+            "Authorization:Bearer tok",
+            "header Authorization: Bearer abc def leftover",
+            "standalone Bearer only-this-token should-stay",
+        ]
+        for raw in cases:
+            cleaned = _redact_log_text(raw)
+            self.assertNotIn("super-secret-token-abc", cleaned)
+            self.assertNotIn("xyz123", cleaned)
+            if "only-this-token" in raw:
+                self.assertNotIn("only-this-token", cleaned)
+                self.assertIn("should-stay", cleaned)
+            self.assertIn("REDACTED", cleaned)
+
+        # key=value style still works
+        self.assertNotIn("sk-x", _redact_log_text("api_key=sk-x"))
+
     def test_create_pack_zip(self) -> None:
         with mock.patch("core.diagnostic_pack.diagnose_sources", create=True):
             pack = create_diagnostic_pack(log_tail_lines=50)

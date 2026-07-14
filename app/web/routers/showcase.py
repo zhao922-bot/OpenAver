@@ -503,8 +503,14 @@ def _rename_video_assets(
                 "skipped": 0,
             })
             pending_journal_id = pending_ev.get("id")
+            if not pending_journal_id:
+                raise RuntimeError("rename journal returned empty id")
         except Exception as exc:
-            logger.warning("rename pre-journal failed (continuing): %s", exc)
+            # Hard-fail: without a journal id the rename cannot be rolled back safely
+            logger.error("rename pre-journal failed — aborting rename: %s", exc)
+            raise RuntimeError(
+                f"rename journal write failed; aborting to keep rollback safety: {exc}"
+            ) from exc
 
     completed_file_moves: list[tuple[Path, Path]] = []
     folder_was_renamed = False
@@ -549,8 +555,12 @@ def _rename_video_assets(
             nfo_mtime=_path_mtime_as_db_value(nfo_path),
         ):
             raise RuntimeError("video not found after rename — rolling back files")
-        thumbnail_cache.invalidate(video.path)
-        thumbnail_cache.invalidate(new_video_uri)
+        # Thumbnail cache is best-effort; never roll back FS/DB for cache failures
+        try:
+            thumbnail_cache.invalidate(video.path)
+            thumbnail_cache.invalidate(new_video_uri)
+        except Exception as inv_exc:
+            logger.warning("thumbnail cache invalidate after rename failed: %s", inv_exc)
 
     except Exception:
         # Best-effort reverse of filesystem changes so FS and DB stay consistent

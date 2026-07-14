@@ -111,6 +111,22 @@ def mark_failed(event_id: str, reason: str = "") -> bool:
     return _rewrite_event(event_id, _mut)
 
 
+def update_pending_progress(event_id: str, progress: dict[str, Any]) -> bool:
+    """Merge progress into a pending journal event after each batch item.
+
+    Used so a mid-batch crash still leaves completed entries recoverable
+    (entries / renamed / failed / skipped counters).
+    """
+
+    def _mut(obj: dict) -> None:
+        for key in ("entries", "renamed", "failed", "skipped", "processed", "status"):
+            if key in progress:
+                obj[key] = progress[key]
+        obj["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    return _rewrite_event(event_id, _mut)
+
+
 def finalize_event(event_id: str, payload: dict[str, Any]) -> bool:
     """Replace pending event body with completed payload (preserve id/created_at)."""
 
