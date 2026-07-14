@@ -241,7 +241,24 @@ def _video_needs_metadata_enrich(video) -> bool:
     return False
 
 
+def _name_already_in_text(name: str, text: str) -> bool:
+    """True if name (or a close spacing variant) already appears in text."""
+    if not name or not text:
+        return False
+    if name in text:
+        return True
+    # Tolerate full-width / half-width spaces differences
+    compact_name = re.sub(r"\s+", "", name)
+    compact_text = re.sub(r"\s+", "", text)
+    return bool(compact_name) and compact_name in compact_text
+
+
 def _display_actresses_for_filename(video, alias_groups: list[tuple[str, set[str]]]) -> list[str]:
+    """Return actress names to *append* after title in basename.
+
+    Skip if any name in the same alias group is already present in the title
+    (e.g. title ends with 三澄寧々 while primary is 三澄宁宁 — do not append both).
+    """
     actresses = []
     raw_actresses = video.actresses or []
     source_title = (video.original_title or video.title or "").strip()
@@ -255,10 +272,17 @@ def _display_actresses_for_filename(video, alias_groups: list[tuple[str, set[str
         if not raw_name:
             continue
         group = group_by_name.get(raw_name) or group_by_name.get(raw_name.lower())
-        display_name = group[0] if group else raw_name
-        if display_name and display_name in source_title:
-            continue
-        if display_name not in actresses:
+        if group:
+            primary, names = group
+            # Any form of this person already in title → do not append
+            if any(_name_already_in_text(n, source_title) for n in names if n):
+                continue
+            display_name = primary
+        else:
+            display_name = raw_name
+            if _name_already_in_text(display_name, source_title):
+                continue
+        if display_name and display_name not in actresses:
             actresses.append(display_name)
     return actresses
 
@@ -268,7 +292,19 @@ def _build_video_basename(video) -> str:
     source_title = (video.original_title or video.title or "").strip()
     title = _strip_number_prefix(source_title, number)
     title = _sanitize_filename_part(title, 140)
-    actress_names = _display_actresses_for_filename(video, _get_actress_alias_groups())
+    alias_groups = _get_actress_alias_groups()
+    actress_names = _display_actresses_for_filename(video, alias_groups)
+    # Also drop actresses already present in the sanitized title segment
+    actress_names = [
+        n for n in actress_names
+        if not _name_already_in_text(n, title)
+        and not any(
+            _name_already_in_text(alias, title)
+            for primary, names in alias_groups
+            if n == primary or n in names
+            for alias in names
+        )
+    ]
     parts = [f"{number} - {title}"]
     if actress_names:
         parts.append(" ".join(_sanitize_filename_part(name, 40) for name in actress_names))
