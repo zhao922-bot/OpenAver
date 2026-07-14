@@ -183,28 +183,84 @@ export function searchStateDownloads() {
             return !!(this.downloadForm.mediaUrl.trim() && this.downloadForm.destination && this.downloadForm.rightsConfirmed);
         },
 
-        downloadProgressText(task) {
-            if (task.duration_seconds) {
-                return `${this._formatDownloadTime(task.elapsed_seconds)} / ${this._formatDownloadTime(task.duration_seconds)}`;
-            }
-            return this._formatDownloadBytes(task.bytes_written || 0);
-        },
-
         downloadStatusText(status) {
             const known = ['queued', 'probing', 'running', 'paused', 'cancelling', 'cancelled', 'completed', 'failed'];
             return known.includes(status) ? window.t(`search.download.status_${status}`) : status;
         },
 
         downloadTaskMessage(task) {
+            if (task.error_message) return task.error_message;
             const keys = {
                 http_403: 'error_http_403',
+                http_404: 'error_http_404',
+                link_expired: 'error_link_expired',
+                need_referer: 'error_need_referer',
                 engine_missing: 'error_engine_missing',
+                ffmpeg_missing: 'error_ffmpeg_missing',
                 target_exists: 'error_target_exists',
+                disk_full: 'error_disk_full',
+                timeout: 'error_timeout',
+                network_error: 'error_network',
+                not_media: 'error_not_media',
                 download_failed: 'error_download_failed',
             };
             return keys[task.error_code]
                 ? window.t(`search.download.${keys[task.error_code]}`)
                 : (task.message || '');
+        },
+
+        downloadProgressText(task) {
+            const parts = [];
+            if (task.duration_seconds) {
+                parts.push(`${this._formatDownloadTime(task.elapsed_seconds)} / ${this._formatDownloadTime(task.duration_seconds)}`);
+            } else {
+                parts.push(this._formatDownloadBytes(task.bytes_written || 0));
+            }
+            if (task.speed) parts.push(task.speed);
+            if (task.eta_seconds != null && task.eta_seconds > 0 && task.status === 'running') {
+                parts.push(`剩余 ${this._formatDownloadTime(task.eta_seconds)}`);
+            }
+            return parts.filter(Boolean).join(' · ');
+        },
+
+        async retryDownloadWithNewUrl(task) {
+            const next = window.prompt(
+                window.t('search.download.retry_url_prompt') || '粘贴新的媒体直链（签名过期时更换后重试）',
+                '',
+            );
+            if (next === null) return;
+            const url = (next || '').trim();
+            try {
+                if (url) {
+                    await this._downloadJson(`/api/downloads/${task.id}/retry-with-url`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ media_url: url }),
+                    });
+                } else {
+                    await this.controlDownload(task, 'retry');
+                    return;
+                }
+                await this.loadDownloadTasks();
+                this.showToast(window.t('search.download.queued'), 'success');
+            } catch (error) {
+                this.showToast(error.message, 'error');
+            }
+        },
+
+        async clearDownloadHistory(onlyFailed = false) {
+            if (!window.confirm(onlyFailed
+                ? (window.t('search.download.clear_failed_confirm') || '清除所有失败记录？')
+                : (window.t('search.download.clear_history_confirm') || '清除所有已完成/失败记录？'))) return;
+            try {
+                const data = await this._downloadJson(`/api/downloads/history?only_failed=${onlyFailed ? 'true' : 'false'}`, {
+                    method: 'DELETE',
+                });
+                await this.loadDownloadTasks();
+                this.showToast(`已清除 ${data.removed || 0} 条记录`, 'success');
+            } catch (error) {
+                this.showToast(error.message, 'error');
+            }
         },
 
         _formatDownloadTime(seconds) {

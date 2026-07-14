@@ -102,6 +102,10 @@ def create_download(payload: DownloadRequest, request: Request) -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+class RetryWithUrlRequest(BaseModel):
+    media_url: str = Field(default="", max_length=4000)
+
+
 @router.post("/{task_id}/{action}")
 def control_download(task_id: str, action: str, request: Request) -> dict:
     _local_only(request)
@@ -113,6 +117,40 @@ def control_download(task_id: str, action: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="Download not found")
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.put("/{task_id}/media-url")
+def update_download_media_url(task_id: str, payload: RetryWithUrlRequest, request: Request) -> dict:
+    """Replace media URL on a failed task (new signed / fresh link), then user can retry."""
+    _local_only(request)
+    try:
+        return {"success": True, "task": media_download_manager.update_media_url(task_id, payload.media_url)}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Download not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{task_id}/retry-with-url")
+def retry_download_with_url(task_id: str, payload: RetryWithUrlRequest, request: Request) -> dict:
+    """Update media URL (if provided) and re-queue a failed task."""
+    _local_only(request)
+    try:
+        if payload.media_url.strip():
+            media_download_manager.update_media_url(task_id, payload.media_url)
+        return {"success": True, "task": media_download_manager.control(task_id, "retry")}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Download not found")
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/history")
+def clear_download_history(request: Request, only_failed: bool = False) -> dict:
+    """Clear finished download records (completed/cancelled/failed)."""
+    _local_only(request)
+    removed = media_download_manager.clear_history(only_failed=only_failed)
+    return {"success": True, "removed": removed}
 
 
 @router.delete("/{task_id}")

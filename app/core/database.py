@@ -282,6 +282,30 @@ def init_db(db_path: Path = None) -> None:
         )
         existing_cols.add('scrape_attempted_at')
 
+    # Migration: field provenance / manual locks / translation version
+    for col, typedef in (
+        ("field_sources", "TEXT DEFAULT '{}'"),
+        ("field_locks", "TEXT DEFAULT '{}'"),
+        ("translation_meta", "TEXT DEFAULT '{}'"),
+    ):
+        if col not in existing_cols:
+            cursor.execute(f"ALTER TABLE videos ADD COLUMN {col} {typedef}")
+            existing_cols.add(col)
+
+    hist_cols = {row[1] for row in cursor.execute("PRAGMA table_info(title_translation_history)").fetchall()}
+    for col, typedef in (
+        ("model", "TEXT DEFAULT ''"),
+        ("provider", "TEXT DEFAULT ''"),
+        ("prompt_version", "TEXT DEFAULT ''"),
+        ("source_hash", "TEXT DEFAULT ''"),
+        ("confirmed", "INTEGER DEFAULT 0"),
+    ):
+        if col not in hist_cols:
+            try:
+                cursor.execute(f"ALTER TABLE title_translation_history ADD COLUMN {col} {typedef}")
+            except sqlite3.OperationalError:
+                pass  # table may not exist yet on first create order
+
     # Migration: 57b — 移除 v0.8.6 視覺搜尋欄位（idempotent；clean install 不爆）
     # DROP INDEX 必先於 DROP COLUMN（SQLite 不允許 drop 被 index 引用的 column）
     cursor.execute("DROP INDEX IF EXISTS idx_videos_clip_model_id")  # IF EXISTS 本身 idempotent  # 57d 連帶刪
@@ -320,6 +344,10 @@ class Video:
     mtime: float = 0.0
     nfo_mtime: float = 0.0
     scrape_attempted_at: float = 0.0
+    # Provenance / locks / translation version (JSON maps stored as TEXT)
+    field_sources: dict = field(default_factory=dict)
+    field_locks: dict = field(default_factory=dict)
+    translation_meta: dict = field(default_factory=dict)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -371,6 +399,9 @@ class Video:
         data['tags'] = json.dumps(self.tags, ensure_ascii=False)
         data['user_tags'] = json.dumps(self.user_tags, ensure_ascii=False)
         data['sample_images'] = json.dumps(self.sample_images, ensure_ascii=False)
+        data['field_sources'] = json.dumps(self.field_sources or {}, ensure_ascii=False)
+        data['field_locks'] = json.dumps(self.field_locks or {}, ensure_ascii=False)
+        data['translation_meta'] = json.dumps(self.translation_meta or {}, ensure_ascii=False)
         # 序列化 datetime
         if self.created_at:
             data['created_at'] = self.created_at.isoformat()
@@ -416,6 +447,16 @@ class Video:
         else:
             data['sample_images'] = []
 
+        for json_map_col in ('field_sources', 'field_locks', 'translation_meta'):
+            if json_map_col in data and data[json_map_col]:
+                try:
+                    parsed = json.loads(data[json_map_col]) if isinstance(data[json_map_col], str) else data[json_map_col]
+                    data[json_map_col] = parsed if isinstance(parsed, dict) else {}
+                except json.JSONDecodeError:
+                    data[json_map_col] = {}
+            else:
+                data[json_map_col] = {}
+
         # 反序列化 datetime
         if 'created_at' in data and data['created_at']:
             if isinstance(data['created_at'], str):
@@ -424,6 +465,11 @@ class Video:
         if 'updated_at' in data and data['updated_at']:
             if isinstance(data['updated_at'], str):
                 data['updated_at'] = datetime.fromisoformat(data['updated_at'])
+
+        # Drop unknown columns so older/newer schema drift doesn't break Video()
+        from dataclasses import fields as dc_fields
+        known = {f.name for f in dc_fields(cls)}
+        data = {k: v for k, v in data.items() if k in known}
 
         return cls(**data)
 
@@ -485,6 +531,12 @@ class VideoRepository:
                 elif col == 'scrape_attempted_at':
                     update_parts.append(
                         "scrape_attempted_at = CASE WHEN excluded.scrape_attempted_at = 0 THEN videos.scrape_attempted_at ELSE excluded.scrape_attempted_at END"
+                    )
+                elif col in ('field_sources', 'field_locks', 'translation_meta'):
+                    # Empty map '{}' → keep existing (caller may only be updating media)
+                    update_parts.append(
+                        f"{col} = CASE WHEN excluded.{col} IN ('{{}}', '') OR excluded.{col} IS NULL "
+                        f"THEN videos.{col} ELSE excluded.{col} END"
                     )
                 else:
                     update_parts.append(f"{col} = excluded.{col}")
@@ -862,14 +914,28 @@ class VideoRepository:
             conn.close()
 
     def get_mtime_index(self) -> dict:
-        """取得 {path: (mtime, nfo_mtime)} 索引，用於增量比對"""
+        """取得 {path: (mtime, nfo_mtime, size_bytes)} 索引，用於增量比對。
+
+        第三個 size_bytes 供 scan_diff 偵測「mtime 未變但內容替換」；
+        舊呼叫端只解包前兩項仍相容。
+        """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         try:
-            cursor.execute("SELECT path, mtime, nfo_mtime FROM videos")
+            cursor.execute("SELECT path, mtime, nfo_mtime, size_bytes FROM videos")
             rows = cursor.fetchall()
-            return {row[0]: (row[1], row[2]) for row in rows}
+            return {row[0]: (row[1] or 0, row[2] or 0, row[3] or 0) for row in rows}
+        finally:
+            conn.close()
+
+    def get_mtime_index_rows(self) -> list[tuple]:
+        """Raw rows for scan_diff builders: (path, mtime, nfo_mtime, size_bytes)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT path, mtime, nfo_mtime, COALESCE(size_bytes, 0) FROM videos")
+            return list(cursor.fetchall())
         finally:
             conn.close()
 
@@ -1236,21 +1302,76 @@ class VideoRepository:
         finally:
             conn.close()
 
-    def update_title(self, path: str, title: str, original_title: str = None) -> bool:
-        """Update title fields without touching scraper-owned media metadata."""
+    def update_title(
+        self,
+        path: str,
+        title: str,
+        original_title: str = None,
+        *,
+        lock: bool = False,
+        source: str = "",
+        translation_meta: dict | None = None,
+    ) -> bool:
+        """Update title fields without touching scraper-owned media metadata.
+
+        lock=True → mark title as manually locked (auto enrich will not overwrite).
+        source → recorded in field_sources['title'] (e.g. manual / translate:openai).
+        translation_meta → replaces videos.translation_meta when provided.
+        """
+        video = self.get_by_path(path)
+        if not video:
+            return False
+
+        from core.field_meta import dumps_json_map, merge_sources, parse_json_map, set_lock
+
+        locks = parse_json_map(video.field_locks)
+        sources = parse_json_map(video.field_sources)
+        if lock:
+            locks = set_lock(locks, "title", True)
+        if source:
+            sources = merge_sources(sources, {"title": source})
+        tmeta = parse_json_map(translation_meta) if translation_meta is not None else parse_json_map(video.translation_meta)
+
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                """
-                UPDATE videos
-                SET title = ?, original_title = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE path = ?
-                """,
-                (title, original_title, path),
-            )
+            # original_title=None means leave unchanged
+            if original_title is None:
+                cursor.execute(
+                    """
+                    UPDATE videos
+                    SET title = ?, field_sources = ?, field_locks = ?, translation_meta = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE path = ?
+                    """,
+                    (
+                        title,
+                        dumps_json_map(sources),
+                        dumps_json_map(locks),
+                        dumps_json_map(tmeta),
+                        path,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE videos
+                    SET title = ?, original_title = ?, field_sources = ?, field_locks = ?,
+                        translation_meta = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE path = ?
+                    """,
+                    (
+                        title,
+                        original_title,
+                        dumps_json_map(sources),
+                        dumps_json_map(locks),
+                        dumps_json_map(tmeta),
+                        path,
+                    ),
+                )
             conn.commit()
             updated = cursor.rowcount > 0
+            self._columns_cache = None  # schema may have migrated
         finally:
             conn.close()
 
@@ -1261,6 +1382,70 @@ class VideoRepository:
             except Exception:
                 logger.exception("SimilarRankerCache invalidate failed (non-fatal)")
         return updated
+
+    def set_field_lock(self, path: str, field: str, locked: bool = True) -> bool:
+        """Toggle a single field lock without changing content."""
+        video = self.get_by_path(path)
+        if not video:
+            return False
+        from core.field_meta import dumps_json_map, parse_json_map, set_lock
+
+        locks = set_lock(video.field_locks, field, locked)
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE videos SET field_locks = ?, updated_at = CURRENT_TIMESTAMP WHERE path = ?",
+                (dumps_json_map(locks), path),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def update_field_meta(
+        self,
+        path: str,
+        *,
+        sources: dict | None = None,
+        locks: dict | None = None,
+        translation_meta: dict | None = None,
+    ) -> bool:
+        """Patch provenance / locks / translation_meta JSON maps.
+
+        - sources: merged into existing (partial update)
+        - locks / translation_meta: replaced when provided (pass full map)
+        """
+        video = self.get_by_path(path)
+        if not video:
+            return False
+        from core.field_meta import dumps_json_map, merge_sources, parse_json_map
+
+        new_sources = merge_sources(video.field_sources, sources) if sources else parse_json_map(video.field_sources)
+        new_locks = parse_json_map(locks) if locks is not None else parse_json_map(video.field_locks)
+        new_tmeta = parse_json_map(translation_meta) if translation_meta is not None else parse_json_map(video.translation_meta)
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE videos
+                SET field_sources = ?, field_locks = ?, translation_meta = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE path = ?
+                """,
+                (
+                    dumps_json_map(new_sources),
+                    dumps_json_map(new_locks),
+                    dumps_json_map(new_tmeta),
+                    path,
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
 
     def update_media_paths(
         self,
@@ -1733,6 +1918,65 @@ class AliasRepository:
             raise
         finally:
             conn.close()
+
+    def merge_groups(self, keep_primary: str, absorb_primary: str) -> "AliasRecord":
+        """Merge absorb group into keep: all absorb names become aliases of keep.
+
+        keep_primary / absorb_primary must be primary names of existing groups.
+        Deletes the absorb group, then attaches its names under keep.
+        """
+        keep_primary = (keep_primary or "").strip()
+        absorb_primary = (absorb_primary or "").strip()
+        if not keep_primary or not absorb_primary:
+            raise ValueError("keep_primary and absorb_primary are required")
+        if keep_primary == absorb_primary:
+            raise ValueError("cannot merge a group into itself")
+
+        keep = self.get_by_primary(keep_primary)
+        absorb = self.get_by_primary(absorb_primary)
+        if keep is None:
+            raise ValueError(f"keep group not found: {keep_primary}")
+        if absorb is None:
+            raise ValueError(f"absorb group not found: {absorb_primary}")
+
+        candidates = [absorb.primary_name, *(absorb.aliases or [])]
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("BEGIN EXCLUSIVE")
+            # Free absorb names first so uniqueness checks only hit third parties
+            cursor.execute(
+                "DELETE FROM actress_aliases WHERE primary_name = ?",
+                (absorb.primary_name,),
+            )
+            merged = list(keep.aliases or [])
+            for name in candidates:
+                if not name or name == keep.primary_name or name in merged:
+                    continue
+                ok, msg = self._check_global_uniqueness_cursor(
+                    cursor, name, exclude_primary=keep.primary_name
+                )
+                if not ok:
+                    raise ValueError(msg)
+                merged.append(name)
+
+            cursor.execute(
+                """UPDATE actress_aliases
+                   SET aliases = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE primary_name = ?""",
+                (json.dumps(merged, ensure_ascii=False), keep.primary_name),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+        result = self.get_by_primary(keep.primary_name)
+        if result is None:
+            raise RuntimeError("merge succeeded but keep group missing")
+        return result
 
     def sync_from_favorite(
         self, name: str, aliases: List[str], source: str = "auto"

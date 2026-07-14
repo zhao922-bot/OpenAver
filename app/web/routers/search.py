@@ -97,40 +97,89 @@ def _is_allowed_image_url(url: str) -> bool:
 
 
 @router.get("/proxy-image")
-def proxy_image(url: str = Query(..., description="圖片 URL")):
+def proxy_image(
+    url: str = Query(..., description="圖片 URL"),
+    placeholder: bool = Query(True, description="失敗時回傳占位圖（200）而非空 404"),
+):
     """
     圖片代理 - 解決防盜鏈問題
+
+    - 來源專用 Referer / UA
+    - 磁碟快取（output/proxy-img）
+    - 最多 2 次重試
+    - 失敗回傳統一灰色占位圖，避免前端大量空白與破圖
     """
+    from core.image_headers import headers_for_image_url
+    from core.image_proxy_cache import get_cached, put_cached, prune_cache
+    from core.source_diagnostics import PLACEHOLDER_JPEG
+
     if not _is_allowed_image_url(url):
-        return Response(status_code=403)
-    try:
-        # 根據 URL 設置對應的 Referer
-        referer = ""
-        if "javbus.com" in url:
-            referer = "https://www.javbus.com/"
-        elif "dmm.co.jp" in url:
-            referer = "https://www.dmm.co.jp/"
-        elif "jav321.com" in url:
-            referer = "https://www.jav321.com/"
-
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': referer,
-        }
-
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            content_type = resp.headers.get('Content-Type', 'image/jpeg')
+        if placeholder:
             return Response(
-                content=resp.content,
-                media_type=content_type,
-                headers={"Cache-Control": "public, max-age=86400"},
+                content=PLACEHOLDER_JPEG,
+                media_type="image/jpeg",
+                status_code=200,
+                headers={"Cache-Control": "public, max-age=300", "X-Proxy-Status": "forbidden"},
             )
-    except Exception:
-        logger.exception("proxy_image failed: %s", url)
+        return Response(status_code=403)
 
-    # 返回空圖片
-    return Response(content=b'', media_type='image/jpeg', status_code=404)
+    cached = get_cached(url)
+    if cached:
+        body, ctype = cached
+        return Response(
+            content=body,
+            media_type=ctype or "image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400", "X-Proxy-Cache": "HIT"},
+        )
+
+    headers = headers_for_image_url(url)
+    last_status = None
+    for attempt in range(2):
+        try:
+            resp = requests.get(url, headers=headers, timeout=12)
+            last_status = resp.status_code
+            if resp.status_code == 200 and resp.content and len(resp.content) > 64:
+                content_type = resp.headers.get("Content-Type", "image/jpeg")
+                # Reject HTML error pages masquerading as images
+                if "text/html" in (content_type or "").lower():
+                    logger.debug("proxy_image got HTML for %s", url)
+                else:
+                    try:
+                        put_cached(url, resp.content, content_type)
+                        prune_cache()
+                    except Exception:
+                        pass
+                    return Response(
+                        content=resp.content,
+                        media_type=content_type,
+                        headers={
+                            "Cache-Control": "public, max-age=86400",
+                            "X-Proxy-Cache": "MISS",
+                        },
+                    )
+            if resp.status_code in (403, 404, 410):
+                break  # no point retrying hard client errors
+        except Exception as exc:
+            logger.debug("proxy_image attempt %s failed for %s: %s", attempt + 1, url, exc)
+            if attempt == 0:
+                continue
+
+    if last_status and last_status >= 400:
+        logger.debug("proxy_image upstream %s for %s", last_status, url)
+    else:
+        logger.debug("proxy_image failed: %s", url)
+
+    if placeholder:
+        return Response(
+            content=PLACEHOLDER_JPEG,
+            media_type="image/jpeg",
+            status_code=200,
+            headers={
+                "Cache-Control": "public, max-age=60",
+                "X-Proxy-Status": f"upstream_{last_status or 'error'}",
+            },
+        )
+    return Response(content=b"", media_type="image/jpeg", status_code=404)
 
 
 @router.get("/search")

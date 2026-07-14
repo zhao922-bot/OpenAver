@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.database import AliasRepository, VideoRepository, get_db_path, init_db
 from core.enricher import enrich_single as enrich_local_video
@@ -52,6 +52,24 @@ class TranslateVideoRequest(BaseModel):
 
 class RollbackTranslationRequest(BaseModel):
     path: str
+
+
+class ConfirmTranslationRequest(BaseModel):
+    path: str
+    confirmed: bool = True
+
+
+class UpdateTitleRequest(BaseModel):
+    path: str
+    title: str = Field(min_length=1, max_length=500)
+    original_title: Optional[str] = None
+    lock: bool = True  # manual edit defaults to locked
+
+
+class FieldLockRequest(BaseModel):
+    path: str
+    field: str
+    locked: bool = True
 
 
 class RenameVideoRequest(BaseModel):
@@ -131,6 +149,9 @@ def _serialize_video(
         "has_cover": bool(v.cover_path),             # DB 初判（不做 IO）
         "has_nfo": (v.nfo_mtime or 0) > 0,          # 對齊 41a nfo_mtime 寫入契約，防禦 NULL
         "has_translation_history": bool(has_translation_history),
+        "field_sources": getattr(v, "field_sources", None) or {},
+        "field_locks": getattr(v, "field_locks", None) or {},
+        "translation_meta": getattr(v, "translation_meta", None) or {},
     }
 
 
@@ -330,7 +351,27 @@ def _planned_sidecar_moves(video_path: Path, new_base: str) -> list[tuple[Path, 
     return moves
 
 
-def _rename_video_assets(video, path_mappings: dict, rename_folder: bool = True, dry_run: bool = False) -> dict:
+def _rename_video_assets(
+    video,
+    path_mappings: dict,
+    rename_folder: bool = True,
+    dry_run: bool = False,
+    journal: bool = True,
+) -> dict:
+    # Respect filename lock — skip auto rename
+    locks = getattr(video, "field_locks", None) or {}
+    if locks.get("filename"):
+        old_video_path = Path(uri_to_fs_path(video.path))
+        return {
+            "renamed": False,
+            "reason": "filename_locked",
+            "new_base": old_video_path.stem,
+            "old_path": str(old_video_path),
+            "new_path": str(old_video_path),
+            "folder_renamed": False,
+            "file_moves": [],
+        }
+
     old_video_path = Path(uri_to_fs_path(video.path))
     if not old_video_path.exists():
         raise FileNotFoundError(str(old_video_path))
@@ -377,52 +418,127 @@ def _rename_video_assets(video, path_mappings: dict, rename_folder: bool = True,
             "file_moves": planned_moves,
         }
 
-    for src, dst in moves:
-        src.rename(dst)
-    if new_dir != old_dir:
-        old_dir.rename(new_dir)
+    # Snapshot NFO + resolve cover target BEFORE any filesystem mutation
+    nfo_before_text = None
+    old_nfo_path = old_video_path.with_suffix(".nfo")
+    if old_nfo_path.is_file():
+        try:
+            nfo_before_text = old_nfo_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            logger.warning("could not snapshot NFO before rename: %s", exc)
 
-    new_video_uri = to_file_uri(str(final_video_path), path_mappings)
-    cover_uri = video.cover_path
-    if cover_uri:
-        cover_fs = Path(uri_to_fs_path(cover_uri))
-        cover_target = None
+    cover_target_name = None
+    if video.cover_path:
+        try:
+            cover_fs = Path(uri_to_fs_path(video.cover_path))
+            for src, dst in moves:
+                try:
+                    if cover_fs.resolve() == src.resolve() or cover_fs.name == src.name:
+                        cover_target_name = dst.name
+                        break
+                except OSError:
+                    if cover_fs.name == src.name:
+                        cover_target_name = dst.name
+                        break
+        except Exception:
+            pass
+
+    journal_entry = {
+        "old_uri": video.path,
+        "new_uri": None,
+        "old_path": str(old_video_path),
+        "new_path": str(final_video_path),
+        "folder_renamed": new_dir != old_dir,
+        "file_moves": planned_moves,
+        "number": video.number,
+        "nfo_before": nfo_before_text,
+        "status": "pending",
+    }
+    pending_journal_id = None
+    if journal:
+        try:
+            from core import rename_journal
+            pending_ev = rename_journal.append_event({
+                "kind": "single_rename",
+                "status": "pending",
+                "entries": [journal_entry],
+                "renamed": 0,
+                "failed": 0,
+                "skipped": 0,
+            })
+            pending_journal_id = pending_ev.get("id")
+        except Exception as exc:
+            logger.warning("rename pre-journal failed (continuing): %s", exc)
+
+    completed_file_moves: list[tuple[Path, Path]] = []
+    folder_was_renamed = False
+    nfo_updated = False
+    new_video_uri = video.path
+    try:
         for src, dst in moves:
-            if cover_fs == src:
-                cover_target = dst
-                break
-        if cover_target:
-            cover_uri = to_file_uri(str(new_dir / cover_target.name), path_mappings)
-        elif new_dir != old_dir:
-            cover_uri = _replace_path_prefix(cover_uri, old_dir, new_dir)
+            src.rename(dst)
+            completed_file_moves.append((src, dst))
+        if new_dir != old_dir:
+            old_dir.rename(new_dir)
+            folder_was_renamed = True
 
-    sample_images = list(video.sample_images or [])
-    if new_dir != old_dir:
-        sample_images = [
-            _replace_path_prefix(uri, old_dir, new_dir)
-            for uri in sample_images
-        ]
+        new_video_uri = to_file_uri(str(final_video_path), path_mappings)
+        cover_uri = video.cover_path
+        if cover_uri:
+            if cover_target_name:
+                cover_uri = to_file_uri(str(new_dir / cover_target_name), path_mappings)
+            elif new_dir != old_dir:
+                cover_uri = _replace_path_prefix(cover_uri, old_dir, new_dir)
 
-    repo = VideoRepository()
-    nfo_path = final_video_path.with_suffix(".nfo")
-    nfo_updated = _update_nfo_after_rename(
-        nfo_path,
-        video,
-        f"{new_base}.jpg" if (final_video_path.with_suffix(".jpg")).exists() else None,
-    )
-    if not repo.update_media_paths(
-        video.path,
-        new_video_uri,
-        cover_path=cover_uri,
-        sample_images=sample_images,
-        mtime=_path_mtime_as_db_value(final_video_path),
-        nfo_mtime=_path_mtime_as_db_value(nfo_path),
-    ):
-        raise RuntimeError("video not found")
-    thumbnail_cache.invalidate(video.path)
-    thumbnail_cache.invalidate(new_video_uri)
+        sample_images = list(video.sample_images or [])
+        if new_dir != old_dir:
+            sample_images = [
+                _replace_path_prefix(uri, old_dir, new_dir)
+                for uri in sample_images
+            ]
 
-    return {
+        repo = VideoRepository()
+        nfo_path = final_video_path.with_suffix(".nfo")
+        nfo_updated = _update_nfo_after_rename(
+            nfo_path,
+            video,
+            f"{new_base}.jpg" if (final_video_path.with_suffix(".jpg")).exists() else None,
+        )
+        if not repo.update_media_paths(
+            video.path,
+            new_video_uri,
+            cover_path=cover_uri,
+            sample_images=sample_images,
+            mtime=_path_mtime_as_db_value(final_video_path),
+            nfo_mtime=_path_mtime_as_db_value(nfo_path),
+        ):
+            raise RuntimeError("video not found after rename — rolling back files")
+        thumbnail_cache.invalidate(video.path)
+        thumbnail_cache.invalidate(new_video_uri)
+
+    except Exception:
+        # Best-effort reverse of filesystem changes so FS and DB stay consistent
+        try:
+            if folder_was_renamed and new_dir.exists() and not old_dir.exists():
+                new_dir.rename(old_dir)
+            for src, dst in reversed(completed_file_moves):
+                actual = old_dir / dst.name if (old_dir / dst.name).exists() else (
+                    new_dir / dst.name if (new_dir / dst.name).exists() else dst
+                )
+                target = src if src.parent.exists() else (old_dir / src.name)
+                if actual.exists() and not target.exists():
+                    actual.rename(target)
+        except Exception as rev_exc:
+            logger.error("rename FS rollback failed: %s", rev_exc)
+        if pending_journal_id:
+            try:
+                from core import rename_journal
+                rename_journal.mark_failed(pending_journal_id, "rename aborted; FS rolled back")
+            except Exception:
+                pass
+        raise
+
+    result = {
         "renamed": True,
         "new_base": new_base,
         "old_path": str(old_video_path),
@@ -432,7 +548,48 @@ def _rename_video_assets(video, path_mappings: dict, rename_folder: bool = True,
         "folder_renamed": new_dir != old_dir,
         "file_moves": planned_moves,
         "nfo_updated": nfo_updated,
+        "nfo_before": nfo_before_text is not None,
+        "nfo_before_text": nfo_before_text,  # batch journal / content rollback
+        "journal_id": pending_journal_id,
     }
+    if journal or pending_journal_id:
+        try:
+            from core import rename_journal
+            entry_done = {
+                "old_uri": video.path,
+                "new_uri": new_video_uri,
+                "old_path": str(old_video_path),
+                "new_path": str(final_video_path),
+                "folder_renamed": new_dir != old_dir,
+                "file_moves": planned_moves,
+                "number": video.number,
+                "nfo_before": nfo_before_text,
+                "status": "completed",
+            }
+            if pending_journal_id:
+                rename_journal.finalize_event(
+                    pending_journal_id,
+                    {
+                        "kind": "single_rename",
+                        "status": "completed",
+                        "entries": [entry_done],
+                        "renamed": 1,
+                        "failed": 0,
+                        "skipped": 0,
+                    },
+                )
+            elif journal:
+                rename_journal.append_event({
+                    "kind": "single_rename",
+                    "status": "completed",
+                    "entries": [entry_done],
+                    "renamed": 1,
+                    "failed": 0,
+                    "skipped": 0,
+                })
+        except Exception as exc:
+            logger.warning("rename journal finalize failed: %s", exc)
+    return result
 
 
 def _choose_translate_source(video) -> str:
@@ -481,6 +638,12 @@ def _record_title_translation_history(
     new_title: str,
     new_original_title: str,
     source: str = "showcase_translate",
+    *,
+    model: str = "",
+    provider: str = "",
+    prompt_version: str = "",
+    source_hash: str = "",
+    confirmed: bool = False,
 ) -> None:
     """Save the previous title values before a translation overwrites them."""
     old_title = video.title or ""
@@ -497,8 +660,9 @@ def _record_title_translation_history(
                 """
                 INSERT INTO title_translation_history (
                     path, number, old_title, old_original_title,
-                    new_title, new_original_title, source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    new_title, new_original_title, source,
+                    model, provider, prompt_version, source_hash, confirmed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     video.path,
@@ -508,13 +672,38 @@ def _record_title_translation_history(
                     new_title,
                     new_original_title,
                     source,
+                    model or "",
+                    provider or "",
+                    prompt_version or "",
+                    source_hash or "",
+                    1 if confirmed else 0,
                 ),
             )
             conn.commit()
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("record title translation history failed for %s: %s", video.path, exc)
+        # Fallback without new columns (pre-migration race)
+        try:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO title_translation_history (
+                        path, number, old_title, old_original_title,
+                        new_title, new_original_title, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        video.path, video.number or "", old_title, old_original,
+                        new_title, new_original_title, source,
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as exc2:
+            logger.warning("record title translation history failed for %s: %s / %s", video.path, exc, exc2)
 
 
 def _title_translation_history_keys(db_path: Path) -> tuple[set[str], set[str]]:
@@ -1053,6 +1242,13 @@ async def translate_video(request: TranslateVideoRequest):
         if video is None:
             return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
 
+        from core.field_meta import (
+            TRANSLATE_PROMPT_VERSION,
+            build_translation_meta,
+            should_skip_retranslate,
+            source_text_hash,
+        )
+
         source_title = _choose_translate_source(video)
         current_title = (video.title or "").strip()
         current_original = (video.original_title or "").strip()
@@ -1063,6 +1259,40 @@ async def translate_video(request: TranslateVideoRequest):
             and not has_japanese(current_title)
             and current_title != current_original
         )
+
+        # Confirmed translation with same source text + prompt version → skip
+        skip_confirmed, skip_reason = should_skip_retranslate(
+            getattr(video, "translation_meta", None),
+            source_text=source_title,
+            force=request.force,
+        )
+        if skip_confirmed:
+            thumb_enabled = config.get("thumbnail_cache_enabled", False)
+            actress_display_map = _get_actress_display_map()
+            return JSONResponse({
+                "success": True,
+                "skipped": True,
+                "reason": skip_reason or "translation_confirmed",
+                "video": _serialize_video(
+                    video, path_mappings, thumb_enabled, actress_display_map,
+                    _has_title_translation_history(db_path, video),
+                ),
+            })
+
+        # Locked title without force → skip auto translate
+        locks = getattr(video, "field_locks", None) or {}
+        if locks.get("title") and not request.force:
+            thumb_enabled = config.get("thumbnail_cache_enabled", False)
+            actress_display_map = _get_actress_display_map()
+            return JSONResponse({
+                "success": True,
+                "skipped": True,
+                "reason": "title_locked",
+                "video": _serialize_video(
+                    video, path_mappings, thumb_enabled, actress_display_map,
+                    _has_title_translation_history(db_path, video),
+                ),
+            })
 
         if already_translated and not request.force:
             thumb_enabled = config.get("thumbnail_cache_enabled", False)
@@ -1097,6 +1327,15 @@ async def translate_video(request: TranslateVideoRequest):
             })
 
         translate_service = await asyncio.to_thread(get_translate_service)
+        provider = (translate_config.get("provider") or "ollama")
+        model = ""
+        try:
+            model = getattr(translate_service, "model", "") or ""
+            if not model:
+                model = (translate_config.get(provider) or {}).get("model", "")
+        except Exception:
+            model = ""
+
         context = {
             "actors": video.actresses or [],
             "number": video.number or "",
@@ -1115,8 +1354,28 @@ async def translate_video(request: TranslateVideoRequest):
             return JSONResponse({"success": False, "error": "empty translation"}, status_code=502)
 
         original_title = current_original if current_original else source_title
-        _record_title_translation_history(db_path, video, translated_title, original_title)
-        if not repo.update_title(video.path, translated_title, original_title):
+        tmeta = build_translation_meta(
+            provider=provider,
+            model=model,
+            prompt_version=TRANSLATE_PROMPT_VERSION,
+            source_text=source_title,
+            confirmed=False,
+            previous=getattr(video, "translation_meta", None),
+        )
+        _record_title_translation_history(
+            db_path, video, translated_title, original_title,
+            source=f"translate:{provider}",
+            model=model,
+            provider=provider,
+            prompt_version=TRANSLATE_PROMPT_VERSION,
+            source_hash=source_text_hash(source_title),
+        )
+        if not repo.update_title(
+            video.path, translated_title, original_title,
+            lock=False,
+            source=f"translate:{provider}",
+            translation_meta=tmeta,
+        ):
             return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
 
         nfo_updated = _sync_nfo_title(video.path, translated_title, original_title)
@@ -1129,6 +1388,7 @@ async def translate_video(request: TranslateVideoRequest):
             "translated_title": translated_title,
             "original_title": original_title,
             "nfo_updated": nfo_updated,
+            "translation_meta": tmeta,
             "video": _serialize_video(updated_video, path_mappings, thumb_enabled, actress_display_map, True),
         })
 
@@ -1138,6 +1398,144 @@ async def translate_video(request: TranslateVideoRequest):
     except Exception as e:
         logger.exception("showcase translate failed: %s", e)
         return JSONResponse({"success": False, "error": "translate failed"}, status_code=500)
+
+
+@router.post("/confirm-translation")
+def confirm_translation(request: ConfirmTranslationRequest):
+    """Mark current Chinese title as human-confirmed (locks against auto re-translate)."""
+    try:
+        from core.field_meta import build_translation_meta, parse_json_map, set_lock
+
+        config = load_config()
+        db_path = get_db_path()
+        if not db_path.exists():
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+        init_db(db_path)
+        repo = VideoRepository(db_path)
+        configured_dir_uris, path_mappings = _get_configured_dirs(config)
+        if not any(is_path_under_dir(request.path, uri) for uri in configured_dir_uris):
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+        video = repo.get_by_path(request.path)
+        if video is None:
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+
+        prev = parse_json_map(video.translation_meta)
+        source_text = _choose_translate_source(video)
+        tmeta = build_translation_meta(
+            provider=prev.get("provider", ""),
+            model=prev.get("model", ""),
+            prompt_version=prev.get("prompt_version", ""),
+            source_text=source_text,
+            confirmed=bool(request.confirmed),
+            previous=prev,
+        )
+        locks = parse_json_map(video.field_locks)
+        if request.confirmed:
+            locks = set_lock(locks, "title", True)
+        else:
+            # Unconfirm does not force-unlock; user may keep manual lock
+            pass
+        repo.update_field_meta(video.path, locks=locks, translation_meta=tmeta)
+        updated = repo.get_by_path(video.path)
+        thumb_enabled = config.get("thumbnail_cache_enabled", False)
+        return JSONResponse({
+            "success": True,
+            "confirmed": bool(request.confirmed),
+            "translation_meta": tmeta,
+            "field_locks": locks,
+            "video": _serialize_video(
+                updated, path_mappings, thumb_enabled, _get_actress_display_map(),
+                _has_title_translation_history(db_path, updated),
+            ),
+        })
+    except Exception as e:
+        logger.exception("confirm translation failed: %s", e)
+        return JSONResponse({"success": False, "error": "confirm failed"}, status_code=500)
+
+
+@router.post("/update-title")
+def update_title_manual(request: UpdateTitleRequest):
+    """Manual title edit; defaults to locking the title against auto overwrite."""
+    try:
+        config = load_config()
+        db_path = get_db_path()
+        if not db_path.exists():
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+        init_db(db_path)
+        repo = VideoRepository(db_path)
+        configured_dir_uris, path_mappings = _get_configured_dirs(config)
+        if not any(is_path_under_dir(request.path, uri) for uri in configured_dir_uris):
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+        video = repo.get_by_path(request.path)
+        if video is None:
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+
+        ok = repo.update_title(
+            video.path,
+            request.title.strip(),
+            request.original_title if request.original_title is not None else video.original_title,
+            lock=request.lock,
+            source="manual",
+        )
+        if not ok:
+            return JSONResponse({"success": False, "error": "update failed"}, status_code=500)
+        nfo_updated = _sync_nfo_title(
+            video.path,
+            request.title.strip(),
+            request.original_title if request.original_title is not None else (video.original_title or ""),
+        )
+        updated = repo.get_by_path(video.path)
+        return JSONResponse({
+            "success": True,
+            "nfo_updated": nfo_updated,
+            "locked": request.lock,
+            "video": _serialize_video(
+                updated, path_mappings, config.get("thumbnail_cache_enabled", False),
+                _get_actress_display_map(),
+                _has_title_translation_history(db_path, updated),
+            ),
+        })
+    except Exception as e:
+        logger.exception("update title failed: %s", e)
+        return JSONResponse({"success": False, "error": "update title failed"}, status_code=500)
+
+
+@router.post("/field-lock")
+def set_field_lock(request: FieldLockRequest):
+    """Lock/unlock a metadata field against auto enrich/translate/rename."""
+    try:
+        from core.field_meta import TRACKED_FIELDS
+        if request.field not in TRACKED_FIELDS:
+            return JSONResponse(
+                {"success": False, "error": f"unknown field; allowed: {', '.join(TRACKED_FIELDS)}"},
+                status_code=400,
+            )
+        config = load_config()
+        db_path = get_db_path()
+        if not db_path.exists():
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+        init_db(db_path)
+        repo = VideoRepository(db_path)
+        configured_dir_uris, path_mappings = _get_configured_dirs(config)
+        if not any(is_path_under_dir(request.path, uri) for uri in configured_dir_uris):
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+        if not repo.set_field_lock(request.path, request.field, request.locked):
+            return JSONResponse({"success": False, "error": "video not found"}, status_code=404)
+        updated = repo.get_by_path(request.path)
+        return JSONResponse({
+            "success": True,
+            "field": request.field,
+            "locked": request.locked,
+            "field_locks": updated.field_locks if updated else {},
+            "video": _serialize_video(
+                updated, path_mappings, config.get("thumbnail_cache_enabled", False),
+                _get_actress_display_map(),
+                _has_title_translation_history(db_path, updated),
+            ) if updated else None,
+        })
+    except Exception as e:
+        logger.exception("field lock failed: %s", e)
+        return JSONResponse({"success": False, "error": "field lock failed"}, status_code=500)
 
 
 @router.post("/rollback-translation")

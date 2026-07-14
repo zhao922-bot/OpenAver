@@ -121,9 +121,15 @@
         <!-- Action Buttons -->
         <div class="action-section">
             <button class="btn-hero btn-hero-primary" id="btnGenerate"
-                    @click="generate()"
+                    @click="generate(false)"
                     x-bind:disabled="isBusy"
                     x-html="generateButtonText">
+            </button>
+            <button class="btn-hero btn-hero-secondary" id="btnGenerateFull"
+                    @click="generate(true)"
+                    x-bind:disabled="isBusy"
+                    title="{{ t('scanner.stats.force_full_title') }}">
+                <i class="bi bi-arrow-repeat"></i> {{ t('scanner.stats.force_full_idle') }}
             </button>
             <!-- Done Actions (hidden until complete) -->
             <div id="doneActions" class="done-actions" :style="{ display: doneActionsVisible ? 'flex' : 'none' }">

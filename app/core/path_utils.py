@@ -319,8 +319,7 @@ def to_file_uri(fs_path: str, path_mappings: dict = None) -> str:
 
     Notes:
         - mapping branch 只在 CURRENT_ENV == 'wsl' 且有 path_mappings 時生效。
-        - 大小寫敏感（known limitation, T7）：startswith 比對是 case-sensitive，
-          與 T6 reverse_path_mapping 對稱，沿用相同 limitation 標記。
+        - Windows / Windows-style mapping 比對使用 casefold（``D:\\Videos`` == ``d:\\videos``）。
         - 命中 boundary check（T7 P1 fix）：tail 必須為空或以 separator 開頭，
           避免 /home/user/share 誤命中 /home/user/share2。
         - trailing separator normalize（T7 P2 fix）：wsl_prefix 與 win_prefix 結尾的
@@ -333,8 +332,9 @@ def to_file_uri(fs_path: str, path_mappings: dict = None) -> str:
     # 統一使用正斜線
     abs_path = fs_path.replace(chr(92), '/')
 
-    # Windows 路徑：C:/... 格式
+    # Windows 路徑：C:/... 格式 — 正規化 drive letter 為大寫，避免 DB 大小寫漂移
     if len(abs_path) >= 2 and abs_path[1] == ':':
+        abs_path = abs_path[0].upper() + abs_path[1:]
         return f"file:///{abs_path}"
 
     # WSL mount 路徑：/mnt/c/... → C:/...
@@ -359,9 +359,20 @@ def to_file_uri(fs_path: str, path_mappings: dict = None) -> str:
             wsl_clean = wsl_prefix.rstrip('/\\')
             win_clean = win_prefix.rstrip('/\\')
 
-            if not abs_path.startswith(wsl_clean):
+            # Windows-style prefixes: case-insensitive match; POSIX: sensitive
+            path_cmp = abs_path
+            pref_cmp = wsl_clean
+            if CURRENT_ENV == 'windows' or (len(wsl_clean) >= 2 and wsl_clean[1] == ':'):
+                path_cmp = normalize_for_compare(abs_path)
+                pref_cmp = normalize_for_compare(wsl_clean)
+
+            if not path_cmp.startswith(pref_cmp):
                 continue
-            tail = abs_path[len(wsl_clean):]
+            # Use original abs_path length via matched prefix length on cleaned form
+            # Re-derive tail from original using matched prefix length on casefold equal length
+            # For casefold match, take tail from original by finding boundary after prefix len
+            # of the cleaned prefix (same char count for ASCII paths).
+            tail = abs_path[len(wsl_clean):] if abs_path.lower().startswith(wsl_clean.lower()) else abs_path[len(pref_cmp):]
             # T7 P1 fix: boundary check（tail 必須為空或以 separator 開頭）
             if tail and tail[0] not in SEPS:
                 continue  # boundary fail（e.g. share vs share2）
@@ -396,9 +407,8 @@ def reverse_path_mapping(fs_path: str, path_mappings: dict) -> Optional[str]:
         - to_windows_path() 對某些 Unix 路徑（如 /home/...）在某些環境會拋 ValueError，
           此情況以 try/except 捕捉後跳過該 mapping，不中斷整個查找。
         - suffix（prefix 之後的部分）一律轉成 POSIX forward slash 再拼接 local_prefix。
-        - 大小寫敏感（known limitation, T6）：startswith 比對是 case-sensitive。
-          Windows 路徑大小寫不敏感、POSIX 大小寫敏感、UNC server 視 server 而定。
-          目前不做 case folding 以避免誤傷 POSIX path。
+        - Windows / UNC 路徑比對使用 casefold（``D:\\Videos`` == ``d:\\videos``）。
+          POSIX local_prefix 保持大小寫敏感。
         - 命中 boundary check（T6 P1 fix）：tail（命中後的剩餘部分）必須為空或以
           separator 開頭，避免 //NAS/share 誤命中 //NAS/share2。
         - trailing separator normalize（T6 P2 fix）：win_prefix 與 local_prefix 結尾
@@ -421,9 +431,28 @@ def reverse_path_mapping(fs_path: str, path_mappings: dict) -> Optional[str]:
         win_fwd = win_bs.replace('\\', '/')
 
         for prefix in (win_bs, win_fwd):
-            if not fs_path.startswith(prefix):
-                continue
-            tail = fs_path[len(prefix):]
+            # Windows-style prefixes: case-insensitive
+            use_cf = (
+                CURRENT_ENV == 'windows'
+                or (len(prefix) >= 2 and prefix[1] == ':')
+                or prefix.startswith('\\\\')
+                or prefix.startswith('//')
+            )
+            if use_cf:
+                if not path_startswith(fs_path, prefix):
+                    continue
+                # Derive tail preserving original casing of the remainder
+                pref_len = len(prefix)
+                # Prefer exact-length slice when casefold lengths match (ASCII paths)
+                if len(fs_path) >= pref_len and normalize_for_compare(fs_path[:pref_len]) == normalize_for_compare(prefix):
+                    tail = fs_path[pref_len:]
+                else:
+                    # Fallback: strip matched normalized prefix length from original
+                    tail = fs_path[len(prefix):]
+            else:
+                if not fs_path.startswith(prefix):
+                    continue
+                tail = fs_path[len(prefix):]
             # P1 fix: boundary check — tail 必須為空或以 separator 開頭
             if tail and tail[0] not in SEPS:
                 continue  # boundary fail（e.g. share vs share2）
@@ -452,6 +481,53 @@ def uri_to_fs_path(uri: str) -> str:
         return path
 
 
+def normalize_for_compare(path: str) -> str:
+    """Normalize a path or file URI for equality / prefix comparison.
+
+    Windows-style paths and URIs (drive letter, UNC, ``file:///X:``, ``file://///``)
+    are NFC + casefold so ``D:\\Videos`` equals ``d:\\videos``.
+    POSIX paths stay case-sensitive (NFC only).
+    """
+    if not path:
+        return path
+    nfc = unicodedata.normalize('NFC', path)
+    # file URI Windows forms
+    if _is_windows_style_uri(nfc):
+        return nfc.casefold()
+    # FS path Windows forms: C:\…, C:/…, \\server\share
+    if len(nfc) >= 2 and nfc[1] == ':':
+        return nfc.replace('\\', '/').casefold()
+    if nfc.startswith('\\\\') or nfc.startswith('//'):
+        return nfc.replace('\\', '/').casefold()
+    # Host env is Windows → treat remaining absolute-looking paths as case-insensitive
+    if CURRENT_ENV == 'windows':
+        return nfc.replace('\\', '/').casefold()
+    return nfc
+
+
+def paths_equal(a: str, b: str) -> bool:
+    """Return True if two paths/URIs refer to the same location under OS rules."""
+    if a == b:
+        return True
+    if not a or not b:
+        return False
+    return normalize_for_compare(a) == normalize_for_compare(b)
+
+
+def path_startswith(path: str, prefix: str) -> bool:
+    """Prefix match with Windows casefold when appropriate; enforces boundary."""
+    if not path or not prefix:
+        return False
+    p = normalize_for_compare(path)
+    pre = normalize_for_compare(prefix).rstrip('/\\')
+    if p == pre:
+        return True
+    # Boundary: next char must be separator
+    if p.startswith(pre + '/') or p.startswith(pre + '\\'):
+        return True
+    return False
+
+
 def is_path_under_dir(path: str, dir_uri: str) -> bool:
     """
     判斷 file:/// URI 路徑是否在指定目錄底下。
@@ -463,11 +539,9 @@ def is_path_under_dir(path: str, dir_uri: str) -> bool:
     （Windows 路徑不區分大小寫）；POSIX URI 維持大小寫敏感（Linux/Mac 路徑敏感）。
     """
     # 判斷是否為 Windows-style URI（任一方為 Windows-style 即採用不敏感比對）
-    if _is_windows_style_uri(path) or _is_windows_style_uri(dir_uri):
-        # NFC first, then casefold（正確順序：NFC → casefold）
-        # NFC 先正規化，統一 NFC/NFD 混合形式；casefold 再做大小寫不敏感比對
-        path_cf = unicodedata.normalize('NFC', path).casefold()
-        dir_cf = unicodedata.normalize('NFC', dir_uri).casefold()
+    if _is_windows_style_uri(path) or _is_windows_style_uri(dir_uri) or CURRENT_ENV == 'windows':
+        path_cf = normalize_for_compare(path)
+        dir_cf = normalize_for_compare(dir_uri)
         if path_cf == dir_cf:
             return True
         prefix = dir_cf if dir_cf.endswith('/') else dir_cf + '/'

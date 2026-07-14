@@ -1341,6 +1341,12 @@
     margin-top: 14px;
 }
 
+.download-history-toolbar {
+    display: flex;
+    gap: .5rem;
+    justify-content: flex-end;
+    margin-bottom: .5rem;
+}
 .download-task-list {
     margin-top: 18px;
     border-top: 1px solid var(--stroke-subtle);

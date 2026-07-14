@@ -1,4 +1,4 @@
-"""Local maintenance, backup, restore, and customized-build status APIs."""
+"""Local maintenance, backup, restore, diagnostic pack, and customized-build status APIs."""
 
 from pathlib import Path
 
@@ -6,6 +6,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.diagnostic_pack import (
+    create_diagnostic_pack,
+    diagnostic_pack_file,
+    list_diagnostic_packs,
+)
 from core.maintenance import (
     BACKUP_ROOT,
     create_backup,
@@ -62,3 +67,28 @@ def download_backup(name: str, request: Request):
 def restore(payload: RestoreRequest, request: Request) -> dict:
     _local_only(request)
     return {"success": True, **restore_backup(payload.name), "restart_required": True}
+
+
+@router.get("/diagnostics")
+def diagnostics_list() -> dict:
+    return {"success": True, "items": list_diagnostic_packs()}
+
+
+@router.post("/diagnostics")
+def diagnostics_create(request: Request) -> dict:
+    """Create a redacted diagnostic zip (logs tail + version + source status)."""
+    _local_only(request)
+    pack = create_diagnostic_pack()
+    return {"success": True, "pack": pack}
+
+
+@router.get("/diagnostics/{name}/download")
+def diagnostics_download(name: str, request: Request):
+    _local_only(request)
+    try:
+        path = diagnostic_pack_file(name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid pack name")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Diagnostic pack not found")
+    return FileResponse(path, filename=f"OpenAver-{name}.zip")

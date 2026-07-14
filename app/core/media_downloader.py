@@ -71,14 +71,48 @@ def _validate_network_target(url: str, allow_private: bool = False) -> None:
             raise DownloadValidationError("Private, loopback, and reserved network targets are blocked")
 
 
-def validate_direct_media_url(url: str, allow_private: bool = False) -> dict:
-    """Reject HTML pages and accept only HLS manifests or direct video responses."""
+def _media_request_headers(referer: str = "", extra: dict | None = None) -> dict:
+    """Headers shared by preflight probe and yt-dlp download (same UA / Referer)."""
+    headers = {
+        "User-Agent": BROWSER_USER_AGENT,
+        "Accept": "*/*",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7",
+    }
+    if referer:
+        headers["Referer"] = referer
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+def validate_direct_media_url(
+    url: str,
+    allow_private: bool = False,
+    *,
+    referer: str = "",
+) -> dict:
+    """Reject HTML pages and accept only HLS manifests or direct video responses.
+
+    Uses the same User-Agent / Referer as the downloader so signed links that
+    require browser-like headers fail early with a clear Chinese reason.
+    """
     _validate_network_target(url, allow_private=allow_private)
-    headers = {"Range": "bytes=0-65535", "User-Agent": BROWSER_USER_AGENT}
+    headers = _media_request_headers(referer=referer, extra={"Range": "bytes=0-65535"})
     try:
         with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(20.0, connect=10.0)) as client:
             with client.stream("GET", url, headers=headers) as response:
-                response.raise_for_status()
+                status = response.status_code
+                if status in (401, 403):
+                    raise DownloadValidationError(
+                        "链接已过期或被拒绝访问（HTTP 403）。请重新获取带签名的直链，"
+                        "并确认是否需要来源页 Referer。"
+                    )
+                if status == 404:
+                    raise DownloadValidationError("媒体地址不存在（HTTP 404），请检查链接是否完整")
+                if status == 410:
+                    raise DownloadValidationError("媒体链接已失效（HTTP 410），请重新获取直链")
+                if status >= 400:
+                    raise DownloadValidationError(f"源站返回 HTTP {status}，无法下载")
                 _validate_network_target(str(response.url), allow_private=allow_private)
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
                 chunks = []
@@ -89,12 +123,23 @@ def validate_direct_media_url(url: str, allow_private: bool = False) -> dict:
                     if size >= 65536:
                         break
                 prefix = b"".join(chunks)[:65536]
+    except DownloadValidationError:
+        raise
+    except httpx.TimeoutException as exc:
+        raise DownloadValidationError("连接媒体源超时，请检查网络或稍后重试") from exc
     except httpx.HTTPError as exc:
-        raise DownloadValidationError(f"Media URL request failed: {exc}") from exc
+        msg = str(exc).lower()
+        if "403" in msg or "forbidden" in msg:
+            raise DownloadValidationError(
+                "链接已过期或被拒绝访问（HTTP 403）。请重新获取有效直链后重试"
+            ) from exc
+        if "name or service not known" in msg or "getaddrinfo" in msg or "nodename" in msg:
+            raise DownloadValidationError("无法解析媒体主机名，请检查链接或网络") from exc
+        raise DownloadValidationError(f"媒体地址请求失败：{_redact_urls(str(exc))}") from exc
 
     text_prefix = prefix.lstrip()[:512].upper()
     if content_type in {"text/html", "application/xhtml+xml"} or b"<HTML" in text_prefix:
-        raise DownloadValidationError("Web pages are not media URLs; paste a direct m3u8 or video URL")
+        raise DownloadValidationError("这是网页地址而不是媒体直链，请粘贴 m3u8 或视频文件 URL")
     is_hls = b"#EXTM3U" in text_prefix or content_type in {
         "application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/mpegurl",
     }
@@ -102,7 +147,7 @@ def validate_direct_media_url(url: str, allow_private: bool = False) -> dict:
         "application/octet-stream", "binary/octet-stream",
     }
     if not is_hls and not is_video:
-        raise DownloadValidationError(f"Unsupported media response type: {content_type or 'unknown'}")
+        raise DownloadValidationError(f"不支持的媒体类型：{content_type or '未知'}")
     return {"kind": "hls" if is_hls else "video", "content_type": content_type}
 
 
@@ -199,15 +244,59 @@ class ResizableLimiter:
             return self._active
 
 
+# error_code → Chinese message for UI (also mirrored in locales)
+ERROR_MESSAGES_ZH = {
+    "http_403": "链接已过期或被拒绝访问（HTTP 403）。请重新获取有效直链；若站点需要来源页，请填写 Referer。",
+    "http_404": "媒体地址不存在（HTTP 404），请检查链接是否完整。",
+    "link_expired": "链接已过期（签名/有效期失效）。请回到来源页重新复制直链后重试。",
+    "need_referer": "源站要求 Referer。请填写来源页地址，或使用带来源页的授权下载。",
+    "engine_missing": "下载引擎未安装（yt-dlp）。请确认 OpenAver/tools/yt-dlp.exe 存在。",
+    "ffmpeg_missing": "未找到 FFmpeg。m3u8 封装需要 FFmpeg，请安装并加入 PATH。",
+    "target_exists": "目标文件夹已有其他文件，请更换番号或清理目标目录。",
+    "disk_full": "磁盘空间不足，请清理磁盘后重试。",
+    "timeout": "连接或下载超时，请检查网络后重试。",
+    "network_error": "网络错误，无法连接媒体源。",
+    "not_media": "这不是可用的媒体直链（网页或未知类型）。",
+    "download_failed": "下载失败。请查看详情或更换直链后重试。",
+}
+
+
 def _error_code(message: str) -> str:
     lowered = (message or "").lower()
-    if "403 forbidden" in lowered or "http error 403" in lowered:
+    raw = message or ""
+    if "链接已过期" in raw or "签名" in raw or "expired" in lowered or "token" in lowered and "403" in lowered:
+        return "link_expired"
+    if "403" in lowered or "forbidden" in lowered or "被拒绝访问" in raw:
+        if "referer" in lowered or "来源页" in raw:
+            return "need_referer"
         return "http_403"
-    if "multi-thread download engine is not installed" in lowered:
+    if "404" in lowered or "不存在" in raw:
+        return "http_404"
+    if "ffmpeg" in lowered and ("not installed" in lowered or "not found" in lowered or "未找到" in raw or "path" in lowered):
+        return "ffmpeg_missing"
+    if "multi-thread download engine is not installed" in lowered or "yt-dlp" in lowered and "not" in lowered:
         return "engine_missing"
-    if "target folder already contains files" in lowered:
+    if "target folder already contains files" in lowered or "已有其他文件" in raw:
         return "target_exists"
+    if "no space" in lowered or "disk full" in lowered or "errno 28" in lowered or "磁盘空间" in raw:
+        return "disk_full"
+    if "timeout" in lowered or "timed out" in lowered or "超时" in raw:
+        return "timeout"
+    if "resolve" in lowered or "getaddrinfo" in lowered or "network" in lowered or "连接" in raw:
+        return "network_error"
+    if "网页" in raw or "not media" in lowered or "unsupported media" in lowered or "不是媒体" in raw:
+        return "not_media"
     return "download_failed"
+
+
+def _friendly_error(message: str) -> tuple[str, str]:
+    """Return (error_code, chinese_message). Prefer classified message over raw FFmpeg dump."""
+    code = _error_code(message)
+    # If already a short Chinese validation message, keep it
+    if message and not any(tok in message.lower() for tok in ("traceback", "ffmpeg", "error opening", "http://", "https://")):
+        if any("\u4e00" <= ch <= "\u9fff" for ch in message):
+            return code, message[:300]
+    return code, ERROR_MESSAGES_ZH.get(code, ERROR_MESSAGES_ZH["download_failed"])
 
 
 class MediaDownloadManager:
@@ -249,8 +338,23 @@ class MediaDownloadManager:
         payload = dict(result.get("payload", {}))
         payload["media_url"] = _safe_url_for_display(payload.get("media_url", ""))
         result["payload"] = payload
-        if result.get("status") == "failed" and not result.get("error_code"):
-            result["error_code"] = _error_code(result.get("message", ""))
+        if result.get("status") == "failed":
+            if not result.get("error_code"):
+                code, friendly = _friendly_error(result.get("message", ""))
+                result["error_code"] = code
+                result["error_message"] = friendly
+            elif not result.get("error_message"):
+                result["error_message"] = ERROR_MESSAGES_ZH.get(
+                    result["error_code"], result.get("message", "")
+                )
+        # ETA remaining when we have duration + progress
+        duration = result.get("duration_seconds")
+        progress = result.get("progress") or 0
+        if duration and progress and 0 < progress < 100:
+            remaining = max(0.0, duration * (1 - progress / 100.0))
+            result["eta_seconds"] = round(remaining, 1)
+        else:
+            result.setdefault("eta_seconds", None)
         return result
 
     def settings(self) -> dict:
@@ -300,6 +404,23 @@ class MediaDownloadManager:
                 raise ValueError("Only finished downloads can be removed")
             self._tasks.pop(task_id)
             self._save()
+
+    def clear_history(self, *, only_failed: bool = False) -> int:
+        """Remove terminal tasks. Returns count removed."""
+        with self._lock:
+            remove_ids = []
+            for tid, task in self._tasks.items():
+                status = task.get("status")
+                if status not in TERMINAL_STATES:
+                    continue
+                if only_failed and status != "failed":
+                    continue
+                remove_ids.append(tid)
+            for tid in remove_ids:
+                self._tasks.pop(tid, None)
+            if remove_ids:
+                self._save()
+            return len(remove_ids)
 
     def create(self, payload: dict) -> dict:
         number = payload["number"].strip().upper()
@@ -366,15 +487,17 @@ class MediaDownloadManager:
                     for item in self._tasks.values()
                 )
                 if duplicate:
-                    raise ValueError(f"An active download already exists for {number}")
+                    raise ValueError(f"番号 {number} 已有进行中的下载任务")
+                # Optional: caller may have updated payload.media_url before retry
                 task.update({
                     "status": "queued", "progress": 0.0, "elapsed_seconds": 0.0,
                     "duration_seconds": None, "bytes_written": 0, "speed": "",
-                    "message": "Queued to retry", "error_code": None, "result": None,
+                    "eta_seconds": None,
+                    "message": "排队重试", "error_code": None, "error_message": None, "result": None,
                 })
                 launch = True
             else:
-                raise ValueError(f"Cannot {action} a download in state {status}")
+                raise ValueError(f"当前状态 {status} 无法执行 {action}")
             task["updated_at"] = datetime.now().isoformat(timespec="seconds")
             self._save()
             public = self._public(task)
@@ -453,12 +576,27 @@ class MediaDownloadManager:
                 with self._lock:
                     payload = dict(self._tasks[task_id]["payload"])
                     settings = dict(self._settings)
-                self._update(task_id, status="probing", message="Validating direct media URL")
-                media_info = validate_direct_media_url(payload["media_url"], allow_private=self.allow_private_urls)
+                self._update(task_id, status="probing", message="正在校验媒体直链…")
+                referer = (payload.get("source_page_url") or "").strip()
+                # Disk space soft-check (≥ 500 MB free on destination drive)
+                try:
+                    dest_root = Path(payload["destination"]).resolve()
+                    usage = shutil.disk_usage(str(dest_root if dest_root.exists() else dest_root.anchor or dest_root))
+                    if usage.free < 500 * 1024 * 1024:
+                        raise DownloadValidationError("磁盘空间不足（剩余不足 500MB），请清理后重试")
+                except DownloadValidationError:
+                    raise
+                except Exception:
+                    pass
+                media_info = validate_direct_media_url(
+                    payload["media_url"],
+                    allow_private=self.allow_private_urls,
+                    referer=referer,
+                )
                 duration = _parse_duration(payload["media_url"])
-                self._update(task_id, duration_seconds=duration, message="Preparing download")
+                self._update(task_id, duration_seconds=duration, message="准备下载…")
                 if not self._wait_until_runnable(task_id):
-                    self._update(task_id, status="cancelled", message="Cancelled")
+                    self._update(task_id, status="cancelled", message="已取消")
                     return
 
                 destination = Path(payload["destination"]).resolve()
@@ -470,7 +608,7 @@ class MediaDownloadManager:
                 if folder.exists():
                     unexpected = [item for item in folder.iterdir() if not item.name.startswith(work_prefix)]
                     if unexpected:
-                        raise DownloadValidationError(f"Target folder already contains files: {folder.name}")
+                        raise DownloadValidationError(f"目标文件夹已有其他文件：{folder.name}")
                 else:
                     folder.mkdir(parents=True, exist_ok=False)
 
@@ -490,8 +628,10 @@ class MediaDownloadManager:
                     "--abort-on-unavailable-fragments",
                     "--ffmpeg-location", _ffmpeg_path(), "--remux-video", "mp4",
                     "--output", str(folder / f"{work_prefix}%(ext)s"),
-                    payload["media_url"],
                 ]
+                if referer:
+                    command.extend(["--referer", referer, "--add-header", f"Referer:{referer}"])
+                command.append(payload["media_url"])
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 process = subprocess.Popen(
                     command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -500,11 +640,12 @@ class MediaDownloadManager:
                 with self._lock:
                     self._processes[task_id] = process
                 self._update(
-                    task_id, status="running", message="Downloading", media_kind=media_info["kind"],
+                    task_id, status="running", message="下载中…", media_kind=media_info["kind"],
                     engine="yt-dlp", fragment_threads=settings["fragment_threads"],
                 )
 
                 last_save = 0.0
+                started_at = time.monotonic()
                 output_lines: deque[str] = deque(maxlen=24)
                 downloaded_path: Path | None = None
                 assert process.stdout is not None
@@ -533,13 +674,25 @@ class MediaDownloadManager:
                         bytes_written = int(values[1])
                     except (IndexError, TypeError, ValueError):
                         bytes_written = 0
-                    elapsed = duration * percent / 100 if duration else 0.0
+                    wall_elapsed = time.monotonic() - started_at
+                    media_elapsed = duration * percent / 100 if duration else wall_elapsed
                     speed = values[3].strip() if len(values) > 3 and values[3] != "NA" else ""
+                    # ETA from yt-dlp or estimate from progress
+                    eta_seconds = None
+                    if len(values) > 4 and values[4] not in ("", "NA", "None"):
+                        try:
+                            eta_seconds = float(values[4])
+                        except (TypeError, ValueError):
+                            eta_seconds = None
+                    if eta_seconds is None and percent > 1 and wall_elapsed > 0:
+                        eta_seconds = wall_elapsed * (100 - percent) / percent
                     now = time.monotonic()
                     if now - last_save >= 0.45:
                         self._update(
-                            task_id, progress=round(percent, 1), elapsed_seconds=round(elapsed, 1),
+                            task_id, progress=round(percent, 1),
+                            elapsed_seconds=round(media_elapsed if duration else wall_elapsed, 1),
                             bytes_written=bytes_written, speed=speed,
+                            eta_seconds=round(eta_seconds, 1) if eta_seconds is not None else None,
                         )
                         last_save = now
 
@@ -547,10 +700,13 @@ class MediaDownloadManager:
                 with self._lock:
                     status = self._tasks[task_id]["status"]
                 if status == "cancelling":
-                    self._update(task_id, status="cancelled", message="Cancelled")
+                    self._update(task_id, status="cancelled", message="已取消")
                     return
                 if return_code != 0:
-                    raise RuntimeError("\n".join(output_lines)[-1200:] or "Download engine failed")
+                    raw = "\n".join(output_lines)[-1200:] or "Download engine failed"
+                    code, friendly = _friendly_error(_redact_urls(raw))
+                    # Prefer classified Chinese; keep redacted tail for hover detail
+                    raise RuntimeError(friendly + (f"\n---\n{_redact_urls(raw)[-400:]}" if raw else ""))
 
                 if not downloaded_path or not downloaded_path.is_file():
                     candidates = [
@@ -559,7 +715,7 @@ class MediaDownloadManager:
                     ]
                     downloaded_path = max(candidates, key=lambda item: item.stat().st_size) if candidates else None
                 if not downloaded_path or not downloaded_path.is_file():
-                    raise RuntimeError("Download completed but the output file was not found")
+                    raise RuntimeError("下载完成但未找到输出文件")
                 os.replace(downloaded_path, output_path)
                 import_error = ""
                 try:
@@ -570,8 +726,8 @@ class MediaDownloadManager:
                 self._update(
                     task_id, status="completed", progress=100.0,
                     elapsed_seconds=round(duration, 1) if duration else 0.0,
-                    bytes_written=output_path.stat().st_size, speed="",
-                    message="Completed" if not import_error else "Downloaded; library import needs attention",
+                    bytes_written=output_path.stat().st_size, speed="", eta_seconds=0,
+                    message="已完成" if not import_error else "已下载；入库需检查",
                     result={
                         "output_path": str(output_path), "folder": str(folder),
                         "import_error": import_error,
@@ -580,10 +736,35 @@ class MediaDownloadManager:
         except Exception as exc:
             logger.exception("Authorized media download task %s failed", task_id)
             message = _redact_urls(str(exc))
-            self._update(task_id, status="failed", message=message, error_code=_error_code(message))
+            code, friendly = _friendly_error(message)
+            self._update(
+                task_id, status="failed",
+                message=friendly,
+                error_code=code,
+                error_message=friendly,
+                detail_message=message if message != friendly else None,
+            )
         finally:
             with self._lock:
                 self._processes.pop(task_id, None)
+
+    def update_media_url(self, task_id: str, media_url: str) -> dict:
+        """Update media URL on a failed task before retry (new signed link)."""
+        media_url = (media_url or "").strip()
+        if not media_url:
+            raise ValueError("媒体直链不能为空")
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                raise KeyError(task_id)
+            if task.get("status") != "failed":
+                raise ValueError("仅失败任务可更换直链")
+            payload = dict(task.get("payload") or {})
+            payload["media_url"] = media_url
+            task["payload"] = payload
+            task["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            self._save()
+            return self._public(task)
 
 
 media_download_manager = MediaDownloadManager()

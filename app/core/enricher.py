@@ -134,16 +134,26 @@ def _missing_fields(meta: dict) -> List[str]:
     return missing
 
 
-def _merge_meta(base: dict, supplement: dict) -> tuple:
-    """合併 base + supplement，回傳 (merged, fields_filled)"""
+def _merge_meta(base: dict, supplement: dict, locks: dict | None = None) -> tuple:
+    """合併 base + supplement，回傳 (merged, fields_filled)。
+
+    尊重 field_locks：已鎖定欄位不從 scraper 補入。
+    """
+    from core.field_meta import is_locked
+
+    locks = locks or {}
     merged = dict(base)
     filled = []
     for key in _FILL_MISSING_REQUIRED:
+        if is_locked(locks, key):
+            continue
         if not merged.get(key) and supplement.get(key):
             merged[key] = supplement[key]
             filled.append(key)
-    if merged.get("cover_url") == "" and supplement.get("cover_url"):
-        merged["cover_url"] = supplement["cover_url"]
+    if not is_locked(locks, "cover"):
+        if merged.get("cover_url") == "" and supplement.get("cover_url"):
+            merged["cover_url"] = supplement["cover_url"]
+            filled.append("cover")
     if merged.get("sample_images") is None and supplement.get("sample_images"):
         merged["sample_images"] = supplement["sample_images"]
     elif not merged.get("sample_images") and supplement.get("sample_images"):
@@ -367,6 +377,11 @@ def enrich_single(  # noqa: ranker-invalidate (only updates nfo_mtime, not a cor
     source_used = ""
     fields_filled: List[str] = []
 
+    # Load existing record early for locks / provenance
+    path_uri_early = to_file_uri(fs_path)
+    existing_early = repo.get_by_path(path_uri_early)
+    field_locks = (existing_early.field_locks if existing_early else {}) or {}
+
     if mode == "refresh_full":
         if scraper_data is None:
             scraper_data = search_jav(number, proxy_url=proxy_url,
@@ -376,6 +391,23 @@ def enrich_single(  # noqa: ranker-invalidate (only updates nfo_mtime, not a cor
             return _empty
         meta = _scraper_to_meta(scraper_data)
         source_used = scraper_data.get("source", "scraper") or "scraper"
+        # refresh_full still respects locks: restore locked fields from DB
+        if existing_early:
+            from core.field_meta import is_locked
+            if is_locked(field_locks, "title"):
+                meta["title"] = existing_early.title
+                meta["original_title"] = existing_early.original_title or meta.get("original_title", "")
+            if is_locked(field_locks, "original_title"):
+                meta["original_title"] = existing_early.original_title
+            if is_locked(field_locks, "actresses"):
+                meta["actresses"] = existing_early.actresses or []
+            if is_locked(field_locks, "maker"):
+                meta["maker"] = existing_early.maker
+            if is_locked(field_locks, "tags"):
+                meta["tags"] = existing_early.tags or []
+            if is_locked(field_locks, "cover"):
+                # Empty remote URL so download_image is not called with file:/// paths
+                meta["cover_url"] = ""
 
     elif mode == "db_to_sidecar":
         db_hits = repo.get_by_numbers([number])
@@ -402,6 +434,7 @@ def enrich_single(  # noqa: ranker-invalidate (only updates nfo_mtime, not a cor
                     source_used = "nfo"
 
         missing = _missing_fields(meta)
+        # Don't scrape for fields that are all locked
         if missing:
             if scraper_data is None:
                 scraper_data = search_jav(number, proxy_url=proxy_url,
@@ -410,7 +443,7 @@ def enrich_single(  # noqa: ranker-invalidate (only updates nfo_mtime, not a cor
                 _empty.error = f"找不到 {number} 的資料"
                 return _empty
             supplement = _scraper_to_meta(scraper_data)
-            meta, fields_filled = _merge_meta(meta, supplement)
+            meta, fields_filled = _merge_meta(meta, supplement, locks=field_locks)
             source_used = scraper_data.get("source", "scraper") or "scraper"
 
     has_subtitle = bool(find_subtitle_files(fs_path))
@@ -492,8 +525,14 @@ def enrich_single(  # noqa: ranker-invalidate (only updates nfo_mtime, not a cor
         local_cover = str(Path(fs_path).with_suffix(".jpg")) if cover_written else ""
         nfo_path = Path(fs_path).with_suffix(".nfo")
         nfo_mtime = nfo_path.stat().st_mtime if nfo_path.exists() else 0.0
-        _db_upsert(repo, number, fs_path, meta, local_cover_path=local_cover,
-                   nfo_mtime=nfo_mtime, written_uris=written_uris)
+        _db_upsert(
+            repo, number, fs_path, meta,
+            local_cover_path=local_cover,
+            nfo_mtime=nfo_mtime,
+            written_uris=written_uris,
+            source_used=source_used,
+            fields_filled=fields_filled,
+        )
 
     # nfo_mtime 獨立更新：不論 mode/source，只要 NFO 存在就同步 DB
     # 避免 analysis 永遠視為 missing_nfo
@@ -531,18 +570,25 @@ def _db_upsert(
     local_cover_path: str = "",
     nfo_mtime: float = 0.0,
     written_uris: List[str] = None,
+    source_used: str = "",
+    fields_filled: List[str] | None = None,
 ) -> None:
-    """更新 DB 記錄。fs_path 必須是已解析的 FS 路徑（非 file:/// URI）。"""
+    """更新 DB 記錄。fs_path 必須是已解析的 FS 路徑（非 file:/// URI）。
+
+    尊重 field_locks；寫入 field_sources 記錄本次補全來源。
+    """
     try:
+        from core.field_meta import is_locked, merge_sources, parse_json_map
+
         path_uri = to_file_uri(fs_path)
 
         # 讀取現有記錄以保留 cover_path 和 user_tags
         existing = repo.get_by_path(path_uri)
+        locks = parse_json_map(existing.field_locks) if existing else {}
 
         # cover_path 只存本地 file:/// URI
-        # 若有本地封面路徑則轉 URI；否則保留 DB 既有值（透過傳空字串讓 upsert 不覆蓋）
         cover_uri = ""
-        if local_cover_path and os.path.exists(local_cover_path):
+        if local_cover_path and os.path.exists(local_cover_path) and not is_locked(locks, "cover"):
             cover_uri = to_file_uri(local_cover_path)
         elif existing and existing.cover_path:
             cover_uri = existing.cover_path
@@ -550,30 +596,77 @@ def _db_upsert(
         # 保留 DB 既有 user_tags（不被 scraper 覆蓋）
         preserved_user_tags = existing.user_tags if existing else []
 
-        # §b1 / Codex P1: 只有磁碟真寫出 extrafanart 檔案才更新 DB sample_images；
-        # 使用 written_uris（local file:/// URIs），不寫 scraper 遠端 URL
         if written_uris:
             sample_imgs = written_uris
         else:
             sample_imgs = existing.sample_images if existing else []
 
+        title = meta.get("title", "")
+        original_title = meta.get("original_title", "")
+        actresses = meta.get("actresses", [])
+        maker = meta.get("maker", "")
+        tags = meta.get("tags", [])
+
+        if existing:
+            if is_locked(locks, "title"):
+                title = existing.title
+                # keep original_title if title lock implies user owns display title
+            if is_locked(locks, "original_title"):
+                original_title = existing.original_title
+            if is_locked(locks, "actresses"):
+                actresses = existing.actresses or []
+            if is_locked(locks, "maker"):
+                maker = existing.maker
+            if is_locked(locks, "tags"):
+                tags = existing.tags or []
+
+        # Provenance updates for fields that actually changed from scraper
+        sources = parse_json_map(existing.field_sources) if existing else {}
+        src = (source_used or "").strip()
+        if src and src not in ("db", "nfo", ""):
+            filled = fields_filled or []
+            updates = {}
+            for f in filled:
+                if f in ("title", "original_title", "actresses", "maker", "tags", "cover"):
+                    if not is_locked(locks, f):
+                        updates[f] = src
+            # refresh_full may fill everything without fields_filled list
+            if not filled and src:
+                for f, val, old in (
+                    ("title", title, existing.title if existing else ""),
+                    ("original_title", original_title, existing.original_title if existing else ""),
+                    ("actresses", actresses, existing.actresses if existing else []),
+                    ("maker", maker, existing.maker if existing else ""),
+                    ("tags", tags, existing.tags if existing else []),
+                ):
+                    if not is_locked(locks, f) and val and val != old:
+                        updates[f] = src
+                if cover_uri and existing and cover_uri != existing.cover_path and not is_locked(locks, "cover"):
+                    updates["cover"] = src
+                elif cover_uri and not existing:
+                    updates["cover"] = src
+            sources = merge_sources(sources, updates)
+
         video = Video(
             path=path_uri,
             number=number,
-            title=meta.get("title", ""),
-            original_title=meta.get("original_title", ""),
-            actresses=meta.get("actresses", []),
-            maker=meta.get("maker", ""),
+            title=title,
+            original_title=original_title,
+            actresses=actresses,
+            maker=maker,
             director=meta.get("director", ""),
             series=meta.get("series") or None,
             label=meta.get("label", ""),
-            tags=meta.get("tags", []),
+            tags=tags,
             user_tags=preserved_user_tags,
             sample_images=sample_imgs,
             duration=meta.get("duration"),
             cover_path=cover_uri,
             release_date=meta.get("release_date", ""),
             nfo_mtime=nfo_mtime,
+            field_sources=sources,
+            field_locks=locks,
+            translation_meta=parse_json_map(existing.translation_meta) if existing else {},
         )
         repo.upsert(video)
     except Exception as e:

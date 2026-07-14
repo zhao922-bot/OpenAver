@@ -1039,6 +1039,14 @@
             </div>
 
             <div class="download-task-list" x-show="downloadTasks.length">
+                <div class="download-history-toolbar">
+                    <button type="button" class="btn btn-xs btn-ghost" @click="clearDownloadHistory(false)">
+                        <i class="bi bi-trash3"></i> {{ t('search.download.clear_history') }}
+                    </button>
+                    <button type="button" class="btn btn-xs btn-ghost" @click="clearDownloadHistory(true)">
+                        {{ t('search.download.clear_failed') }}
+                    </button>
+                </div>
                 <template x-for="task in downloadTasks" :key="task.id">
                     <div class="download-task-row">
                         <div class="download-task-main">
@@ -1053,7 +1061,7 @@
                             <div class="download-task-meta">
                                 <span x-text="`${Number(task.progress || 0).toFixed(1)}%`"></span>
                                 <span x-text="downloadProgressText(task)"></span>
-                                <span class="download-task-message" x-text="downloadTaskMessage(task)" :title="task.message"></span>
+                                <span class="download-task-message" x-text="downloadTaskMessage(task)" :title="task.detail_message || task.message"></span>
                             </div>
                         </div>
                         <div class="download-task-actions">
@@ -1072,6 +1080,10 @@
                             <button class="btn-icon" x-show="task.status === 'failed'"
                                     @click="controlDownload(task, 'retry')" title="{{ t('search.download.retry') }}">
                                 <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <button class="btn-icon" x-show="task.status === 'failed'"
+                                    @click="retryDownloadWithNewUrl(task)" title="{{ t('search.download.retry_with_url') }}">
+                                <i class="bi bi-link-45deg"></i>
                             </button>
                             <button class="btn-icon" x-show="['completed','cancelled','failed'].includes(task.status)"
                                     @click="removeDownload(task)" title="{{ t('search.download.remove') }}">

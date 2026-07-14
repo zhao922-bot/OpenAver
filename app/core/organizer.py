@@ -524,31 +524,30 @@ def generate_jellyfin_images(cover_path: str, base_stem: str) -> dict:
 
 
 def download_image(url: str, save_path: str, referer: str = '') -> bool:
-    """下載圖片"""
+    """下載圖片（來源專用 Referer/UA + 重試）"""
     if not url:
         return False
-    try:
-        headers = HEADERS.copy()
+    from core.image_headers import headers_for_image_url
 
-        # 根據 URL 設置對應的 Referer
-        if not referer:
-            if "javbus.com" in url:
-                referer = "https://www.javbus.com/"
-            elif "dmm.co.jp" in url:
-                referer = "https://www.dmm.co.jp/"
-            elif "jav321.com" in url:
-                referer = "https://www.jav321.com/"
-
-        if referer:
-            headers['Referer'] = referer
-
-        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        if resp.status_code == 200 and len(resp.content) > 1000:
-            with open(save_path, 'wb') as f:
-                f.write(resp.content)
-            return True
-    except Exception as e:
-        logger.warning(f"[!] 下載圖片失敗: {e}")
+    headers = headers_for_image_url(url, extra_referer=referer)
+    for attempt in range(2):
+        try:
+            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            if resp.status_code == 200 and len(resp.content) > 1000:
+                ctype = (resp.headers.get("Content-Type") or "").lower()
+                if "text/html" in ctype:
+                    logger.warning("[!] 下載圖片得到 HTML 而非圖片: %s", url)
+                    return False
+                with open(save_path, 'wb') as f:
+                    f.write(resp.content)
+                return True
+            if resp.status_code in (403, 404, 410):
+                logger.debug("download_image HTTP %s for %s", resp.status_code, url)
+                break
+        except Exception as e:
+            if attempt == 0:
+                continue
+            logger.warning(f"[!] 下載圖片失敗: {e}")
     return False
 
 

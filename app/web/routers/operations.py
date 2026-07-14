@@ -1,4 +1,4 @@
-"""Library issue dashboard, repair actions, and actress-name provenance."""
+"""Library issue dashboard, repair actions, rename preview/apply/rollback, actress-name provenance."""
 
 from __future__ import annotations
 
@@ -11,8 +11,11 @@ from pydantic import BaseModel, Field
 from core.config import load_config
 from core.database import AliasRepository, VideoRepository, get_db_path, init_db
 from core.enricher import enrich_single
+from core.logger import get_logger
 from core.path_utils import uri_to_fs_path
+from core import rename_journal, thumbnail_cache
 
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/operations", tags=["operations"])
 
@@ -105,6 +108,66 @@ class EvidenceRequest(BaseModel):
     notes: str = ""
 
 
+@router.get("/actress-alias-review")
+def actress_alias_review(limit: int = 80) -> dict:
+    """Review queues: unrecognized names, multi-Chinese groups, merge candidates."""
+    from core.actress_alias_review import review_actress_aliases
+    return review_actress_aliases(limit=max(1, min(limit, 300)))
+
+
+class AliasMergeRequest(BaseModel):
+    keep: str
+    absorb: str
+
+
+@router.post("/actress-alias-merge")
+def actress_alias_merge(payload: AliasMergeRequest) -> dict:
+    """Merge absorb alias group into keep (batch-friendly single pair)."""
+    init_db()
+    try:
+        record = AliasRepository().merge_groups(payload.keep.strip(), payload.absorb.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "success": True,
+        "group": {
+            "primary_name": record.primary_name,
+            "aliases": record.aliases,
+            "source": record.source,
+        },
+    }
+
+
+class AliasAttachRequest(BaseModel):
+    name: str
+    attach_to: str
+
+
+@router.post("/actress-alias-attach")
+def actress_alias_attach(payload: AliasAttachRequest) -> dict:
+    """Attach an unrecognized library name as alias of an existing group."""
+    init_db()
+    name = payload.name.strip()
+    attach_to = payload.attach_to.strip()
+    if not name or not attach_to:
+        raise HTTPException(status_code=400, detail="name and attach_to required")
+    repo = AliasRepository()
+    group = repo.get_by_primary(attach_to) or repo.find_by_alias(attach_to)
+    if not group:
+        raise HTTPException(status_code=404, detail="target group not found")
+    ok, err = repo.add_alias(group.primary_name, name)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err or "attach failed")
+    updated = repo.get_by_primary(group.primary_name)
+    return {
+        "success": True,
+        "group": {
+            "primary_name": updated.primary_name if updated else group.primary_name,
+            "aliases": updated.aliases if updated else group.aliases,
+        },
+    }
+
+
 @router.get("/actress-names")
 def actress_name_audit() -> dict:
     init_db()
@@ -152,3 +215,412 @@ def save_actress_evidence(primary_name: str, payload: EvidenceRequest) -> dict:
             (primary_name, payload.source_url, payload.confidence, int(payload.verified), payload.notes),
         )
     return {"success": True}
+
+
+# ── Rename preview / apply / history / rollback ─────────────────────────────
+
+
+class RenameBatchRequest(BaseModel):
+    paths: list[str] = Field(default_factory=list, max_length=50)
+    rename_folder: bool = True
+    dry_run: bool = True
+
+
+@router.get("/duplicates")
+def list_duplicates(
+    compute_hash: bool = False,
+    limit: int = 50,
+) -> dict:
+    """Detect duplicate videos by number, size, and optional content fingerprint."""
+    from core.duplicates import find_duplicates
+
+    result = find_duplicates(
+        compute_hash=compute_hash,
+        min_group_size=2,
+        limit_groups=max(1, min(limit, 200)),
+    )
+    return result
+
+
+@router.get("/field-locks")
+def list_field_locks(limit: int = 100) -> dict:
+    """List videos that have any manual field locks or confirmed translations."""
+    init_db()
+    items = []
+    for video in VideoRepository().get_all():
+        locks = video.field_locks or {}
+        sources = video.field_sources or {}
+        tmeta = video.translation_meta or {}
+        if not locks and not tmeta.get("confirmed"):
+            continue
+        items.append({
+            "path": video.path,
+            "number": video.number or "",
+            "title": video.title or video.original_title or "",
+            "field_locks": locks,
+            "field_sources": sources,
+            "translation_meta": tmeta,
+        })
+        if len(items) >= max(1, min(limit, 500)):
+            break
+    return {"success": True, "total": len(items), "items": items}
+
+
+class OpsFieldLockRequest(BaseModel):
+    path: str
+    field: str
+    locked: bool = True
+
+
+@router.post("/field-lock")
+def ops_set_field_lock(payload: OpsFieldLockRequest) -> dict:
+    from core.field_meta import TRACKED_FIELDS
+    if payload.field not in TRACKED_FIELDS:
+        raise HTTPException(status_code=400, detail=f"unknown field: {payload.field}")
+    init_db()
+    repo = VideoRepository()
+    if not repo.set_field_lock(payload.path, payload.field, payload.locked):
+        raise HTTPException(status_code=404, detail="video not found")
+    video = repo.get_by_path(payload.path)
+    return {
+        "success": True,
+        "path": payload.path,
+        "field": payload.field,
+        "locked": payload.locked,
+        "field_locks": video.field_locks if video else {},
+    }
+
+
+@router.get("/rename-issues")
+def rename_issues(limit: int = 100) -> dict:
+    """List videos whose basename does not match showcase naming rule."""
+    # Lazy import avoids circular import with showcase router helpers
+    from web.routers.showcase import (
+        _build_video_basename,
+        _display_actresses_for_filename,
+        _get_actress_alias_groups,
+        _get_configured_dirs,
+    )
+    from core.path_utils import is_path_under_dir
+
+    init_db()
+    config = load_config()
+    configured_dir_uris, _pm = _get_configured_dirs(config)
+    alias_groups = _get_actress_alias_groups()
+    items = []
+    for video in VideoRepository().get_all():
+        if configured_dir_uris and not any(is_path_under_dir(video.path, uri) for uri in configured_dir_uris):
+            continue
+        try:
+            video_path = Path(uri_to_fs_path(video.path))
+            expected = _build_video_basename(video)
+            display_actresses = _display_actresses_for_filename(video, alias_groups)
+            missing_display = [n for n in display_actresses if n not in video_path.stem]
+            if video_path.stem != expected or missing_display:
+                items.append({
+                    "path": video.path,
+                    "number": video.number or "",
+                    "current": video_path.stem,
+                    "expected": expected,
+                    "missing_display_names": missing_display,
+                    "title": video.original_title or video.title or "",
+                })
+        except Exception as exc:
+            items.append({
+                "path": video.path,
+                "number": video.number or "",
+                "current": "",
+                "expected": "",
+                "error": str(exc)[:200],
+                "title": video.original_title or video.title or "",
+            })
+        if len(items) >= max(1, min(limit, 500)):
+            break
+    return {"success": True, "total": len(items), "items": items}
+
+
+RENAME_BATCH_LIMIT = 50
+
+
+@router.post("/rename-preview")
+def rename_preview(payload: RenameBatchRequest) -> dict:
+    """Dry-run rename plan for selected paths (or all rename issues if paths empty)."""
+    from web.routers.showcase import _rename_video_assets, _get_configured_dirs
+    from core.path_utils import is_path_under_dir
+
+    init_db()
+    config = load_config()
+    configured_dir_uris, path_mappings = _get_configured_dirs(config)
+    repo = VideoRepository()
+    paths = list(payload.paths)
+    if not paths:
+        issues = rename_issues(limit=500)
+        paths = [i["path"] for i in issues.get("items", [])]
+
+    requested = len(paths)
+    truncated = requested > RENAME_BATCH_LIMIT
+    paths = paths[:RENAME_BATCH_LIMIT]
+
+    results = []
+    for path in paths:
+        try:
+            if configured_dir_uris and not any(is_path_under_dir(path, uri) for uri in configured_dir_uris):
+                results.append({"path": path, "success": False, "error": "not_in_library"})
+                continue
+            video = repo.get_by_path(path)
+            if not video:
+                results.append({"path": path, "success": False, "error": "not_found"})
+                continue
+            plan = _rename_video_assets(
+                video, path_mappings,
+                rename_folder=payload.rename_folder,
+                dry_run=True,
+            )
+            results.append({"path": path, "success": True, **plan})
+        except Exception as exc:
+            results.append({"path": path, "success": False, "error": str(exc)[:200]})
+    return {
+        "success": True,
+        "dry_run": True,
+        "count": len(results),
+        "requested": requested,
+        "processed": len(results),
+        "truncated": truncated,
+        "limit": RENAME_BATCH_LIMIT,
+        "would_rename": sum(1 for r in results if r.get("renamed")),
+        "results": results,
+    }
+
+
+@router.post("/rename-apply")
+def rename_apply(payload: RenameBatchRequest) -> dict:
+    """Apply rename for selected paths and record journal for rollback."""
+    from web.routers.showcase import _rename_video_assets, _get_configured_dirs
+    from core.path_utils import is_path_under_dir
+
+    if payload.dry_run:
+        return rename_preview(payload)
+
+    init_db()
+    config = load_config()
+    configured_dir_uris, path_mappings = _get_configured_dirs(config)
+    repo = VideoRepository()
+    paths = list(payload.paths)
+    if not paths:
+        raise HTTPException(status_code=400, detail="paths required for apply")
+
+    requested = len(paths)
+    truncated = requested > RENAME_BATCH_LIMIT
+    paths = paths[:RENAME_BATCH_LIMIT]
+
+    # Pre-write pending journal plan so crash mid-batch is recoverable
+    pending_event = rename_journal.append_event({
+        "kind": "batch_rename",
+        "status": "pending",
+        "entries": [],
+        "requested": requested,
+        "truncated": truncated,
+        "limit": RENAME_BATCH_LIMIT,
+        "renamed": 0,
+        "failed": 0,
+        "skipped": 0,
+    })
+    pending_id = pending_event.get("id")
+
+    batch_entries = []
+    results = []
+    renamed = 0
+    failed = 0
+    skipped = 0
+    for path in paths:
+        try:
+            if configured_dir_uris and not any(is_path_under_dir(path, uri) for uri in configured_dir_uris):
+                results.append({"path": path, "success": False, "error": "not_in_library"})
+                failed += 1
+                continue
+            video = repo.get_by_path(path)
+            if not video:
+                results.append({"path": path, "success": False, "error": "not_found"})
+                failed += 1
+                continue
+            result = _rename_video_assets(
+                video, path_mappings,
+                rename_folder=payload.rename_folder,
+                dry_run=False,
+                journal=False,  # batch journal owns history
+            )
+            if result.get("renamed"):
+                renamed += 1
+                batch_entries.append({
+                    "old_uri": result.get("old_uri") or path,
+                    "new_uri": result.get("new_uri"),
+                    "old_path": result.get("old_path"),
+                    "new_path": result.get("new_path"),
+                    "folder_renamed": result.get("folder_renamed"),
+                    "file_moves": result.get("file_moves") or [],
+                    "number": video.number,
+                    "nfo_before": None,  # single-path journal inside rename when journal=True;
+                    # re-read from result flag; NFO snapshot already applied inside rename if journal=True
+                    # For batch we need snapshot — re-snapshot not available after move.
+                    # _rename_video_assets with journal=False still snapshots internally but
+                    # doesn't return nfo_before text. Capture via return field if present.
+                    "status": "completed",
+                })
+                # Prefer nfo snapshot from result when we add it to return
+                if result.get("nfo_before_text") is not None:
+                    batch_entries[-1]["nfo_before"] = result.get("nfo_before_text")
+            else:
+                skipped += 1
+            results.append({"path": path, "success": True, **{k: v for k, v in result.items() if k != "nfo_before_text"}})
+        except Exception as exc:
+            failed += 1
+            logger.warning("rename-apply failed for %s: %s", path, exc)
+            results.append({"path": path, "success": False, "error": str(exc)[:200]})
+
+    if pending_id:
+        rename_journal.finalize_event(pending_id, {
+            "kind": "batch_rename",
+            "status": "completed" if failed == 0 else "partial",
+            "entries": batch_entries,
+            "requested": requested,
+            "processed": len(results),
+            "truncated": truncated,
+            "limit": RENAME_BATCH_LIMIT,
+            "renamed": renamed,
+            "failed": failed,
+            "skipped": skipped,
+        })
+
+    return {
+        "success": failed == 0,
+        "renamed": renamed,
+        "failed": failed,
+        "skipped": skipped,
+        "requested": requested,
+        "processed": len(results),
+        "truncated": truncated,
+        "limit": RENAME_BATCH_LIMIT,
+        "journal_id": pending_id,
+        "results": results,
+    }
+
+
+@router.get("/rename-history")
+def rename_history(limit: int = 30) -> dict:
+    return {"success": True, "items": rename_journal.list_events(limit=limit)}
+
+
+class RenameRollbackRequest(BaseModel):
+    event_id: str
+
+
+@router.post("/rename-rollback")
+def rename_rollback(payload: RenameRollbackRequest) -> dict:
+    """Reverse a journaled batch rename (files + DB paths)."""
+    from core.database import VideoRepository
+    from core.path_utils import to_file_uri
+    from web.routers.showcase import _get_configured_dirs
+
+    event = rename_journal.get_event(payload.event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="journal event not found")
+    if event.get("rolled_back"):
+        raise HTTPException(status_code=409, detail="already rolled back")
+
+    entries = event.get("entries") or []
+    if not entries:
+        raise HTTPException(status_code=400, detail="empty journal event")
+
+    init_db()
+    config = load_config()
+    _dirs, path_mappings = _get_configured_dirs(config)
+    repo = VideoRepository()
+    restored = 0
+    errors = []
+
+    # Reverse order for safety
+    for entry in reversed(entries):
+        try:
+            new_path = Path(entry["new_path"])
+            old_path = Path(entry["old_path"])
+            moves = entry.get("file_moves") or []
+            # Reverse file moves: to → from, under possibly renamed folder
+            # After rename: files live under new_dir with new names.
+            # We need to rename files back then rename folder if needed.
+            new_dir = new_path.parent
+            old_dir = old_path.parent
+
+            # Reverse sidecar/file renames (new names → old names) while still in new_dir
+            for move in reversed(moves):
+                src = Path(move["to"])
+                # If folder was renamed, move["to"] was planned under old_dir; actual file is under new_dir
+                if entry.get("folder_renamed"):
+                    candidate = new_dir / Path(move["to"]).name
+                    if candidate.exists():
+                        src = candidate
+                dst_name = Path(move["from"]).name
+                dst = src.with_name(dst_name)
+                if src.exists() and src != dst:
+                    if dst.exists():
+                        raise FileExistsError(str(dst))
+                    src.rename(dst)
+
+            if entry.get("folder_renamed") and new_dir.exists() and new_dir != old_dir:
+                if old_dir.exists():
+                    raise FileExistsError(str(old_dir))
+                new_dir.rename(old_dir)
+
+            # Restore NFO content snapshot if we captured it before rename
+            nfo_before = entry.get("nfo_before")
+            if nfo_before is not None:
+                try:
+                    nfo_restore_path = Path(entry["old_path"]).with_suffix(".nfo")
+                    # After folder reverse, old_path parent should exist
+                    if not nfo_restore_path.parent.exists():
+                        nfo_restore_path = old_dir / nfo_restore_path.name
+                    nfo_restore_path.write_text(nfo_before, encoding="utf-8")
+                except OSError as nfo_exc:
+                    logger.warning("NFO content restore failed: %s", nfo_exc)
+
+            # DB path restore
+            old_uri = entry.get("old_uri")
+            new_uri = entry.get("new_uri")
+            if new_uri and old_uri:
+                video = repo.get_by_path(new_uri)
+                if video:
+                    restored_cover = None
+                    if video.cover_path:
+                        try:
+                            cfs = Path(uri_to_fs_path(video.cover_path))
+                            if not cfs.exists() and old_dir.exists():
+                                cand = old_dir / cfs.name
+                                if cand.exists():
+                                    restored_cover = to_file_uri(str(cand), path_mappings)
+                        except Exception:
+                            pass
+                    samples = list(video.sample_images or [])
+                    repo.update_media_paths(
+                        new_uri,
+                        old_uri,
+                        cover_path=restored_cover or video.cover_path,
+                        sample_images=samples,
+                    )
+                    try:
+                        thumbnail_cache.invalidate(new_uri)
+                        thumbnail_cache.invalidate(old_uri)
+                    except Exception:
+                        pass
+            restored += 1
+        except Exception as exc:
+            logger.warning("rename rollback entry failed: %s", exc)
+            errors.append(str(exc)[:200])
+
+    if restored and not errors:
+        rename_journal.mark_rolled_back(payload.event_id)
+
+    return {
+        "success": len(errors) == 0 and restored > 0,
+        "restored": restored,
+        "errors": errors,
+        "event_id": payload.event_id,
+    }

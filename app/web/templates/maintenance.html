@@ -20,9 +20,13 @@
 
     <div class="operations-tabs" role="tablist">
         <button type="button" :class="{active: tab === 'issues'}" @click="tab='issues'"><i class="bi bi-exclamation-circle"></i> 问题</button>
+        <button type="button" :class="{active: tab === 'sources'}" @click="tab='sources'; loadSources()"><i class="bi bi-broadcast"></i> 数据源</button>
+        <button type="button" :class="{active: tab === 'rename'}" @click="tab='rename'; loadRename()"><i class="bi bi-input-cursor-text"></i> 重命名</button>
+        <button type="button" :class="{active: tab === 'locks'}" @click="tab='locks'; loadLocks()"><i class="bi bi-lock"></i> 锁定</button>
+        <button type="button" :class="{active: tab === 'duplicates'}" @click="tab='duplicates'; loadDuplicates(false)"><i class="bi bi-files"></i> 重复</button>
         <button type="button" :class="{active: tab === 'inbox'}" @click="tab='inbox'"><i class="bi bi-inbox"></i> 新文件</button>
         <button type="button" :class="{active: tab === 'tasks'}" @click="tab='tasks'"><i class="bi bi-list-task"></i> 任务</button>
-        <button type="button" :class="{active: tab === 'names'}" @click="tab='names'"><i class="bi bi-person-check"></i> 女优名称</button>
+        <button type="button" :class="{active: tab === 'names'}" @click="tab='names'; loadNames(); loadAliasReview()"><i class="bi bi-person-check"></i> 女优名称</button>
         <button type="button" :class="{active: tab === 'backups'}" @click="tab='backups'"><i class="bi bi-shield-check"></i> 备份</button>
     </div>
 
@@ -56,6 +60,187 @@
                 </div>
             </template>
             <p class="operations-empty" x-show="!dashboard.items.length">当前没有待完善项目。</p>
+        </div>
+    </section>
+
+    <section x-show="tab === 'sources'" x-cloak>
+        <div class="operations-metrics">
+            <div><strong x-text="sourceSummary.healthy || 0"></strong><span>健康</span></div>
+            <div><strong x-text="sourceSummary.degraded || 0"></strong><span>异常</span></div>
+            <div><strong x-text="sourceSummary.in_auto_pool_effective || sourceSummary.in_auto_pool || 0"></strong><span>有效自动池</span></div>
+            <div><strong x-text="sourceSummary.enabled || 0"></strong><span>已启用</span></div>
+        </div>
+        <div class="operations-toolbar">
+            <button class="btn btn-sm btn-primary" type="button" @click="loadSources(true)" :disabled="sourcesBusy">
+                <i class="bi bi-wifi"></i> 探测连通性
+            </button>
+            <button class="btn btn-sm btn-outline" type="button" @click="loadSources(false)" :disabled="sourcesBusy">
+                <i class="bi bi-arrow-clockwise"></i> 刷新
+            </button>
+            <span>显示依赖缺失、代理、地理封锁与修复提示</span>
+        </div>
+        <div class="operations-list operations-deps" x-show="Object.keys(dependencies).length">
+            <template x-for="(dep, key) in dependencies" :key="key">
+                <div class="operations-row operations-row--dep">
+                    <span class="badge badge-sm" :class="dep.ok ? 'badge-success' : 'badge-warning'" x-text="key"></span>
+                    <div class="operations-row-main">
+                        <strong x-text="dep.status"></strong>
+                        <span x-text="dep.detail"></span>
+                        <small x-show="dep.fix_hint" x-text="dep.fix_hint"></small>
+                    </div>
+                </div>
+            </template>
+        </div>
+        <div class="operations-list">
+            <template x-for="src in sources" :key="src.id">
+                <div class="operations-row">
+                    <span class="badge badge-sm" :class="{
+                        'badge-success': src.runtime_status === 'ok',
+                        'badge-warning': src.runtime_status !== 'ok' && src.runtime_status !== 'disabled',
+                        'badge-ghost': src.runtime_status === 'disabled'
+                    }" x-text="src.runtime_status"></span>
+                    <div class="operations-row-main">
+                        <strong x-text="src.display_name"></strong>
+                        <span x-text="`${src.id} · ${src.type}${src.in_auto_pool_effective || src.in_auto_pool ? ' · 有效auto' : (src.in_auto_pool_configured ? ' · 配置auto(未生效)' : '')}${src.requires_proxy ? ' · 需代理' : ''}`"></span>
+                        <small x-show="src.issues && src.issues.length" x-text="src.issues.join('；')"></small>
+                        <small x-show="src.fix_hint" class="operations-fix" x-text="`修复：${src.fix_hint}`"></small>
+                        <small x-show="src.probe" x-text="src.probe ? `探测：${src.probe.status} ${src.probe.latency_ms != null ? src.probe.latency_ms + 'ms' : ''}` : ''"></small>
+                    </div>
+                    <span class="operations-score" x-text="src.enabled ? '开' : '关'"></span>
+                </div>
+            </template>
+            <p class="operations-empty" x-show="!sources.length && !sourcesBusy">尚未加载数据源状态。</p>
+        </div>
+    </section>
+
+    <section x-show="tab === 'rename'" x-cloak>
+        <div class="operations-metrics operations-metrics--compact">
+            <div><strong x-text="renameIssues.length"></strong><span>命名异常</span></div>
+            <div><strong x-text="renameHistory.length"></strong><span>历史记录</span></div>
+        </div>
+        <div class="operations-toolbar">
+            <button class="btn btn-sm btn-outline" type="button" @click="previewRename()" :disabled="!selectedRenamePaths.length || renameBusy">
+                <i class="bi bi-eye"></i> 预览修改
+            </button>
+            <button class="btn btn-sm btn-primary" type="button" @click="applyRename()" :disabled="!selectedRenamePaths.length || renameBusy">
+                <i class="bi bi-check2-all"></i> 执行重命名
+            </button>
+            <button class="btn btn-sm btn-outline" type="button" @click="selectAllRename()" :disabled="!renameIssues.length">全选</button>
+            <button class="btn btn-sm btn-ghost" type="button" @click="selectedRenamePaths=[]">清空</button>
+            <span x-show="selectedRenamePaths.length" x-text="`已选 ${selectedRenamePaths.length}`"></span>
+        </div>
+        <div class="operations-list" x-show="renamePreview.length">
+            <div class="operations-toolbar"><strong>预览结果</strong></div>
+            <template x-for="item in renamePreview" :key="item.path || item.old_path">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="item.number || (item.success === false ? '失败' : '计划')"></strong>
+                        <span x-text="item.old_path || item.path || ''"></span>
+                        <small x-show="item.new_path" x-text="`→ ${item.new_path}`"></small>
+                        <small x-show="item.error" x-text="item.error"></small>
+                    </div>
+                    <span class="badge badge-sm" x-text="item.renamed ? '将改名' : (item.success === false ? '错误' : '跳过')"></span>
+                </div>
+            </template>
+        </div>
+        <div class="operations-list">
+            <template x-for="item in renameIssues" :key="item.path">
+                <div class="operations-row">
+                    <input type="checkbox" class="checkbox checkbox-sm" :value="item.path" x-model="selectedRenamePaths" aria-label="选择">
+                    <div class="operations-row-main">
+                        <strong x-text="item.number || '未知'"></strong>
+                        <span x-text="item.current"></span>
+                        <small x-show="item.expected" x-text="`期望：${item.expected}`"></small>
+                    </div>
+                </div>
+            </template>
+            <p class="operations-empty" x-show="!renameIssues.length">当前没有命名异常。</p>
+        </div>
+        <div class="operations-list" x-show="renameHistory.length">
+            <div class="operations-toolbar"><strong>回退记录</strong></div>
+            <template x-for="ev in renameHistory" :key="ev.id">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="ev.id"></strong>
+                        <span x-text="`${ev.kind || 'rename'} · 成功 ${ev.renamed || 0} · ${ev.created_at || ''}`"></span>
+                        <small x-show="ev.rolled_back" x-text="`已回退 ${ev.rolled_back_at || ''}`"></small>
+                    </div>
+                    <button class="btn btn-xs btn-outline" type="button"
+                        x-show="!ev.rolled_back"
+                        @click="rollbackRename(ev)"
+                        :disabled="renameBusy"
+                        title="回退">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                    <span class="badge badge-sm" x-show="ev.rolled_back" x-text="'已回退'"></span>
+                </div>
+            </template>
+        </div>
+    </section>
+
+    <section x-show="tab === 'duplicates'" x-cloak>
+        <div class="operations-metrics">
+            <div><strong x-text="dupSummary.number_duplicate_groups || 0"></strong><span>同番号组</span></div>
+            <div><strong x-text="dupSummary.size_duplicate_groups || 0"></strong><span>同大小组</span></div>
+            <div><strong x-text="dupSummary.hash_duplicate_groups || 0"></strong><span>同哈希组</span></div>
+            <div><strong x-text="dupSummary.total_videos || 0"></strong><span>影片总数</span></div>
+        </div>
+        <div class="operations-toolbar">
+            <button class="btn btn-sm btn-outline" type="button" @click="loadDuplicates(false)" :disabled="dupBusy">按番号/大小</button>
+            <button class="btn btn-sm btn-primary" type="button" @click="loadDuplicates(true)" :disabled="dupBusy">
+                <i class="bi bi-fingerprint"></i> 含内容指纹
+            </button>
+            <span>结合番号、文件大小与可选内容指纹（头尾 1MB SHA1）</span>
+        </div>
+        <div class="operations-list">
+            <template x-for="g in dupGroups" :key="g.kind + ':' + g.key">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="`${g.kind === 'number' ? '番号' : g.kind === 'size' ? '大小' : '哈希'} · ${g.key}`"></strong>
+                        <span x-text="`${g.count} 部`"></span>
+                        <small x-text="(g.items || []).map(i => i.number + ' ' + (i.title || '').slice(0,40)).join(' | ')"></small>
+                    </div>
+                </div>
+            </template>
+            <p class="operations-empty" x-show="!dupGroups.length && !dupBusy">未发现重复组（或尚未扫描）。</p>
+        </div>
+    </section>
+
+    <section x-show="tab === 'locks'" x-cloak>
+        <div class="operations-toolbar">
+            <button class="btn btn-sm btn-outline" type="button" @click="loadLocks()" :disabled="locksBusy">
+                <i class="bi bi-arrow-clockwise"></i> 刷新
+            </button>
+            <span>人工锁定与已确认翻译 — 自动刮削/翻译/重命名不会覆盖这些字段</span>
+        </div>
+        <div class="operations-list">
+            <template x-for="item in lockItems" :key="item.path">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="item.number || '未知'"></strong>
+                        <span x-text="item.title"></span>
+                        <small x-show="Object.keys(item.field_locks || {}).length"
+                               x-text="`锁定：${Object.keys(item.field_locks).filter(k => item.field_locks[k]).join('、')}`"></small>
+                        <small x-show="item.field_sources && Object.keys(item.field_sources).length"
+                               x-text="`来源：${Object.entries(item.field_sources).map(([k,v]) => k+'='+v).join(' · ')}`"></small>
+                        <small x-show="item.translation_meta && item.translation_meta.confirmed"
+                               x-text="`翻译已确认 · ${item.translation_meta.provider || ''} ${item.translation_meta.model || ''} · ${item.translation_meta.prompt_version || ''}`"></small>
+                    </div>
+                    <div class="operations-actions">
+                        <button class="btn btn-xs btn-outline" type="button"
+                                x-show="item.field_locks && item.field_locks.title"
+                                @click="unlockField(item, 'title')" title="解锁标题">
+                            解锁标题
+                        </button>
+                        <button class="btn btn-xs btn-outline" type="button"
+                                x-show="item.field_locks && item.field_locks.filename"
+                                @click="unlockField(item, 'filename')" title="解锁文件名">
+                            解锁文件名
+                        </button>
+                    </div>
+                </div>
+            </template>
+            <p class="operations-empty" x-show="!lockItems.length && !locksBusy">当前没有锁定项或已确认翻译。</p>
         </div>
     </section>
 
@@ -107,11 +292,89 @@
     </section>
 
     <section x-show="tab === 'names'" x-cloak>
-        <div class="operations-metrics operations-metrics--compact">
+        <div class="operations-metrics">
             <div><strong x-text="actressNames.length"></strong><span>名称组</span></div>
             <div><strong x-text="actressUnverified"></strong><span>待确认</span></div>
+            <div><strong x-text="aliasReview.summary?.unrecognized || 0"></strong><span>未识别</span></div>
+            <div><strong x-text="aliasReview.summary?.merge_candidates || 0"></strong><span>可合并</span></div>
         </div>
+        <div class="operations-toolbar">
+            <button class="btn btn-sm btn-outline" type="button" @click="loadAliasReview()" :disabled="aliasReviewBusy">
+                <i class="bi bi-search"></i> 审核扫描
+            </button>
+            <span>未识别名、多中文名、疑似拆组、可批量合并</span>
+        </div>
+
+        <div class="operations-list" x-show="(aliasReview.merge_candidates || []).length">
+            <div class="operations-toolbar"><strong>建议合并（规范化相同）</strong></div>
+            <template x-for="c in aliasReview.merge_candidates" :key="c.keep + '←' + c.absorb">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="`保留 ${c.keep} ← 并入 ${c.absorb}`"></strong>
+                        <span x-text="c.reason"></span>
+                        <small x-text="`作品 ${c.usage_keep || 0} / ${c.usage_absorb || 0}`"></small>
+                    </div>
+                    <button class="btn btn-xs btn-primary" type="button" @click="mergeAliasGroups(c)" :disabled="aliasReviewBusy">合并</button>
+                </div>
+            </template>
+        </div>
+
+        <div class="operations-list" x-show="(aliasReview.suggested_attach || []).length">
+            <div class="operations-toolbar"><strong>未识别 → 挂到已有组</strong></div>
+            <template x-for="s in aliasReview.suggested_attach" :key="s.name + '→' + s.attach_to">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="s.name"></strong>
+                        <span x-text="`→ ${s.attach_to}`"></span>
+                        <small x-text="`${s.reason} · ${s.usage_count} 部`"></small>
+                    </div>
+                    <button class="btn btn-xs btn-outline" type="button" @click="attachAliasName(s)" :disabled="aliasReviewBusy">挂接</button>
+                </div>
+            </template>
+        </div>
+
+        <div class="operations-list" x-show="(aliasReview.unrecognized || []).length">
+            <div class="operations-toolbar"><strong>库内未识别女优名</strong></div>
+            <template x-for="u in aliasReview.unrecognized" :key="u.name">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="u.name"></strong>
+                        <span x-text="`${u.usage_count} 部`"></span>
+                        <small x-text="[u.has_kana ? '假名' : '', u.has_cjk ? '汉字' : ''].filter(Boolean).join(' · ')"></small>
+                    </div>
+                    <button class="btn btn-xs btn-outline" type="button" @click="createAliasFromUnrecognized(u)" :disabled="aliasReviewBusy">新建组</button>
+                </div>
+            </template>
+        </div>
+
+        <div class="operations-list" x-show="(aliasReview.multi_chinese || []).length">
+            <div class="operations-toolbar"><strong>含多个中文名的组</strong></div>
+            <template x-for="m in aliasReview.multi_chinese" :key="m.primary_name">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="m.primary_name"></strong>
+                        <span x-text="(m.cjk_names || []).join('、')"></span>
+                        <small x-text="`本地 ${m.usage_count} 部`"></small>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <div class="operations-list" x-show="(aliasReview.mixed_script || []).length">
+            <div class="operations-toolbar"><strong>疑似误译 / 脚本混用</strong></div>
+            <template x-for="m in aliasReview.mixed_script" :key="'mix-' + m.primary_name">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="m.primary_name"></strong>
+                        <span x-text="(m.aliases || []).join('、') || '无别名'"></span>
+                        <small x-text="m.reason"></small>
+                    </div>
+                </div>
+            </template>
+        </div>
+
         <div class="operations-list">
+            <div class="operations-toolbar"><strong>全部名称组</strong></div>
             <template x-for="item in actressNames" :key="item.primary_name">
                 <div class="operations-row operations-row--name">
                     <div class="operations-row-main">
@@ -130,9 +393,24 @@
     <section x-show="tab === 'backups'" x-cloak>
         <div class="operations-toolbar">
             <button class="btn btn-sm btn-primary" type="button" @click="createBackup()" :disabled="backupBusy"><i class="bi bi-plus-lg"></i> 创建备份</button>
-            <span>恢复操作会先自动创建当前状态的保险备份。</span>
+            <button class="btn btn-sm btn-outline" type="button" @click="createDiagPack()" :disabled="diagBusy"><i class="bi bi-clipboard2-pulse"></i> 导出诊断包</button>
+            <span>恢复会先自动创建保险备份。诊断包已脱敏，可分享排障。</span>
+        </div>
+        <div class="operations-list" x-show="diagPacks.length">
+            <div class="operations-toolbar"><strong>诊断包</strong></div>
+            <template x-for="pack in diagPacks" :key="pack.name">
+                <div class="operations-row">
+                    <div class="operations-row-main">
+                        <strong x-text="pack.name"></strong>
+                        <span x-text="pack.created_at || ''"></span>
+                        <small x-text="pack.size ? Math.round(pack.size/1024)+' KB' : ''"></small>
+                    </div>
+                    <a x-show="pack.download" class="btn btn-xs btn-outline" :href="pack.download" title="下载"><i class="bi bi-download"></i></a>
+                </div>
+            </template>
         </div>
         <div class="operations-list">
+            <div class="operations-toolbar"><strong>备份</strong></div>
             <template x-for="backup in backups" :key="backup.name">
                 <div class="operations-row">
                     <div class="operations-row-main">

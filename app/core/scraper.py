@@ -222,6 +222,13 @@ def search_jav(number: str, source: str = 'auto', proxy_url: str = '', javbus_la
 
     # DMM 需要日本 IP（proxy 或 direct），有啟用才建立
     dmm_config = ScraperConfig(proxy_url=_dmm_proxy_url(proxy_url)) if _is_dmm_enabled(proxy_url) else None
+    # JavDB 在部分地區會 geo-block；有 proxy 時一併帶上（curl_cffi proxies）
+    _javdb_proxy = (proxy_url or "").strip()
+    javdb_config = (
+        ScraperConfig(proxy_url=_javdb_proxy)
+        if _javdb_proxy and _javdb_proxy.lower() != "direct"
+        else None
+    )
 
     # javbus_lang 校驗 + config fallback（auto 與 explicit javbus 共用）
     if javbus_lang is not None and javbus_lang not in VALID_JAVBUS_LANGS:
@@ -233,12 +240,13 @@ def search_jav(number: str, source: str = 'auto', proxy_url: str = '', javbus_la
     # DMM 與 JavBus 是攜帶 closure 參數的特例：
     #   - dmm：proxy-gated，dmm_config 為 None（無 proxy）時回 []（不建立）。
     #   - javbus：帶校驗後的 lang。
+    #   - javdb：可選 proxy（geo-block 地區需要）。
     # explicit 指定來源與 auto fan-out 共用同一份定義。
     source_to_scraper = {
         'dmm': lambda: [DMMScraper(dmm_config)] if dmm_config else [],
         'javbus': lambda: [JavBusScraper(lang=_javbus_lang)],
         'jav321': lambda: [JAV321Scraper()],
-        'javdb': lambda: [JavDBScraper()],
+        'javdb': lambda: [JavDBScraper(javdb_config) if javdb_config else JavDBScraper()],
         'd2pass': lambda: [D2PassScraper()],
         'heyzo': lambda: [HEYZOScraper()],
         'fc2': lambda: [FC2Scraper()],

@@ -382,6 +382,18 @@
                                 <i class="bi" :class="_rollbackingPath === video.path ? 'bi-arrow-clockwise spin' : 'bi-arrow-counterclockwise'"></i>
                             </button>
                             <button class="btn-glass-circle"
+                                    x-show="video.path && !isTranslationConfirmed(video) && video.title"
+                                    @click.stop="confirmTranslation(video, true)"
+                                    title="确认翻译并锁定标题">
+                                <i class="bi bi-check2-circle"></i>
+                            </button>
+                            <button class="btn-glass-circle"
+                                    x-show="isTitleLocked(video) || isTranslationConfirmed(video)"
+                                    @click.stop="isTranslationConfirmed(video) ? confirmTranslation(video, false) : toggleFieldLock(video, 'title', false)"
+                                    title="已锁定/已确认 — 点击解锁">
+                                <i class="bi bi-lock-fill"></i>
+                            </button>
+                            <button class="btn-glass-circle"
                                     x-show="canRenameVideo(video)"
                                     :disabled="_renamingPath === video.path"
                                     @click.stop="renameVideo(video)"
@@ -775,6 +787,20 @@
                                         data-tooltip="回退标题翻译"
                                         aria-label="回退标题翻译">
                                     <i class="bi" :class="_rollbackingPath === currentLightboxVideo?.path ? 'bi-arrow-clockwise spin' : 'bi-arrow-counterclockwise'"></i>
+                                </button>
+                                <button class="lb-action-btn"
+                                        x-show="currentLightboxVideo?.path && !isTranslationConfirmed(currentLightboxVideo) && currentLightboxVideo?.title"
+                                        @click.stop="confirmTranslation(currentLightboxVideo, true)"
+                                        data-tooltip="确认翻译并锁定标题"
+                                        aria-label="确认翻译并锁定标题">
+                                    <i class="bi bi-check2-circle"></i>
+                                </button>
+                                <button class="lb-action-btn"
+                                        x-show="isTitleLocked(currentLightboxVideo) || isTranslationConfirmed(currentLightboxVideo)"
+                                        @click.stop="isTranslationConfirmed(currentLightboxVideo) ? confirmTranslation(currentLightboxVideo, false) : toggleFieldLock(currentLightboxVideo, 'title', false)"
+                                        data-tooltip="已锁定 — 点击解锁"
+                                        aria-label="解锁标题">
+                                    <i class="bi bi-lock-fill"></i>
                                 </button>
                                 <button class="lb-action-btn"
                                         x-show="canRenameVideo(currentLightboxVideo)"

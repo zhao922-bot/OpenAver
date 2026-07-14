@@ -247,8 +247,11 @@ def _run_readonly_source(
         yield from _yield_readonly_summary(result)
 
 
-def generate_avlist() -> Generator[str, None, None]:
-    """產生影片列表（SSE 串流）- 使用 SQLite 儲存"""
+def generate_avlist(force_full: bool = False) -> Generator[str, None, None]:
+    """產生影片列表（SSE 串流）- 使用 SQLite 儲存
+
+    force_full=True 時忽略 mtime/size 快取，全量重掃。
+    """
 
     try:
         # 載入設定
@@ -380,33 +383,28 @@ def generate_avlist() -> Generator[str, None, None]:
                     long_paths.extend(p for p in skipped_paths if len(p) > 260)
 
                 yield _sse_event({"type": "log", "level": "info", "message": f"{directory}: 找到 {len(all_files)} 個檔案"})
+                if force_full:
+                    yield _sse_event({"type": "log", "level": "info", "message": "  全量重扫模式（忽略 mtime/size 缓存）"})
 
-                # 取得現有 mtime 索引
-                db_index = repo.get_mtime_index()
+                # 增量 diff：mtime + nfo_mtime + size，路径 casefold
+                from core.scan_diff import build_db_index_rows, build_db_uri_by_key, diff_files
 
-                # 比對決定需要處理的檔案
-                needs_scan = []
-                current_paths = set()
-
-                for file_info in all_files:
-                    path = file_info['path']
-                    file_uri = to_file_uri(path, path_mappings)
-                    current_paths.add(file_uri)
-
-                    db_entry = db_index.get(file_uri)
-                    if db_entry is None:
-                        # 新檔案
-                        needs_scan.append(file_info)
-                    elif db_entry[0] != file_info['mtime'] or db_entry[1] != file_info.get('nfo_mtime', 0):
-                        # mtime 或 nfo_mtime 變更
-                        needs_scan.append(file_info)
+                rows = repo.get_mtime_index_rows()
+                db_index = build_db_index_rows(rows)
+                db_uri_by_key = build_db_uri_by_key(rows)
+                diff = diff_files(
+                    all_files,
+                    db_index,
+                    db_uri_by_key,
+                    path_mappings=path_mappings,
+                    force_full=force_full,
+                    use_size=True,
+                )
+                needs_scan = diff.needs_scan
+                current_paths = diff.current_uris
 
                 # 清理已刪除的檔案（限定在此目錄下）
                 # a5 Codex fix: scan 不完整時（skipped_paths 非空）跳過 deletion 偵測
-                # current_paths 只含本次成功掃到的檔案；若有路徑因 OSError/PermissionError
-                # 被跳過，current_paths 就不是本目錄完整集合，用它做 diff 會把「原本存在
-                # 但這次沒掃到（因失敗）」的 DB 紀錄誤判為已刪除並清掉。
-                # partial scan 只做 insert/update，不能 infer 刪除。
                 if skipped_paths:
                     yield _sse_event({
                         "type": "log",
@@ -415,11 +413,12 @@ def generate_avlist() -> Generator[str, None, None]:
                     })
                 else:
                     normalized_dir_uri = to_file_uri(normalized_dir, path_mappings)
-                    deleted_paths = [p for p in db_index.keys() if is_path_under_dir(p, normalized_dir_uri) and p not in current_paths]
+                    deleted_paths = [
+                        p for p in diff.deleted_candidates
+                        if is_path_under_dir(p, normalized_dir_uri)
+                    ]
                     if deleted_paths:
                         deleted_count = repo.delete_by_paths(deleted_paths)
-                        # feature/71 T8: prune 連動失效縮圖。deleted_paths 已是 DB URI
-                        # （db_index.keys()）→ 原樣傳入、不過 to_file_uri、不疊轉換（plan §0.1）。
                         for p in deleted_paths:
                             thumbnail_cache.invalidate(p)
                         total_deleted += deleted_count
@@ -427,7 +426,7 @@ def generate_avlist() -> Generator[str, None, None]:
 
                 # 掃描並寫入需要更新的檔案
                 videos_to_upsert = []
-                cache_hits = len(all_files) - len(needs_scan)
+                cache_hits = diff.unchanged
                 cache_misses = 0
 
                 for i, file_info in enumerate(needs_scan, 1):
@@ -439,6 +438,7 @@ def generate_avlist() -> Generator[str, None, None]:
                         video = Video.from_video_info(video_info)
                         video.mtime = file_info['mtime']
                         video.nfo_mtime = file_info.get('nfo_mtime', 0)
+                        video.size_bytes = int(file_info.get('size') or 0)
                         videos_to_upsert.append(video)
                         session_added_paths.append(video.path)
                         cache_misses += 1
@@ -453,12 +453,19 @@ def generate_avlist() -> Generator[str, None, None]:
                     total_inserted += inserted
                     total_updated += updated
 
-                logger.info(f"[Gallery] {directory}: {len(all_files)} 個檔案，快取命中 {cache_hits}")
+                logger.info(
+                    f"[Gallery] {directory}: {len(all_files)} 個檔案，未變更 {cache_hits}, "
+                    f"新增 {diff.new_count}, 變更 {diff.changed_count}"
+                )
 
                 yield _sse_event({
                     "type": "log",
                     "level": "info",
-                    "message": f"{directory}: {len(all_files)} 部 (快取: {cache_hits}, 新增/更新: {cache_misses})"
+                    "message": (
+                        f"{directory}: {len(all_files)} 部 "
+                        f"(未变更: {cache_hits}, 新增: {diff.new_count}, 变更: {diff.changed_count}, "
+                        f"处理: {cache_misses})"
+                    ),
                 })
             except Exception:
                 logger.exception("掃描資料夾失敗: %s", directory)
@@ -636,10 +643,13 @@ def generate_avlist() -> Generator[str, None, None]:
 
 
 @router.get("/generate")
-async def generate():
-    """產生影片列表（SSE 串流回傳進度）"""
+async def generate(force_full: bool = Query(False, description="忽略增量缓存，全量重扫")):
+    """產生影片列表（SSE 串流回傳進度）
+
+    force_full=true 时忽略 mtime/size 增量缓存，重扫全部文件。
+    """
     return StreamingResponse(
-        generate_avlist(),
+        generate_avlist(force_full=force_full),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

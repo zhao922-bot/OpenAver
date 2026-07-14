@@ -754,13 +754,20 @@ export function stateScan() {
         },
 
         // ===== T7b: Generate Flow =====
-        async generate() {
+        async generate(forceFull = false) {
             // 互斥鎖定：generating/nfoUpdating 時不可再次執行
             if (this.isGenerating) return;
 
             if (this.directories.length === 0) {
                 this.showToast('請先加入至少一個資料夾');
                 return;
+            }
+
+            if (forceFull) {
+                // eslint-disable-next-line no-alert
+                if (!confirm(window.t('scanner.stats.force_full_confirm') || '将忽略增量缓存、重扫全部文件。是否继续？')) {
+                    return;
+                }
             }
 
             // 自動儲存設定
@@ -771,18 +778,24 @@ export function stateScan() {
 
             // 重置狀態
             this.state = 'generating';
-            this.progressStatus = '準備中...';
+            this.progressStatus = forceFull
+                ? (window.t('scanner.stats.force_full_preparing') || '全量重扫准备中...')
+                : '準備中...';
             this.progressCurrent = 0;
             this.progressTotal = 0;
             this.outputPath = '';
             this.nfoUpdateVisible = false;
             this.clearLogs();
+            if (forceFull) {
+                this.addLog('info', window.t('scanner.stats.force_full_log') || '已启用全量重扫（force_full）');
+            }
 
             // 設置 localStorage 標記
             localStorage.setItem('avlist_generating', 'true');
 
             try {
-                this.eventSource = new EventSource('/api/gallery/generate');
+                const qs = forceFull ? '?force_full=true' : '';
+                this.eventSource = new EventSource('/api/gallery/generate' + qs);
 
                 this.eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);

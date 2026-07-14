@@ -258,6 +258,14 @@ class PyWebViewCfTransport:
 
         logger.debug("[CF-DIAG] fetch start %s (url=%s)", self._event_states(), url)
 
+        # Lazy park on about:blank at startup — first real use must navigate to origin.
+        current_url = self._win.get_current_url() or ""
+        if (not current_url) or current_url.startswith("about:") or "javlibrary.com" not in current_url.lower():
+            logger.info("[CF-DIAG] fetch → window not on JavLibrary origin (url=%s, current=%s) → solve", url, current_url[:80])
+            self._cf_url = url
+            self._cf_urls[cache_key] = url
+            raise CfChallengeRequired(f'lazy navigate required for {url}')
+
         # Bridge gate (0.9.9c): if pywebview's JS bridge is not ready, evaluate_js
         # would block ~20s on _pywebviewready.wait(20) then raise WebViewException
         # (the stranded-bridge bug). A not-ready bridge means the window is on a

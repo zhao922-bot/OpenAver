@@ -69,7 +69,7 @@ class JavDBScraper(BaseScraper):
         return "javdb"
 
     def _get_html(self, url: str) -> Optional[str]:
-        """使用 curl_cffi 發送請求（偽造 Chrome TLS 指紋）"""
+        """使用 curl_cffi 發送請求（偽造 Chrome TLS 指紋；支援 proxy_url）"""
         if not CURL_CFFI_AVAILABLE:
             global _warned
             if not _warned:
@@ -81,7 +81,11 @@ class JavDBScraper(BaseScraper):
             return None
 
         _ca = _cainfo_override_bytes()
-        extra = {"curl_options": {CurlOpt.CAINFO: _ca}} if _ca is not None else {}
+        extra: dict = {"curl_options": {CurlOpt.CAINFO: _ca}} if _ca is not None else {}
+        proxy = (self.config.proxy_url or "").strip()
+        if proxy and proxy.lower() != "direct":
+            # curl_cffi accepts proxies= like requests: {"http": "...", "https": "..."}
+            extra["proxies"] = {"http": proxy, "https": proxy}
 
         try:
             response = curl_requests.get(
@@ -98,7 +102,23 @@ class JavDBScraper(BaseScraper):
             )
 
             if response.status_code == 200:
-                return str(response.text)
+                text = str(response.text)
+                # Geo-block / CF challenge: short body without movie list.
+                if (
+                    "禁止了你的網路所在國家" in text
+                    or "prohibited in the country" in text
+                    or "Just a moment" in text
+                ):
+                    via = "via proxy" if proxy and proxy.lower() != "direct" else "no proxy"
+                    logger.warning(
+                        "JavDB blocked (geo/CF) for %s — status=200 body blocked "
+                        "(len=%d, %s). Configure search.proxy_url to a reachable proxy.",
+                        url,
+                        len(text),
+                        via,
+                    )
+                    return None
+                return text
             logger.debug("JavDB non-200 for %s: %s", url, response.status_code)
         except Exception as e:
             logger.debug(f"JavDB request failed for {url}: {e}")

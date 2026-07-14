@@ -366,18 +366,16 @@ def main():
         from cf_transport_impl import PyWebViewCfTransport   # sibling import（WINDOWS_DIR 已在 sys.path）
         from core.scrapers.javlibrary import JAVLIBRARY_ORIGIN
         from core.cf_transport import register_cf_transport
-        # NOTE (P3-6, follow-up): the JL window loads JAVLIBRARY_ORIGIN at launch — so the
-        # app connects to javlibrary.com on every startup, even when the source is disabled.
-        # This is required by the same-origin fetch design (the hidden window must be parked
-        # on the origin for cookie-bearing fetch). A lazy-navigate refactor is a follow-up branch.
+        # Lazy CF: park on about:blank at startup (no network to javlibrary.com).
+        # First fetch/begin_solve navigates to JAVLIBRARY_ORIGIN when the source is used.
         jl_win = webview.create_window(
             'JavLibrary — CF 驗證',
-            JAVLIBRARY_ORIGIN,
+            'about:blank',
             width=1200, height=820,
             hidden=True,
         )
         register_cf_transport(PyWebViewCfTransport(jl_win))
-        logger.info("JavLibrary CF transport registered")
+        logger.info("JavLibrary CF transport registered (lazy about:blank)")
     except Exception as e:
         logger.warning(f"JavLibrary CF transport init failed (JL will be unavailable): {e}")
 

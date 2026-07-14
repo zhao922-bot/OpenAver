@@ -534,7 +534,13 @@ export function stateVideos() {
 
                 if (!this._translatingAll) {
                     if (data.skipped) {
-                        this.showToast(data.reason === 'already_translated' ? '已是翻译标题' : '未检测到日文标题', 'success');
+                        const skipMsgs = {
+                            already_translated: '已是翻译标题',
+                            no_japanese: '未检测到日文标题',
+                            translation_confirmed: '翻译已人工确认，跳过（可强制重译）',
+                            title_locked: '标题已锁定，跳过自动翻译',
+                        };
+                        this.showToast(skipMsgs[data.reason] || '已跳过', 'success');
                     } else {
                         this.showToast('标题已翻译', 'success');
                     }
@@ -585,6 +591,57 @@ export function stateVideos() {
 
         canRollbackTranslation(video) {
             return !!(video && video.path && video.has_translation_history);
+        },
+
+        isTitleLocked(video) {
+            return !!(video && video.field_locks && video.field_locks.title);
+        },
+
+        isTranslationConfirmed(video) {
+            return !!(video && video.translation_meta && video.translation_meta.confirmed);
+        },
+
+        async confirmTranslation(video, confirmed = true) {
+            if (!video || !video.path) return;
+            try {
+                const resp = await fetch('/api/showcase/confirm-translation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: video.path, confirmed: !!confirmed }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || !data.success) throw new Error(data.error || `HTTP ${resp.status}`);
+                if (data.video) {
+                    this._mergeTranslatedVideo(data.video);
+                    this.applyFilterAndSort(true);
+                    this.updatePagination();
+                }
+                this.showToast(confirmed ? '已确认翻译并锁定标题' : '已取消确认', 'success');
+            } catch (e) {
+                console.error('confirm translation failed', e);
+                this.showToast(e.message || '确认失败', 'error');
+            }
+        },
+
+        async toggleFieldLock(video, field, locked) {
+            if (!video || !video.path || !field) return;
+            try {
+                const resp = await fetch('/api/showcase/field-lock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: video.path, field, locked: !!locked }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || !data.success) throw new Error(data.error || `HTTP ${resp.status}`);
+                if (data.video) {
+                    this._mergeTranslatedVideo(data.video);
+                    this.applyFilterAndSort(true);
+                    this.updatePagination();
+                }
+                this.showToast(locked ? `已锁定 ${field}` : `已解锁 ${field}`, 'success');
+            } catch (e) {
+                this.showToast(e.message || '锁定失败', 'error');
+            }
         },
 
         async rollbackTranslation(video) {

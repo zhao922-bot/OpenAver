@@ -671,35 +671,35 @@ class VideoScanner:
         file_infos = fast_scan_directory(str(directory), extensions, min_size_bytes)
         logger.info(f"[*] 找到 {len(file_infos)} 個影片檔案")
 
-        # 步驟 2: 從 SQLite 取得現有 mtime 索引
-        # 注意：資料庫中的 path 是 file:/// 格式
-        db_index = repo.get_mtime_index()  # {path: (mtime, nfo_mtime)}
+        # 步驟 2–3: 增量 diff（mtime + nfo_mtime + size，Windows 路徑 casefold）
+        from core.scan_diff import build_db_index_rows, build_db_uri_by_key, diff_files
 
-        # 建立 file:/// 路徑到原始路徑的映射，以及原始路徑到 mtime 的映射
-        # scan_file 會產生 file:/// 格式的路徑（使用 core.path_utils.to_file_uri）
+        rows = repo.get_mtime_index_rows()
+        db_index = build_db_index_rows(rows)
+        db_uri_by_key = build_db_uri_by_key(rows)
+        diff = diff_files(
+            file_infos,
+            db_index,
+            db_uri_by_key,
+            path_mappings=self.path_mappings,
+            force_full=False,
+            use_size=True,
+        )
+        needs_scan = diff.needs_scan
+        current_file_uris = diff.current_uris
 
-        # 步驟 3: 比對決定需要處理的檔案
-        needs_scan = []
-        current_file_uris = set()
-
-        for file_info in file_infos:
-            fs_path = file_info['path']
-            file_uri = to_file_uri(fs_path, self.path_mappings)
-            current_file_uris.add(file_uri)
-
-            db_entry = db_index.get(file_uri)
-            if db_entry is None:
-                # 新檔案
-                needs_scan.append(file_info)
-            elif db_entry[0] != file_info['mtime'] or db_entry[1] != file_info.get('nfo_mtime', 0):
-                # mtime 或 nfo_mtime 變更
-                needs_scan.append(file_info)
-
-        # 步驟 4: 清理已刪除的檔案（比對 file:/// 格式的路徑）
-        deleted_paths = set(db_index.keys()) - current_file_uris
-        deleted_count = repo.delete_by_paths(list(deleted_paths))
+        # 步驟 4: 清理已刪除的檔案（限定本目錄 scan 結果）
+        dir_uri = to_file_uri(str(directory), self.path_mappings)
+        from core.path_utils import is_path_under_dir
+        deleted_paths = [u for u in diff.deleted_candidates if is_path_under_dir(u, dir_uri)]
+        deleted_count = repo.delete_by_paths(deleted_paths) if deleted_paths else 0
         if deleted_count > 0:
             logger.info(f"[*] 清理 {deleted_count} 個已刪除檔案")
+
+        logger.info(
+            "[*] 增量: 未變更 %s, 新增 %s, 變更 %s, 待處理 %s",
+            diff.unchanged, diff.new_count, diff.changed_count, len(needs_scan),
+        )
 
         # 步驟 5: 掃描並寫入
         videos_to_upsert = []
@@ -719,6 +719,7 @@ class VideoScanner:
                 video = Video.from_video_info(video_info)
                 video.mtime = file_info['mtime']
                 video.nfo_mtime = file_info.get('nfo_mtime', 0)
+                video.size_bytes = int(file_info.get('size') or 0)
                 videos_to_upsert.append(video)
             except Exception as e:
                 logger.warning(f"  [!] 錯誤: {e}")
@@ -734,6 +735,9 @@ class VideoScanner:
             'inserted': inserted,
             'updated': updated,
             'deleted': deleted_count,
+            'unchanged': diff.unchanged,
+            'new': diff.new_count,
+            'changed': diff.changed_count,
             'total': repo.count()
         }
 
