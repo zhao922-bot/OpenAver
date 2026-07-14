@@ -27,8 +27,8 @@ class CfTransportUnavailable(RuntimeError):
 class CfChallengeRequired(RuntimeError):
     """transport.fetch() received a Cloudflare challenge page instead of content.
 
-    Callers should respond by calling begin_solve(), then poll is_ready()
-    until True and retry fetch(). The transport may solve in the background.
+    Callers should respond by calling begin_solve() to open the challenge
+    window, then poll is_ready() until True and retry fetch().
     """
 
 
@@ -40,9 +40,8 @@ class CfTransport(Protocol):
     """
 
     def begin_solve(self, origin_url: str, cache_key: str) -> None:
-        """**Non-blocking**: navigate the transport window to *origin_url*.
-        Implementations may keep background-capable sites hidden and display
-        sites whose challenge requires user interaction.
+        """**Non-blocking**: display the transport window and navigate to
+        *origin_url* so the user can complete the CF challenge + age gate.
 
         Returns immediately without waiting for the user to finish.
         CD-70b-7: the backend must not hold a thread waiting for the solution.

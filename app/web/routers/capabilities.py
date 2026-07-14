@@ -80,26 +80,6 @@ _TOOLS: list[dict] = [
         "_example_template": "curl -X POST -H 'Content-Type: application/json' -d '{{\"numbers\":[\"FC2-PPV-1854491\",\"SONE-205\"]}}' {base}/api/batch-search",
     },
     {
-        "name": "jable_public_titles",
-        "description": "讀取 Jable 公開頁面的中日文標題候選；不讀取或解析媒體資源",
-        "side_effect": False,
-        "method": "GET",
-        "path": "/api/downloads/jable-titles",
-        "input_schema": {
-            "type": "object",
-            "properties": {"number": {"type": "string", "description": "番號"}},
-            "required": ["number"],
-        },
-        "output_schema": {
-            "title_zh": "string — 公開頁面的簡體中文標題",
-            "title_ja": "string — 公開頁面的日文標題",
-            "candidates": "array — 標題、語言及公開作品頁連結",
-        },
-        "retry_safe": True,
-        "local_only": True,
-        "_example_template": "curl '{base}/api/downloads/jable-titles?number=SONE-205'",
-    },
-    {
         "name": "authorized_media_download",
         "description": "將用戶有權使用的直鏈影片或 m3u8 無損封裝成 MP4，保存到已配置的可寫掃描資料夾",
         "side_effect": True,

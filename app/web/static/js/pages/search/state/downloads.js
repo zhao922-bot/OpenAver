@@ -2,14 +2,12 @@
 export function searchStateDownloads() {
     return {
         downloadModalOpen: false,
-        downloadLookupLoading: false,
         downloadStarting: false,
         downloadSettingsSaving: false,
         downloadTasks: [],
         downloadDestinations: [],
         downloadSettings: { maxConcurrentDownloads: 4, fragmentThreads: 16, engineAvailable: true },
         _downloadPollTimer: null,
-        _downloadLookupGeneration: 0,
         downloadForm: {
             number: '', title: '', chineseTitle: '', mediaUrl: '', destination: '',
             rightsConfirmed: false, sourcePageUrl: '',
@@ -56,8 +54,6 @@ export function searchStateDownloads() {
         },
 
         cleanupDownloadState() {
-            this._downloadLookupGeneration += 1;
-            this.downloadLookupLoading = false;
             if (this._downloadPollTimer) {
                 clearInterval(this._downloadPollTimer);
                 this._downloadPollTimer = null;
@@ -125,52 +121,6 @@ export function searchStateDownloads() {
                 this.showToast(error.message, 'error');
             } finally {
                 this.downloadSettingsSaving = false;
-            }
-        },
-
-        async lookupJableTitles() {
-            if (this.downloadLookupLoading || !this.downloadForm.number) return;
-            const generation = ++this._downloadLookupGeneration;
-            this.downloadLookupLoading = true;
-            try {
-                let data;
-                let waitingForReady = false;
-                for (let attempt = 0; attempt < 121; attempt++) {
-                    if (generation !== this._downloadLookupGeneration) return;
-                    if (waitingForReady) {
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        if (generation !== this._downloadLookupGeneration) return;
-                        const status = await this._downloadJson('/api/cf/status?key=jable');
-                        if (status.unavailable) throw new Error('cf_unavailable');
-                        // Do not navigate again while the WebView is loading: that
-                        // resets Cloudflare's background check on every retry.
-                        if (!status.ready) continue;
-                    }
-                    try {
-                        data = await this._downloadJson(`/api/downloads/jable-titles?number=${encodeURIComponent(this.downloadForm.number)}`);
-                        break;
-                    } catch (error) {
-                        if (error.status !== 409 || error.detail?.reason !== 'cf_challenge') throw error;
-                        if (attempt === 0) this.showToast(window.t('search.download.complete_browser_check'), 'info');
-                        waitingForReady = true;
-                    }
-                }
-                if (!data) throw new Error(window.t('search.download.lookup_timeout'));
-                const result = data.data || {};
-                if (result.title_ja) this.downloadForm.title = result.title_ja;
-                if (result.title_zh) this.downloadForm.chineseTitle = result.title_zh;
-                if (result.candidates?.[0]?.url) this.downloadForm.sourcePageUrl = result.candidates[0].url;
-                if (!result.title_ja && !result.title_zh) throw new Error(window.t('search.download.no_titles'));
-                this.showToast(window.t('search.download.titles_loaded'), 'success');
-            } catch (error) {
-                const messages = {
-                    cf_unavailable: window.t('search.download.desktop_required'),
-                    title_lookup_failed: window.t('search.download.title_lookup_failed'),
-                };
-                const message = messages[error.message] || error.message;
-                this.showToast(message, 'error');
-            } finally {
-                if (generation === this._downloadLookupGeneration) this.downloadLookupLoading = false;
             }
         },
 

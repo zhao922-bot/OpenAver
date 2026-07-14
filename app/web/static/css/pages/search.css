@@ -1303,12 +1303,7 @@
 }
 
 .download-number-field {
-    align-self: end;
-}
-
-.download-title-lookup {
-    align-self: end;
-    justify-self: start;
+    grid-column: 1 / -1;
 }
 
 .download-rights-confirm {

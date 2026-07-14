@@ -986,13 +986,6 @@
                     <span>{{ t('search.download.number') }}</span>
                     <input class="input input-bordered" x-model="downloadForm.number" readonly>
                 </label>
-                <button class="btn btn-sm btn-outline download-title-lookup"
-                        @click="lookupJableTitles()"
-                        :disabled="downloadLookupLoading">
-                    <span x-show="downloadLookupLoading" class="loading loading-spinner loading-xs"></span>
-                    <i x-show="!downloadLookupLoading" class="bi bi-card-text"></i>
-                    {{ t('search.download.lookup_titles') }}
-                </button>
                 <label class="download-field">
                     <span>{{ t('search.download.japanese_title') }}</span>
                     <textarea class="textarea textarea-bordered" rows="2" x-model="downloadForm.title"></textarea>

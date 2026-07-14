@@ -1,23 +1,18 @@
-"""Authorized direct-media downloads and public Jable title metadata."""
+"""Authorized direct-media downloads."""
 
 from __future__ import annotations
 
 from pathlib import Path
-import re
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, HttpUrl
 
-from core.cf_transport import CfChallengeRequired, CfTransportUnavailable, get_cf_transport
 from core.config import load_config
-from core.jable_metadata import JABLE_ORIGIN, lookup_jable_titles
-from core.logger import get_logger
 from core.media_downloader import DownloadValidationError, media_download_manager
 
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
-logger = get_logger(__name__)
 
 
 class DownloadRequest(BaseModel):
@@ -84,30 +79,6 @@ def update_download_settings(payload: DownloadSettingsRequest, request: Request)
         fragment_threads=payload.fragment_threads,
     )
     return {"success": True, "settings": settings}
-
-
-@router.get("/jable-titles")
-def jable_titles(request: Request, number: str = Query(min_length=2, max_length=64)) -> dict:
-    _local_only(request)
-    normalized = number.strip().upper()
-    if not re.fullmatch(r"[A-Z0-9_-]+", normalized):
-        raise HTTPException(status_code=400, detail="Invalid catalog number")
-    try:
-        return {"success": True, "data": lookup_jable_titles(normalized)}
-    except CfChallengeRequired:
-        transport = get_cf_transport()
-        if transport is None:
-            raise HTTPException(status_code=503, detail={"reason": "cf_unavailable"})
-        try:
-            transport.begin_solve(JABLE_ORIGIN, "jable")
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail={"reason": "cf_unavailable"}) from exc
-        raise HTTPException(status_code=409, detail={"reason": "cf_challenge"})
-    except CfTransportUnavailable as exc:
-        raise HTTPException(status_code=503, detail={"reason": "cf_unavailable"}) from exc
-    except Exception as exc:
-        logger.exception("Jable public-title lookup failed for %s", normalized)
-        raise HTTPException(status_code=502, detail={"reason": "title_lookup_failed"}) from exc
 
 
 @router.post("")

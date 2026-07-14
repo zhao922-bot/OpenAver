@@ -166,9 +166,9 @@ class PyWebViewCfTransport:
     """
     CfTransport implementation backed by a dedicated hidden PyWebView window.
 
-    The window stays hidden for background-capable sites such as Jable.
-    JavLibrary challenges remain visible when user interaction may be needed.
-    is_ready() polls state without blocking and hides the window when ready.
+    The window stays hidden at rest. begin_solve() shows it so the user can
+    complete the CF challenge and age gate. is_ready() polls state without
+    blocking and hides the window when ready.
     """
 
     def __init__(self, jl_window: webview.Window) -> None:
@@ -178,7 +178,6 @@ class PyWebViewCfTransport:
         self._cf_urls: dict[str, str] = {}
         self._active_cache_key = "javlibrary"
         self._last_navigation_target = ""
-        self._visible_position = (100, 100)
         # Backstop: if the window is genuinely destroyed (crash / OS-forced / app
         # teardown) despite the closing-intercept in standalone.py, mark dead so
         # subsequent calls fail-fast instead of raising opaque errors on a dead window.
@@ -317,15 +316,12 @@ class PyWebViewCfTransport:
             raise CfChallengeRequired(f'age gate detected (cookie did not suppress) for {url}')
 
         logger.debug("[CF-DIAG] fetch ok (status=%s, len=%d, url=%s)", status, len(html), url)
-        if cache_key == "jable":
-            self._win.hide()
         return html
 
     def begin_solve(self, origin_url: str, cache_key: str = 'javlibrary') -> None:
         """
-        Non-blocking: navigate to the CF-challenged URL (or origin as fallback).
-        Jable navigation stays hidden; sites which may require interaction remain
-        visible. Returns immediately and does not wait for completion.
+        Non-blocking: show the window and navigate to the CF-challenged URL (or
+        origin as fallback). Returns immediately and does not wait for completion.
 
         0.9.9g: navigates to self._cf_url (the exact URL that triggered CF) when
         available, rather than origin_url.  JavLibrary's homepage (/ja/) is NOT
@@ -336,7 +332,6 @@ class PyWebViewCfTransport:
             logger.info("[CF-DIAG] begin_solve → _dead=True, raising unavailable")
             raise CfTransportUnavailable("JavLibrary CF window was unexpectedly destroyed (crash / forced close); restart OpenAver to use JavLibrary again")
         target = self._cf_urls.get(cache_key) or origin_url
-        previous_cache_key = self._active_cache_key
         is_duplicate_navigation = (
             cache_key == self._active_cache_key
             and target == self._last_navigation_target
@@ -344,22 +339,7 @@ class PyWebViewCfTransport:
         )
         self._active_cache_key = cache_key
         self._cf_url = target
-        background = cache_key == "jable"
-        if background:
-            if cache_key != previous_cache_key:
-                try:
-                    position = (self._win.x, self._win.y)
-                    if position[0] > -10000 and position[1] > -10000:
-                        self._visible_position = position
-                except Exception:
-                    pass
-            # WebView2 throttles challenge scripts when a window is truly hidden.
-            # Keep it active but outside the virtual desktop so no popup is shown.
-            self._win.move(-32000, -32000)
-            self._win.show()
-        else:
-            self._win.move(*self._visible_position)
-            self._win.show()
+        self._win.show()
         if is_duplicate_navigation:
             logger.debug(
                 "[CF-DIAG] begin_solve: navigation already in progress "
@@ -370,8 +350,7 @@ class PyWebViewCfTransport:
             return
         self._last_navigation_target = target
         logger.info(
-            "[CF-DIAG] begin_solve → %s + load_url (target=%s) %s",
-            "offscreen" if background else "show",
+            "[CF-DIAG] begin_solve → show + load_url (target=%s) %s",
             target,
             self._event_states(),
         )
@@ -451,9 +430,8 @@ class PyWebViewCfTransport:
         _lvl = logger.info if (ready or cf) else logger.debug
         _lvl("[CF-DIAG] is_ready=%s (cf=%s, age_gate=%s, title=%r) %s", ready, cf, ag, (title or "")[:80], self._event_states())
 
-        # 5. Interactive windows hide when ready. Jable stays active offscreen
-        # until fetch() completes so WebView2 does not throttle the final request.
-        if ready and cache_key != "jable":
+        # 5. Auto-hide when ready.
+        if ready:
             self._win.hide()
 
         return ready
