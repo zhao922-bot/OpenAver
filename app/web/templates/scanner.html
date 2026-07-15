@@ -218,6 +218,19 @@
             </button>
         </div>
 
+        <!-- ops10: Missing Sample Images (剧照) -->
+        <div class="nfo-update-row" x-show="missingSamplesVisible">
+            <span class="nfo-badge">
+                <i class="bi bi-images"></i>
+                <span x-text="missingSamplesLabel"></span>
+            </span>
+            <button class="btn-nfo-update" @click="runBatchFetchSamples()"
+                    x-bind:disabled="isBusy || missingSamplesItems.length === 0"
+                    x-html="missingSamplesButtonText"
+                    :title="window.t('scanner.stats.samples_fill_title')">
+            </button>
+        </div>
+
         <!-- T10: Resume Pill (未完成提示) -->
         <div class="nfo-update-row" x-show="resumePillVisible">
             <span class="nfo-badge">

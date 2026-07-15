@@ -316,6 +316,16 @@ def init_db(db_path: Path = None) -> None:
         cursor.execute("ALTER TABLE videos DROP COLUMN clip_model_id")  # 57d 連帶刪
         existing_cols.discard('clip_model_id')  # 57d 連帶刪
 
+    # NFO update no-op fingerprints (repeated network no-ops)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS nfo_update_noop (
+            path TEXT PRIMARY KEY NOT NULL,
+            fingerprint TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            expires_at REAL NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -1441,6 +1451,20 @@ class VideoRepository:
                     dumps_json_map(new_tmeta),
                     path,
                 ),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def set_nfo_mtime(self, path: str, nfo_mtime: float) -> bool:
+        """Sync videos.nfo_mtime to the actual sidecar file mtime after an NFO write."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE videos SET nfo_mtime = ?, updated_at = CURRENT_TIMESTAMP WHERE path = ?",
+                (float(nfo_mtime), path),
             )
             conn.commit()
             return cursor.rowcount > 0

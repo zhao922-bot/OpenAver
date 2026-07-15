@@ -1,4 +1,5 @@
 import { dirPath } from '@/shared/dir-path.js';
+import { shouldClearNfoSelectionAfterUpdate } from './nfo-update-selection.js';
 
 export function stateScan() {
     return {
@@ -77,6 +78,8 @@ export function stateScan() {
 
         // ===== T7b: EventSource 管理 =====
         eventSource: null,
+        // NFO update POST stream abort (fetch + ReadableStream; not EventSource)
+        _nfoUpdateAbortController: null,
 
         // ===== Computed Properties =====
         get isFolderDirty() {
@@ -98,7 +101,8 @@ export function stateScan() {
 
         get isGenerating() {
             return this.state === 'generating' || this.state === 'nfoUpdating'
-                || this.state === 'jellyfinUpdating' || this.state === 'enriching';
+                || this.state === 'jellyfinUpdating' || this.state === 'enriching'
+                || this.state === 'samplesFetching';
         },
 
         get isBusy() {
@@ -165,6 +169,8 @@ export function stateScan() {
 
             // T10: 觸發 missing check（loadStats 後）
             this.checkMissing();
+            // ops10: 缺少劇照檢查
+            this.checkMissingSamples();
 
             // T10: restore pending enrich
             const pending = localStorage.getItem('avlist_enrich_pending');
@@ -219,6 +225,11 @@ export function stateScan() {
                             this._jellyfinCheckController = null;
                         }
                         this.jellyfinCheckState = 'idle';
+                        // NFO update POST stream cleanup
+                        if (this._nfoUpdateAbortController) {
+                            this._nfoUpdateAbortController.abort();
+                            this._nfoUpdateAbortController = null;
+                        }
                         // T10: save pending enrich items on leave
                         if (this.state === 'enriching' && this.missingItems.length > this.missingEnrichOffset) {
                             localStorage.setItem('avlist_enrich_pending', JSON.stringify(this.missingItems.slice(this.missingEnrichOffset)));
@@ -226,6 +237,14 @@ export function stateScan() {
                         if (this._enrichAbortController) {
                             this._enrichAbortController.abort();
                             this._enrichAbortController = null;
+                        }
+                        // ops10: abort batch sample fetch
+                        if (this._samplesAbortController) {
+                            this._samplesAbortController.abort();
+                            this._samplesAbortController = null;
+                        }
+                        if (this.state === 'samplesFetching') {
+                            this.state = 'idle';
                         }
                     }
                 });
@@ -856,6 +875,8 @@ export function stateScan() {
 
                         // T10: 掃描完成後檢查缺失 NFO/封面
                         this.checkMissing();
+                        // ops10: 掃描完成後檢查缺少劇照
+                        this.checkMissingSamples();
 
                         // 更新資料夾快照（generate 成功視為儲存）
                         this.folderSnapshot = JSON.stringify(this.directories);
@@ -887,6 +908,8 @@ export function stateScan() {
         },
 
         // ===== T7b: NFO Update Flow =====
+        // POST selected nfoUpdatePaths with fetch + ReadableStream SSE
+        // (same pattern as state-batch.js runMissingEnrich). Avoids huge GET query strings.
         async runNfoUpdate() {
             // 互斥鎖定
             if (this.isGenerating) return;
@@ -896,71 +919,162 @@ export function stateScan() {
                 return;
             }
 
+            const selectedPaths = Array.isArray(this.nfoUpdatePaths)
+                ? this.nfoUpdatePaths.slice()
+                : [];
+            if (selectedPaths.length === 0) {
+                this.showToast('沒有可更新的路徑（請先掃描）', 'warn');
+                return;
+            }
+
             // 重置狀態
             this.state = 'nfoUpdating';
             this.progressStatus = '準備中...';
             this.progressCurrent = 0;
-            this.progressTotal = 0;
+            this.progressTotal = selectedPaths.length;
             this.clearLogs();
 
             localStorage.setItem('avlist_generating', 'true');
 
+            const controller = new AbortController();
+            this._nfoUpdateAbortController = controller;
+
             try {
-                this.eventSource = new EventSource('/api/gallery/update');
-
-                this.eventSource.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-
-                    if (data.type === 'progress') {
-                        this.progressStatus = data.status;
-                        this.progressCurrent = data.current;
-                        this.progressTotal = data.total;
-                        localStorage.setItem('avlist_last_status', data.status);
-                    } else if (data.type === 'log') {
-                        this.addLog(data.level, data.message);
-                    } else if (data.type === 'done') {
-                        this.eventSource.close();
-                        this.eventSource = null;
-                        this.state = 'done';
-                        this.progressStatus = data.message || '完成';
-                        this.progressCurrent = this.progressTotal;
-
+                let resp;
+                try {
+                    resp = await fetch('/api/gallery/update', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paths: selectedPaths }),
+                        signal: controller.signal,
+                    });
+                } catch (fetchErr) {
+                    if (fetchErr.name === 'AbortError') {
                         localStorage.setItem('avlist_generating', 'false');
-                        localStorage.setItem('avlist_last_status', data.message || '完成');
-
-                        this.showToast('補全完成！請重新產生列表以更新', 'success');
-                        if (data.message) {
-                            this.addLog('info', data.message);
-                        }
-                        this.flushLogs();
-
-                        // 隱藏 NFO 更新按鈕（已完成）
-                        this.nfoNeedUpdateCount = 0;
-                        this.nfoUpdateVisible = false;
-                    } else if (data.type === 'error') {
-                        this.eventSource.close();
-                        this.eventSource = null;
-                        this.state = 'error';
-                        this.addLog('error', '錯誤: ' + data.message);
-                        this.flushLogs();
-                        localStorage.setItem('avlist_generating', 'false');
+                        return;
                     }
-                };
+                    throw fetchErr;
+                }
 
-                this.eventSource.onerror = () => {
-                    if (this.state === 'done') return;
-                    this.eventSource.close();
-                    this.eventSource = null;
+                if (!resp.ok) {
+                    let errMsg = `HTTP ${resp.status}`;
+                    try {
+                        const errJson = await resp.json();
+                        if (errJson && errJson.error) errMsg = errJson.error;
+                    } catch (_) {
+                        try {
+                            errMsg = await resp.text();
+                        } catch (_) { /* keep status */ }
+                    }
+                    this.state = 'error';
+                    this.addLog('error', '錯誤: ' + errMsg);
+                    this.flushLogs();
+                    localStorage.setItem('avlist_generating', 'false');
+                    this.showToast(errMsg || window.t('scanner.toast.nfo_update_error'), 'error', 4000);
+                    return;
+                }
+
+                // Read SSE stream (same pattern as state-batch.js)
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let streamDone = false;
+                let donePayload = null;
+
+                while (!streamDone) {
+                    let readResult;
+                    try {
+                        readResult = await reader.read();
+                    } catch (readErr) {
+                        if (readErr.name === 'AbortError') {
+                            localStorage.setItem('avlist_generating', 'false');
+                            return;
+                        }
+                        break;
+                    }
+                    const { done, value } = readResult;
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        let data;
+                        try {
+                            data = JSON.parse(line.slice(6));
+                        } catch { continue; }
+
+                        if (data.type === 'progress') {
+                            this.progressStatus = data.status;
+                            this.progressCurrent = data.current;
+                            this.progressTotal = data.total || selectedPaths.length;
+                            localStorage.setItem('avlist_last_status', data.status);
+                        } else if (data.type === 'log') {
+                            this.addLog(data.level, data.message);
+                        } else if (data.type === 'done') {
+                            streamDone = true;
+                            donePayload = data;
+                        } else if (data.type === 'error') {
+                            this.state = 'error';
+                            this.addLog('error', '錯誤: ' + data.message);
+                            this.flushLogs();
+                            localStorage.setItem('avlist_generating', 'false');
+                            this.showToast(data.message || window.t('scanner.toast.nfo_update_error'), 'error', 4000);
+                            return;
+                        }
+                    }
+                }
+
+                if (!streamDone || !donePayload) {
                     this.state = 'error';
                     this.addLog('error', '連線中斷');
                     this.flushLogs();
                     localStorage.setItem('avlist_generating', 'false');
-                };
+                    return;
+                }
+
+                this.state = 'done';
+                this.progressStatus = donePayload.message || '完成';
+                this.progressCurrent = this.progressTotal;
+
+                localStorage.setItem('avlist_generating', 'false');
+                localStorage.setItem('avlist_last_status', donePayload.message || '完成');
+
+                const updated = donePayload.updated || 0;
+                const failed = donePayload.failed || 0;
+                const toastMsg = donePayload.message
+                    || (updated > 0
+                        ? `補全完成（更新 ${updated} 部），請重新產生列表以更新`
+                        : '補全完成（無檔案寫入）');
+                this.showToast(toastMsg, failed > 0 ? 'warn' : 'success');
+                if (donePayload.message) {
+                    this.addLog('info', donePayload.message);
+                }
+                this.flushLogs();
+
+                // Clear selection only when no hard failures remain.
+                // If failed > 0, keep paths + retry control (complete items
+                // preflight-skip quickly on retry).
+                if (shouldClearNfoSelectionAfterUpdate(failed)) {
+                    this.nfoNeedUpdateCount = 0;
+                    this.nfoUpdatePaths = [];
+                    this.nfoUpdateVisible = false;
+                }
             } catch (e) {
+                if (e && e.name === 'AbortError') {
+                    localStorage.setItem('avlist_generating', 'false');
+                    return;
+                }
                 this.state = 'error';
                 localStorage.setItem('avlist_generating', 'false');
                 console.error('[Scanner] runNfoUpdate error:', e);
                 this.showToast(window.t('scanner.toast.nfo_update_error'), 'error', 4000);
+            } finally {
+                if (this._nfoUpdateAbortController === controller) {
+                    this._nfoUpdateAbortController = null;
+                }
             }
         },
 

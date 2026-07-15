@@ -62,17 +62,40 @@ def _redact_url(url: str) -> str:
         return "[REDACTED_URL]"
 
 
+# Authorization header / key forms:
+#   Authorization: Bearer SECRET
+#   Authorization = "Basic SECRET"
+#   {"Authorization": "Basic SECRET"}
+#   {'Authorization': 'Bearer SECRET'}
+#   Authorization: CustomScheme SECRET
+# Redact the entire value (including scheme + credentials), keep surrounding text.
+_AUTH_HEADER_RE = re.compile(
+    r"""(?ix)
+    (?:
+        ["']Authorization["']   # JSON / Python-dict key
+        |
+        \bAuthorization         # plain header name
+    )
+    \s*[:=]\s*
+    (?:
+        "(?:\\.|[^"\\])*"       # double-quoted value
+        |
+        '(?:\\.|[^'\\])*'       # single-quoted value
+        |
+        (?:Bearer|Basic|[A-Za-z][\w+.-]*)\s+\S+  # scheme + credentials
+        |
+        \S+                     # bare token
+    )
+    """,
+)
+
+
 def _redact_log_text(text: str) -> str:
     """Redact secrets and signed media URLs from free-form log text."""
     if not text:
         return text
-    # Authorization: Bearer <token>  or  Authorization: <token>
-    # Must run before generic key=value so the whole header value is covered.
-    text = re.sub(
-        r"(?i)\bAuthorization\s*[:=]\s*(?:Bearer\s+)?\S+",
-        "Authorization: ***REDACTED***",
-        text,
-    )
+    # Must run before generic key=value so the whole Authorization value is covered.
+    text = _AUTH_HEADER_RE.sub("Authorization: ***REDACTED***", text)
     # Standalone Bearer tokens (HTTP header value without Authorization key)
     text = re.sub(
         r"(?i)\bBearer\s+\S+",

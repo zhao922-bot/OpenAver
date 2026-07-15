@@ -347,14 +347,11 @@ class MediaDownloadManager:
                 result["error_message"] = ERROR_MESSAGES_ZH.get(
                     result["error_code"], result.get("message", "")
                 )
-        # ETA remaining when we have duration + progress
-        duration = result.get("duration_seconds")
-        progress = result.get("progress") or 0
-        if duration and progress and 0 < progress < 100:
-            remaining = max(0.0, duration * (1 - progress / 100.0))
-            result["eta_seconds"] = round(remaining, 1)
-        else:
-            result.setdefault("eta_seconds", None)
+        # ETA is set by _run from yt-dlp or wall_elapsed/progress estimate.
+        # duration_seconds is video length (seconds of media), NOT total download
+        # time — never recompute ETA from it (would turn e.g. 120s into 3600s).
+        if "eta_seconds" not in result:
+            result["eta_seconds"] = None
         return result
 
     def settings(self) -> dict:
@@ -545,10 +542,23 @@ class MediaDownloadManager:
                 return True
             time.sleep(0.2)
 
-    def _write_assets_and_import(self, payload: dict, output_path: Path, duration: float | None) -> None:
+    def _write_assets_and_import(
+        self, payload: dict, output_path: Path, duration: float | None
+    ) -> dict:
+        """Write NFO/cover sidecars then scan+import into the library DB.
+
+        Video download has already succeeded. Sidecar failures are recorded as
+        warnings / import_error but must not skip DB import or reclassify the
+        task as a download failure.
+
+        Returns:
+            ``{"warnings": list[str], "import_error": str}`` — client-safe
+            messages only (no signed cover URLs).
+        """
+        warnings: list[str] = []
         stem = output_path.stem
         title = payload.get("chinese_title") or payload.get("title") or ""
-        generate_nfo(
+        nfo_ok = generate_nfo(
             number=payload["number"], title=title, original_title=payload.get("title", ""),
             actors=payload.get("actors", []), tags=payload.get("tags", []), date=payload.get("date", ""),
             maker=payload.get("maker", ""), url=payload.get("source_page_url", ""),
@@ -556,15 +566,28 @@ class MediaDownloadManager:
             director=payload.get("director", ""), series=payload.get("series", ""), label=payload.get("label", ""),
             external_manager=load_config().get("scraper", {}).get("external_manager", "off"),
         )
+        if not nfo_ok:
+            warnings.append("NFO 写入失败")
+            logger.warning("NFO write failed for %s", payload["number"])
+
         cover = payload.get("cover", "")
         if cover:
             try:
                 _validate_network_target(cover, allow_private=self.allow_private_urls)
-                download_image(cover, str(output_path.with_name(stem + ".jpg")))
+                cover_ok = download_image(cover, str(output_path.with_name(stem + ".jpg")))
+                if not cover_ok:
+                    warnings.append("封面下载失败")
+                    logger.warning("Cover download failed for %s", payload["number"])
             except DownloadValidationError:
+                warnings.append("封面 URL 不安全，已跳过")
                 logger.warning("Skipped unsafe cover URL for %s", payload["number"])
+
+        # Always attempt library import even when sidecars failed.
         info = VideoScanner().scan_file(str(output_path), None)
         VideoRepository().upsert(Video.from_video_info(info))
+
+        import_error = "；".join(warnings) if warnings else ""
+        return {"warnings": warnings, "import_error": import_error}
 
     def _run(self, task_id: str) -> None:
         process: subprocess.Popen | None = None
@@ -719,7 +742,8 @@ class MediaDownloadManager:
                 os.replace(downloaded_path, output_path)
                 import_error = ""
                 try:
-                    self._write_assets_and_import(payload, output_path, duration)
+                    asset_result = self._write_assets_and_import(payload, output_path, duration)
+                    import_error = _redact_urls(asset_result.get("import_error") or "")
                 except Exception as exc:
                     logger.exception("Downloaded %s but library import failed", payload["number"])
                     import_error = _redact_urls(str(exc))

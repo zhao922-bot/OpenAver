@@ -5,6 +5,9 @@ Stores JSONL entries under output/rename_history.jsonl.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -14,6 +17,10 @@ from core.database import get_db_path
 from core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Guards append / read / rewrite against in-process concurrent access.
+# RLock so nested same-thread calls (e.g. rewrite helpers) never deadlock.
+_journal_lock = threading.RLock()
 
 
 def _journal_path() -> Path:
@@ -26,32 +33,34 @@ def append_event(event: dict[str, Any]) -> dict[str, Any]:
     entry.setdefault("id", uuid.uuid4().hex[:12])
     entry.setdefault("created_at", time.strftime("%Y-%m-%dT%H:%M:%S"))
     path = _journal_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with _journal_lock:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     return entry
 
 
 def list_events(limit: int = 50) -> list[dict[str, Any]]:
     path = _journal_path()
-    if not path.is_file():
-        return []
-    rows: list[dict[str, Any]] = []
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        for line in reversed(lines):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-            if len(rows) >= max(1, min(limit, 200)):
-                break
-    except OSError as exc:
-        logger.warning("rename journal read failed: %s", exc)
-    return rows
+    with _journal_lock:
+        if not path.is_file():
+            return []
+        rows: list[dict[str, Any]] = []
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for line in reversed(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+                if len(rows) >= max(1, min(limit, 200)):
+                    break
+        except OSError as exc:
+            logger.warning("rename journal read failed: %s", exc)
+        return rows
 
 
 def get_event(event_id: str) -> Optional[dict[str, Any]]:
@@ -61,33 +70,73 @@ def get_event(event_id: str) -> Optional[dict[str, Any]]:
     return None
 
 
-def _rewrite_event(event_id: str, mutator) -> bool:
-    """Apply mutator(obj) in-place for matching id; rewrite journal file."""
-    path = _journal_path()
-    if not path.is_file():
-        return False
+def _atomic_write_journal(path: Path, content: str) -> bool:
+    """Write journal content atomically via temp file + fsync + os.replace.
+
+    On any failure: preserve the original journal, remove the temp file, return False.
+    """
+    tmp_path: Optional[str] = None
+    fd: Optional[int] = None
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        out = []
-        found = False
-        for line in lines:
-            if not line.strip():
-                continue
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".rename_journal_",
+            suffix=".tmp",
+            dir=str(path.parent),
+        )
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            fd = None  # ownership transferred to file object
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        # File closed; atomically replace the journal
+        os.replace(tmp_path, path)
+        tmp_path = None  # ownership transferred to destination
+        return True
+    except Exception as exc:
+        logger.warning("rename journal atomic write failed: %s", exc)
+        if fd is not None:
             try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                out.append(line)
-                continue
-            if obj.get("id") == event_id:
-                mutator(obj)
-                found = True
-            out.append(json.dumps(obj, ensure_ascii=False))
-        if found:
-            path.write_text("\n".join(out) + "\n", encoding="utf-8")
-        return found
-    except OSError as exc:
-        logger.warning("rename journal rewrite failed: %s", exc)
+                os.close(fd)
+            except OSError:
+                pass
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
         return False
+
+
+def _rewrite_event(event_id: str, mutator) -> bool:
+    """Apply mutator(obj) in-place for matching id; rewrite journal file atomically."""
+    path = _journal_path()
+    with _journal_lock:
+        if not path.is_file():
+            return False
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            out = []
+            found = False
+            for line in lines:
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    # Preserve malformed lines as-is
+                    out.append(line)
+                    continue
+                if obj.get("id") == event_id:
+                    mutator(obj)
+                    found = True
+                out.append(json.dumps(obj, ensure_ascii=False))
+            if not found:
+                return False
+            content = "\n".join(out) + "\n"
+            return _atomic_write_journal(path, content)
+        except OSError as exc:
+            logger.warning("rename journal rewrite failed: %s", exc)
+            return False
 
 
 def mark_rolled_back(event_id: str) -> bool:

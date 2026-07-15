@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import shutil
+import tempfile
 import requests
 import html
 from pathlib import Path
@@ -524,10 +525,16 @@ def generate_jellyfin_images(cover_path: str, base_stem: str) -> dict:
 
 
 def download_image(url: str, save_path: str, referer: str = '') -> bool:
-    """下載圖片（來源專用 Referer/UA + 重試）"""
+    """下載圖片（來源專用 Referer/UA + 重試）。
+
+    Writes atomically (same-dir temp + flush/fsync + os.replace). On any failure
+    the temp file is removed and the original destination is left unchanged.
+    Content must look like a real image (magic bytes), not HTML/random bytes.
+    """
     if not url:
         return False
     from core.image_headers import headers_for_image_url
+    from core.sample_images import looks_like_image_bytes
 
     headers = headers_for_image_url(url, extra_referer=referer)
     for attempt in range(2):
@@ -538,8 +545,11 @@ def download_image(url: str, save_path: str, referer: str = '') -> bool:
                 if "text/html" in ctype:
                     logger.warning("[!] 下載圖片得到 HTML 而非圖片: %s", url)
                     return False
-                with open(save_path, 'wb') as f:
-                    f.write(resp.content)
+                if not looks_like_image_bytes(resp.content):
+                    logger.warning("[!] 下載內容不是有效圖片（簽名不符）: %s", url)
+                    return False
+                if not _atomic_write_bytes(save_path, resp.content):
+                    return False
                 return True
             if resp.status_code in (403, 404, 410):
                 logger.debug("download_image HTTP %s for %s", resp.status_code, url)
@@ -549,6 +559,54 @@ def download_image(url: str, save_path: str, referer: str = '') -> bool:
                 continue
             logger.warning(f"[!] 下載圖片失敗: {e}")
     return False
+
+
+def _atomic_write_bytes(save_path: str, content: bytes) -> bool:
+    """Write *content* to *save_path* via temp file + fsync + os.replace.
+
+    On failure: remove temp, leave any existing destination untouched, return False.
+    """
+    dest = Path(save_path)
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning("[!] 無法建立圖片目錄 %s: %s", dest.parent, e)
+        return False
+
+    tmp_path: Optional[str] = None
+    fd: Optional[int] = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=f".{dest.name}.",
+            suffix=".tmp",
+            dir=str(dest.parent),
+        )
+        with os.fdopen(fd, "wb") as f:
+            fd = None  # ownership transferred
+            f.write(content)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                # Some filesystems / virtual mounts may not support fsync.
+                pass
+        os.replace(tmp_path, dest)
+        tmp_path = None
+        return True
+    except Exception as e:
+        logger.warning("[!] 原子寫入圖片失敗 %s: %s", save_path, e)
+        return False
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 

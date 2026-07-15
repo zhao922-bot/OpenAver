@@ -6,7 +6,8 @@ Scanner API 路由 - 影片列表生成
 - GET  /api/gallery/stats                 — 取得 Scanner 統計資訊（影片總數）
 - DELETE /api/gallery/cache               — 清除所有影片快取（清空 SQLite）
 - GET  /api/gallery/update-check          — 檢查需要補全 NFO 的影片數量
-- GET  /api/gallery/update                — 執行 NFO 補全更新（SSE 串流）
+- GET  /api/gallery/update                — 執行 NFO 補全更新（SSE 串流，全庫候選）
+- POST /api/gallery/update                — 對選中 paths 執行 NFO 補全（SSE 串流 + JSON body）
 - GET  /api/gallery/view                  — 取得產生的 HTML 列表頁面
 - GET  /api/gallery/image                 — 代理圖片請求（解決 file:// 限制）
 - GET  /api/gallery/video                 — 代理影片請求，支援 Range 請求（影片 seek）
@@ -29,7 +30,7 @@ import requests
 from datetime import datetime
 from urllib.parse import unquote, quote
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional
+from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Tuple
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse, HTMLResponse, Response, FileResponse, JSONResponse
@@ -38,7 +39,11 @@ from core.gallery_scanner import VideoScanner, fast_scan_directory, VideoInfo, _
 from core.video_extensions import get_proxy_extensions, get_video_extensions
 from core.gallery_generator import HTMLGenerator
 from core.path_utils import to_file_uri, is_path_under_dir, uri_to_fs_path
-from core.nfo_updater import check_cache_needs_update, update_videos_generator
+from core.nfo_updater import (
+    MAX_NFO_UPDATE_PATHS,
+    check_cache_needs_update,
+    update_videos_generator,
+)
 from core.database import VideoRepository, Video, init_db, get_db_path, migrate_json_to_sqlite
 from core.organizer import generate_jellyfin_images, HEADERS as _EMBED_HEADERS
 from core.config import get_gallery_source_paths, iter_gallery_sources, load_config
@@ -46,7 +51,7 @@ from core.readonly_producer import produce_source, resolve_output_root
 from core import thumbnail_cache
 from core.scraper import smart_search
 from core.source_settings import is_uncensored_mode_effective
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from core.logger import get_logger
 from web.routers.notifications import emit_notification as _emit_notif
 
@@ -508,28 +513,16 @@ def generate_avlist(force_full: bool = False) -> Generator[str, None, None]:
         # 檢查本次新增影片是否需要 NFO 補全（建構相容的 cache 格式）
         session_update = {"count": 0, "paths": []}
         if session_added_paths:
-            # 建立只包含本次新增影片的 session_cache（相容 check_cache_needs_update 格式）
-            session_cache = {}
+            session_videos = []
             for path in session_added_paths:
                 video = repo.get_by_path(path)
                 if video:
-                    session_cache[path] = {
-                        'nfo_mtime': video.nfo_mtime,
-                        'info': {
-                            'title': video.title,
-                            'date': video.release_date,
-                            'actor': ','.join(video.actresses) if video.actresses else '',
-                            'genre': ','.join(video.tags) if video.tags else '',
-                            'maker': video.maker,
-                            'num': video.number or '',
-                            'director': video.director or '',
-                            'duration': video.duration,
-                            'series': video.series or '',
-                            'label': video.label or '',
-                        }
-                    }
-            if session_cache:
-                session_stats = check_cache_needs_update(session_cache)
+                    session_videos.append(video)
+            if session_videos:
+                session_cache = _build_nfo_cache_for_videos(session_videos)
+                session_stats = check_cache_needs_update(
+                    session_cache, db_path=db_path
+                )
                 session_update = {
                     "count": session_stats['need_update'],
                     "paths": session_stats['paths']
@@ -718,39 +711,22 @@ def check_update():
 
         repo = VideoRepository(db_path)
         all_videos = repo.get_all()
-
-        # 建構相容 check_cache_needs_update 的格式
-        cache = {}
-        for v in all_videos:
-            cache[v.path] = {
-                'nfo_mtime': v.nfo_mtime,
-                'info': {
-                    'title': v.title,
-                    'date': v.release_date,
-                    'actor': ','.join(v.actresses) if v.actresses else '',
-                    'genre': ','.join(v.tags) if v.tags else '',
-                    'maker': v.maker,
-                    'num': v.number or '',
-                    'director': v.director or '',
-                    'duration': v.duration,
-                    'series': v.series or '',
-                    'label': v.label or '',
-                }
-            }
-
-        stats = check_cache_needs_update(cache)
+        cache = _build_nfo_cache_for_videos(all_videos)
+        stats = check_cache_needs_update(cache, db_path=db_path)
 
         # 不要返回 paths 列表（太大）
         return {
             "success": True,
             "data": {
                 "need_update": stats['need_update'],
+                "suppressed_noop": stats.get('suppressed_noop', 0),
                 "details": {
                     "no_title": stats['no_title'],
                     "no_date": stats['no_date'],
                     "no_actor": stats['no_actor'],
                     "no_genre": stats['no_genre'],
                     "no_maker": stats['no_maker'],
+                    "no_duration": stats.get('no_duration', 0),
                 }
             }
         }
@@ -811,9 +787,143 @@ def check_missing():
         return {"success": False, "error": "檢查缺失 NFO/封面失敗"}
 
 
-def generate_nfo_update() -> Generator[str, None, None]:
-    """NFO 更新生成器（SSE 串流）- 使用 SQLite"""
+def _video_to_nfo_cache_entry(v: Video) -> dict:
+    """Build cache entry compatible with check_cache_needs_update / update_videos_generator."""
+    return {
+        "nfo_mtime": v.nfo_mtime,
+        "info": {
+            "title": v.title,
+            "date": v.release_date,
+            "actor": ",".join(v.actresses) if v.actresses else "",
+            "genre": ",".join(v.tags) if v.tags else "",
+            "maker": v.maker,
+            "num": v.number or "",
+            "director": v.director or "",
+            "duration": v.duration,
+            "series": v.series or "",
+            "label": v.label or "",
+        },
+    }
 
+
+def _build_nfo_cache_for_videos(videos: List[Video]) -> Dict[str, dict]:
+    return {v.path: _video_to_nfo_cache_entry(v) for v in videos}
+
+
+def _format_nfo_done_message(result: dict) -> str:
+    """Human-readable summary for the done SSE event."""
+    parts = [
+        f"選取 {result.get('selected', 0)}",
+        f"更新 {result.get('updated', 0)}",
+        f"已完整 {result.get('skipped_complete', 0)}",
+        f"抑制 {result.get('suppressed_noop', 0)}",
+        f"無資料 {result.get('no_metadata', 0)}",
+        f"失敗 {result.get('failed', 0)}",
+    ]
+    elapsed = result.get("elapsed")
+    if elapsed is not None:
+        parts.append(f"耗時 {elapsed}s")
+    return "NFO 補全完成：" + "，".join(parts)
+
+
+def _gallery_configured_dir_uris(config: Optional[dict] = None) -> List[str]:
+    """Return configured gallery directory URIs for path whitelist checks."""
+    if config is None:
+        config = load_config()
+    gallery_config = config.get("gallery", {}) or {}
+    directories = get_gallery_source_paths(gallery_config)
+    path_mappings = gallery_config.get("path_mappings", {}) or {}
+    uris: List[str] = []
+    for d in directories:
+        try:
+            uris.append(d if d.startswith("file:///") else to_file_uri(d, path_mappings))
+        except ValueError:
+            continue
+    return uris
+
+
+def _path_under_gallery(path: str, dir_uris: Sequence[str]) -> bool:
+    return any(is_path_under_dir(path, uri) for uri in dir_uris)
+
+
+class NfoUpdateRequest(BaseModel):
+    """POST /api/gallery/update body — selected paths only (no huge GET query)."""
+    paths: List[str] = Field(default_factory=list)
+    force: bool = False
+
+
+def validate_nfo_update_paths(
+    paths: List[str],
+    *,
+    repo: VideoRepository,
+    dir_uris: Sequence[str],
+    max_paths: int = MAX_NFO_UPDATE_PATHS,
+) -> Tuple[List[str], Optional[str]]:
+    """Validate, deduplicate, and cap submitted paths.
+
+    Returns (accepted_paths, error_message).
+    On error, accepted_paths is empty and error_message is set.
+    Does NOT fall back to the whole library.
+    """
+    if not paths:
+        return [], "paths 不可為空"
+
+    # Fail closed: selected-mode must only touch configured libraries
+    if not dir_uris:
+        return [], "未設定 gallery 資料夾，無法驗證 paths（請先在設定中指定資料夾）"
+
+    # Deduplicate preserving order
+    seen = set()
+    deduped: List[str] = []
+    for p in paths:
+        if not isinstance(p, str) or not p.strip():
+            continue
+        key = p.strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(key)
+
+    if not deduped:
+        return [], "paths 不可為空"
+
+    if len(deduped) > max_paths:
+        return [], f"paths 超過上限 {max_paths}（目前 {len(deduped)}）"
+
+    not_in_db: List[str] = []
+    outside: List[str] = []
+    accepted: List[str] = []
+    for p in deduped:
+        video = repo.get_by_path(p)
+        if video is None:
+            not_in_db.append(p)
+            continue
+        if not _path_under_gallery(p, dir_uris):
+            outside.append(p)
+            continue
+        accepted.append(p)
+
+    if not_in_db or outside:
+        details = []
+        if not_in_db:
+            details.append(f"{len(not_in_db)} 筆不在資料庫")
+        if outside:
+            details.append(f"{len(outside)} 筆不在設定的資料夾範圍")
+        return [], "paths 驗證失敗：" + "、".join(details)
+
+    if not accepted:
+        return [], "沒有可處理的 paths"
+
+    return accepted, None
+
+
+def _run_nfo_update_stream(
+    paths: Optional[List[str]] = None,
+    *,
+    force: bool = False,
+    selected_mode: bool = False,
+) -> Generator[str, None, None]:
+    """SSE stream that correctly captures update_videos_generator return stats."""
     try:
         db_path = get_db_path()
 
@@ -822,51 +932,104 @@ def generate_nfo_update() -> Generator[str, None, None]:
             return
 
         repo = VideoRepository(db_path)
-        all_videos = repo.get_all()
 
-        if not all_videos:
-            yield _sse_event({"type": "done", "message": "沒有影片資料", "updated": 0})
-            return
+        if selected_mode:
+            if not paths:
+                yield _sse_event({
+                    "type": "error",
+                    "message": "未提供有效的 paths（不會回退到全庫）",
+                })
+                return
+            videos = []
+            for p in paths:
+                v = repo.get_by_path(p)
+                if v is not None:
+                    videos.append(v)
+            if not videos:
+                yield _sse_event({
+                    "type": "error",
+                    "message": "選中的 paths 均不在資料庫中",
+                })
+                return
+            cache = _build_nfo_cache_for_videos(videos)
+            paths_to_update = [v.path for v in videos]
+            yield _sse_event({
+                "type": "log",
+                "level": "info",
+                "message": f"執行 NFO 補全（選取 {len(paths_to_update)} 部）...",
+            })
+        else:
+            all_videos = repo.get_all()
+            if not all_videos:
+                yield _sse_event({
+                    "type": "done",
+                    "message": "沒有影片資料",
+                    "selected": 0,
+                    "updated": 0,
+                    "skipped_complete": 0,
+                    "suppressed_noop": 0,
+                    "no_metadata": 0,
+                    "failed": 0,
+                    "elapsed": 0,
+                })
+                return
 
-        # 建構相容 check_cache_needs_update 的格式
-        cache = {}
-        for v in all_videos:
-            cache[v.path] = {
-                'nfo_mtime': v.nfo_mtime,
-                'info': {
-                    'title': v.title,
-                    'date': v.release_date,
-                    'actor': ','.join(v.actresses) if v.actresses else '',
-                    'genre': ','.join(v.tags) if v.tags else '',
-                    'maker': v.maker,
-                    'num': v.number or '',
-                    'director': v.director or '',
-                    'duration': v.duration,
-                    'series': v.series or '',
-                    'label': v.label or '',
-                }
-            }
+            cache = _build_nfo_cache_for_videos(all_videos)
+            check = check_cache_needs_update(cache, force=force, db_path=db_path)
+            if check["need_update"] == 0:
+                yield _sse_event({
+                    "type": "done",
+                    "message": "沒有需要更新的影片",
+                    "selected": 0,
+                    "updated": 0,
+                    "skipped_complete": 0,
+                    "suppressed_noop": check.get("suppressed_noop", 0),
+                    "no_metadata": 0,
+                    "failed": 0,
+                    "elapsed": 0,
+                })
+                return
+            paths_to_update = check["paths"]
+            yield _sse_event({
+                "type": "log",
+                "level": "info",
+                "message": f"執行 NFO 檢查 ({len(paths_to_update)} 部)...",
+            })
 
-        # 檢查需要更新的影片
-        stats = check_cache_needs_update(cache)
-        if stats['need_update'] == 0:
-            yield _sse_event({"type": "done", "message": "沒有需要更新的影片", "updated": 0})
-            return
+        gen = update_videos_generator(
+            cache,
+            paths_to_update,
+            force=force,
+            db_path=db_path,
+        )
+        result: dict = {
+            "selected": len(paths_to_update),
+            "updated": 0,
+            "skipped_complete": 0,
+            "suppressed_noop": 0,
+            "no_metadata": 0,
+            "failed": 0,
+            "elapsed": 0,
+        }
+        try:
+            while True:
+                msg = next(gen)
+                yield _sse_event(msg)
+        except StopIteration as stop:
+            if stop.value and isinstance(stop.value, dict):
+                result = stop.value
 
-        paths_to_update = stats['paths']
-        yield _sse_event({
-            "type": "log",
-            "level": "info",
-            "message": f"執行 NFO 檢查 ({len(paths_to_update)} 部)..."
-        })
-
-        # 執行更新
-        for msg in update_videos_generator(cache, paths_to_update):
-            yield _sse_event(msg)
-
+        message = _format_nfo_done_message(result)
         yield _sse_event({
             "type": "done",
-            "message": "更新完成，建議重新產生網頁以更新資料庫",
+            "message": message,
+            "selected": result.get("selected", len(paths_to_update)),
+            "updated": result.get("updated", 0),
+            "skipped_complete": result.get("skipped_complete", 0),
+            "suppressed_noop": result.get("suppressed_noop", 0),
+            "no_metadata": result.get("no_metadata", 0),
+            "failed": result.get("failed", 0),
+            "elapsed": result.get("elapsed", 0),
         })
 
     except Exception as e:
@@ -876,14 +1039,51 @@ def generate_nfo_update() -> Generator[str, None, None]:
 
 @router.get("/update")
 async def run_update():
-    """執行 NFO 更新（SSE 串流回傳進度）"""
+    """執行 NFO 更新（SSE 串流回傳進度）— 全庫候選，向後相容。"""
     return StreamingResponse(
-        generate_nfo_update(),
+        _run_nfo_update_stream(selected_mode=False),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
+    )
+
+
+@router.post("/update")
+async def run_update_selected(body: NfoUpdateRequest):
+    """執行 NFO 更新（SSE）— 僅處理 body.paths，絕不回退全庫。"""
+    db_path = get_db_path()
+    if not db_path.exists():
+        return JSONResponse(
+            {"success": False, "error": "資料庫不存在，請先產生列表"},
+            status_code=400,
+        )
+
+    repo = VideoRepository(db_path)
+    dir_uris = _gallery_configured_dir_uris()
+    accepted, err = validate_nfo_update_paths(
+        body.paths,
+        repo=repo,
+        dir_uris=dir_uris,
+    )
+    if err:
+        return JSONResponse(
+            {"success": False, "error": err},
+            status_code=400,
+        )
+
+    return StreamingResponse(
+        _run_nfo_update_stream(
+            accepted,
+            force=bool(body.force),
+            selected_mode=True,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
     )
 
 

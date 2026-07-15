@@ -313,6 +313,11 @@ def _write_extrafanart(
     sample_images: List[str],
     write_extrafanart: bool,
 ) -> List[str]:
+    """Download sample stills into ``extrafanart/``.
+
+    Never overwrites an existing non-empty file (defense for concurrent /
+    partial runs). Returns URIs of files newly written in this call only.
+    """
     if not write_extrafanart or not sample_images:
         return []
 
@@ -320,12 +325,20 @@ def _write_extrafanart(
     extrafanart_dir = parent / "extrafanart"
     os.makedirs(str(extrafanart_dir), exist_ok=True)
 
+    from core.sample_images import is_valid_local_image_file
+
     written_uris: List[str] = []
     for i, url in enumerate(sample_images):
-        dest = str(extrafanart_dir / f"fanart{i+1}.jpg")
+        dest_path = extrafanart_dir / f"fanart{i+1}.jpg"
+        # Defense: never clobber existing *valid* stills. Invalid residual
+        # fragments (size>0 but non-image) may be re-downloaded.
+        if is_valid_local_image_file(dest_path):
+            continue
+        dest = str(dest_path)
         try:
             if download_image(url, dest):
-                written_uris.append(to_file_uri(dest))
+                if is_valid_local_image_file(dest_path):
+                    written_uris.append(to_file_uri(dest))
         except Exception as e:
             logger.warning("extrafanart %d 下載失敗: %s", i + 1, e)
     return written_uris
@@ -683,10 +696,19 @@ def fetch_samples_only(
     file_path: str,
     number: str,
     proxy_url: str = "",
+    db_path=None,
 ) -> EnrichResult:
     """只補抓劇照：呼叫 scraper → 下載 extrafanart → 更新 DB sample_images。
     不寫 NFO / cover / 其他欄位。
+
+    Success semantics (ops10):
+    - scraper 無 sample_images → success=False, error=\"no_samples\"
+    - 有 URL 但 0 張成功寫入且磁碟仍無有效劇照 → success=False, error=\"download_failed\"
+    - 至少 1 張有效本地劇照 → success=True；DB 只記錄實際存在的 URI
+    - ``extrafanart_written`` = 本次新寫成功的張數（非磁碟最終總數）
     """
+    from core.sample_images import extrafanart_uris_from_disk
+
     _empty = EnrichResult(
         success=False,
         nfo_written=False,
@@ -714,21 +736,46 @@ def fetch_samples_only(
         _empty.error = f"找不到 {number} 的資料"
         return _empty
 
-    sample_images = meta.get("sample_images", [])
-    written_uris = _write_extrafanart(fs_path, sample_images, write_extrafanart=True)
+    source_used = meta.get("source", "") or ""
+    sample_images = meta.get("sample_images") or []
+    if not sample_images:
+        logger.info("[fetch_samples_only] %s: scraper returned no sample_images", number)
+        _empty.error = "no_samples"
+        _empty.source_used = source_used
+        return _empty
 
-    if written_uris:
-        repo = VideoRepository()
-        _db_upsert_samples_only(repo, fs_path, written_uris)
+    newly_written = _write_extrafanart(fs_path, sample_images, write_extrafanart=True)
 
-    logger.info("[fetch_samples_only] %s: %d samples downloaded", number, len(written_uris))
+    # DB must only record URIs that actually exist on disk after this run.
+    final_uris = extrafanart_uris_from_disk(fs_path)
+    if final_uris:
+        repo = VideoRepository(db_path) if db_path is not None else VideoRepository()
+        _db_upsert_samples_only(repo, fs_path, final_uris)
+
+    if not final_uris:
+        logger.info(
+            "[fetch_samples_only] %s: 0 samples on disk (urls=%d, newly=%d)",
+            number, len(sample_images), len(newly_written),
+        )
+        _empty.error = "download_failed"
+        _empty.source_used = source_used
+        return _empty
+
+    # images_written / extrafanart_written = newly written this call only.
+    # Concurrent writers may leave valid files on disk while newly_written==0;
+    # still success=True with images_written=0, and DB synced to actual files.
+    written_count = len(newly_written)
+    logger.info(
+        "[fetch_samples_only] %s: %d newly written, %d on disk",
+        number, written_count, len(final_uris),
+    )
     return EnrichResult(
         success=True,
         nfo_written=False,
         cover_written=False,
-        extrafanart_written=len(written_uris),
+        extrafanart_written=written_count,
         fields_filled=[],
-        source_used=meta.get("source", ""),
+        source_used=source_used,
         error=None,
     )
 

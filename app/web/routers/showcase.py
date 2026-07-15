@@ -443,18 +443,9 @@ def _rename_video_assets(
 
     final_video_path = new_dir / f"{new_base}{old_video_path.suffix}"
     planned_moves = [{"from": str(src), "to": str(dst)} for src, dst in moves]
-    if dry_run:
-        return {
-            "renamed": bool(moves or new_dir != old_dir),
-            "dry_run": True,
-            "new_base": new_base,
-            "old_path": str(old_video_path),
-            "new_path": str(final_video_path),
-            "folder_renamed": new_dir != old_dir,
-            "file_moves": planned_moves,
-        }
-
-    # Snapshot NFO + resolve cover target BEFORE any filesystem mutation
+    # Compute new URI + NFO snapshot before any mutation (and before dry_run return)
+    # so batch planning and single pending journals share a complete recovery plan.
+    new_video_uri = to_file_uri(str(final_video_path), path_mappings)
     nfo_before_text = None
     old_nfo_path = old_video_path.with_suffix(".nfo")
     if old_nfo_path.is_file():
@@ -463,6 +454,22 @@ def _rename_video_assets(
         except OSError as exc:
             logger.warning("could not snapshot NFO before rename: %s", exc)
 
+    if dry_run:
+        return {
+            "renamed": bool(moves or new_dir != old_dir),
+            "dry_run": True,
+            "new_base": new_base,
+            "old_path": str(old_video_path),
+            "new_path": str(final_video_path),
+            "old_uri": video.path,
+            "new_uri": new_video_uri,
+            "folder_renamed": new_dir != old_dir,
+            "file_moves": planned_moves,
+            "nfo_before_text": nfo_before_text,
+            "number": video.number,
+        }
+
+    # Resolve cover target BEFORE any filesystem mutation
     cover_target_name = None
     if video.cover_path:
         try:
@@ -481,7 +488,7 @@ def _rename_video_assets(
 
     journal_entry = {
         "old_uri": video.path,
-        "new_uri": None,
+        "new_uri": new_video_uri,
         "old_path": str(old_video_path),
         "new_path": str(final_video_path),
         "folder_renamed": new_dir != old_dir,
@@ -515,7 +522,6 @@ def _rename_video_assets(
     completed_file_moves: list[tuple[Path, Path]] = []
     folder_was_renamed = False
     nfo_updated = False
-    new_video_uri = video.path
     try:
         for src, dst in moves:
             src.rename(dst)
@@ -524,7 +530,6 @@ def _rename_video_assets(
             old_dir.rename(new_dir)
             folder_was_renamed = True
 
-        new_video_uri = to_file_uri(str(final_video_path), path_mappings)
         cover_uri = video.cover_path
         if cover_uri:
             if cover_target_name:
@@ -597,6 +602,7 @@ def _rename_video_assets(
         "nfo_before": nfo_before_text is not None,
         "nfo_before_text": nfo_before_text,  # batch journal / content rollback
         "journal_id": pending_journal_id,
+        "journal_status": "completed",
     }
     if journal or pending_journal_id:
         try:
@@ -613,7 +619,7 @@ def _rename_video_assets(
                 "status": "completed",
             }
             if pending_journal_id:
-                rename_journal.finalize_event(
+                finalized = rename_journal.finalize_event(
                     pending_journal_id,
                     {
                         "kind": "single_rename",
@@ -624,6 +630,15 @@ def _rename_video_assets(
                         "skipped": 0,
                     },
                 )
+                if not finalized:
+                    # Rename applied, but journal still pending and fully rollback-capable.
+                    logger.error(
+                        "rename journal finalize_event returned False for %s — "
+                        "leaving pending recovery plan",
+                        pending_journal_id,
+                    )
+                    result["journal_status"] = "pending"
+                    result["journal_warning"] = "journal_finalize_failed"
             elif journal:
                 rename_journal.append_event({
                     "kind": "single_rename",
@@ -635,6 +650,8 @@ def _rename_video_assets(
                 })
         except Exception as exc:
             logger.warning("rename journal finalize failed: %s", exc)
+            result["journal_status"] = "pending"
+            result["journal_warning"] = f"journal_finalize_error: {exc}"[:200]
     return result
 
 

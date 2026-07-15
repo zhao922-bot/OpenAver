@@ -4,34 +4,85 @@ Scraper API 路由 - 單檔刮削
 端點：
 - POST /api/scrape-single  — 單一影片刮削（搜尋元數據、建資料夾、重命名、下載封面、產生 NFO）
 - POST /api/batch-enrich   — 批次原地補完（SSE streaming）
+- GET  /api/scraper/missing-samples — 檢查缺少本地劇照的影片（唯讀 + 可安全 reconcile DB）
+- POST /api/scraper/batch-fetch-samples — 批次補齊劇照（SSE streaming）
 """
 
 import asyncio
 import json
 import os
+import threading
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import List, Literal, Optional
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Literal, Optional
 
-from core.database import VideoRepository
+from core.database import VideoRepository, get_db_path
 from core.db_inflow import try_inflow_upsert
 from core.enricher import enrich_single, fetch_samples_only, resolve_nfo_cover_paths
 from core.organizer import organize_file
 from core.path_utils import to_file_uri, uri_to_fs_path, coerce_to_file_uri
+from core.sample_images import (
+    check_multi_video_folder,
+    has_valid_local_samples,
+    resolve_batch_sample_targets,
+    scan_missing_samples,
+)
 from core.scraper import search_jav, search_jav_single_source, strip_internal_nfo_keys
 from core.source_config import validate_source_id
 from core.cf_transport import get_cf_transport, CfChallengeRequired, CfTransportUnavailable
 from core.scrapers.javlibrary import JAVLIBRARY_ORIGIN
 from core.logger import get_logger
-from core.config import load_config
+from core.config import get_gallery_source_paths, load_config
 from core import thumbnail_cache
 from web.routers.notifications import emit_notification as _emit_notif
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["scraper"])
+
+# Batch sample-fetch re-entrancy guard (sync work in threadpool; use threading.Lock).
+_batch_fetch_samples_lock = threading.Lock()
+_batch_fetch_samples_busy = False
+
+MAX_BATCH_FETCH_SAMPLES = 500
+
+
+def _configured_gallery_dir_uris(config: Optional[dict] = None) -> List[str]:
+    """Configured gallery directory file:/// URIs (whitelist). Fail-closed when empty."""
+    if config is None:
+        config = load_config()
+    gallery_config = config.get("gallery", {}) or {}
+    directories = get_gallery_source_paths(gallery_config)
+    path_mappings = gallery_config.get("path_mappings", {}) or {}
+    uris: List[str] = []
+    for d in directories:
+        try:
+            uris.append(d if str(d).startswith("file:///") else to_file_uri(d, path_mappings))
+        except ValueError:
+            continue
+    return uris
+
+
+def _safe_client_error(code: str) -> str:
+    """Map internal error codes to client-safe messages (no raw filesystem paths)."""
+    mapping = {
+        "no_configured_dirs": "未設定掃描資料夾，無法檢查劇照",
+        "empty_selection": "未選擇任何影片",
+        "not_in_db": "部分路徑不在資料庫中",
+        "outside_library": "部分路徑不在設定的掃描資料夾內",
+        "missing_number": "部分影片缺少番號",
+        "busy": "劇照批次補齊進行中，請稍後再試",
+    }
+    if code.startswith("too_many:"):
+        parts = code.split(":")
+        try:
+            limit = parts[1]
+            return f"一次最多處理 {limit} 部"
+        except Exception:
+            return "選取數量超過上限"
+    return mapping.get(code, "請求無效")
 
 
 class ScrapeRequest(BaseModel):
@@ -290,32 +341,454 @@ def enrich_single_endpoint(request: EnrichRequest) -> dict:
 
 class FetchSamplesRequest(BaseModel):
     file_path: str
-    number: str
+    # Client number is ignored; DB number is the sole authority (ops10 parity).
+    number: Optional[str] = None
 
 
 @router.post("/scraper/fetch-samples")
 def fetch_samples_endpoint(req: FetchSamplesRequest) -> dict:
-    config = load_config()
-    search_cfg = config.get("search", {})
-    proxy_url = search_cfg.get("proxy_url", "")
+    """Single-item sample fetch with the same safety rules as batch (ops10).
 
-    folder_uri_prefix = to_file_uri(os.path.dirname(uri_to_fs_path(req.file_path))) + "/"
-    repo = VideoRepository()
-    count = repo.count_videos_in_folder(folder_uri_prefix)
-    if count > 1:
-        return {"success": False, "error": "multi_video_folder", "count": count, "extrafanart_written": 0}
+    - DB number only (client ``number`` ignored)
+    - Path must be under configured gallery dirs and exist in DB (fail-closed)
+    - Skip network when valid local stills already exist
+    - Precheck / validation errors return stable JSON (not HTTP 500)
+
+    Response stays frontend-compatible: ``success``, ``error``,
+    ``extrafanart_written``; ``error == "multi_video_folder"`` still recognized.
+    """
+    def _fail(error: str, **extra) -> dict:
+        out = {"success": False, "error": error, "extrafanart_written": 0}
+        out.update(extra)
+        return out
 
     try:
-        result = fetch_samples_only(
-            file_path=req.file_path,
-            number=req.number,
-            proxy_url=proxy_url,
+        config = load_config()
+        proxy_url = (config.get("search") or {}).get("proxy_url", "")
+        db_path = get_db_path()
+        dir_uris = _configured_gallery_dir_uris(config)
+        if not dir_uris:
+            return _fail(_safe_client_error("no_configured_dirs"))
+
+        repo = VideoRepository(db_path)
+        # Same whitelist + DB authority as batch-fetch-samples.
+        accepted, err = resolve_batch_sample_targets(
+            repo=repo,
+            dir_uris=dir_uris,
+            paths=[req.file_path],
+            max_items=1,
         )
-        from dataclasses import asdict
-        return asdict(result)
+        if err:
+            return _fail(_safe_client_error(err))
+
+        path = accepted[0]["path"]
+        number = accepted[0]["number"]  # DB number only
+        result = _process_one_batch_sample(
+            path, number, proxy_url, db_path, config=config
+        )
+
+        status = result.get("status")
+        if status == "success":
+            return {
+                "success": True,
+                "error": None,
+                "extrafanart_written": int(result.get("images_written") or 0),
+                "source_used": result.get("source_used") or "",
+            }
+        if status == "skipped_complete":
+            # Already has valid local stills — no network was used.
+            return {
+                "success": True,
+                "error": None,
+                "extrafanart_written": 0,
+            }
+        if status == "skipped_multi":
+            return {
+                "success": False,
+                "error": "multi_video_folder",
+                "count": 0,
+                "extrafanart_written": 0,
+            }
+
+        raw_err = result.get("error") or "failed"
+        # Keep stable codes the frontend/tests may match; otherwise client-safe text.
+        if raw_err in ("no_samples", "download_failed", "file_missing", "not_in_db", "missing_number"):
+            err_map = {
+                "no_samples": "no_samples",
+                "download_failed": "download_failed",
+                "file_missing": "檔案不存在",
+                "not_in_db": _safe_client_error("not_in_db"),
+                "missing_number": _safe_client_error("missing_number"),
+            }
+            return _fail(err_map.get(raw_err, raw_err))
+        return _fail("fetch_samples 處理失敗，請查閱日誌")
     except Exception:
         logger.exception("fetch_samples_endpoint 失敗")
-        return {"success": False, "error": "fetch_samples 處理失敗，請查閱日誌"}
+        return {
+            "success": False,
+            "error": "fetch_samples 處理失敗，請查閱日誌",
+            "extrafanart_written": 0,
+        }
+
+
+class BatchFetchSamplesItem(BaseModel):
+    path: Optional[str] = None
+    file_path: Optional[str] = None
+    number: Optional[str] = None  # ignored; DB number is authoritative
+
+
+class BatchFetchSamplesRequest(BaseModel):
+    items: Optional[List[BatchFetchSamplesItem]] = None
+    paths: Optional[List[str]] = None
+
+
+@router.get("/scraper/missing-samples")
+def missing_samples_endpoint() -> dict:
+    """Read-only check: videos under configured dirs that lack valid local stills.
+
+    May reconcile stale sample_images from disk extrafanart (no network).
+    Fail-closed when no gallery directories are configured.
+    """
+    try:
+        db_path = get_db_path()
+        if not db_path.exists():
+            return {
+                "success": True,
+                "count": 0,
+                "items": [],
+                "skipped_multi": 0,
+                "reconciled": 0,
+            }
+        dir_uris = _configured_gallery_dir_uris()
+        if not dir_uris:
+            return {
+                "success": False,
+                "error": _safe_client_error("no_configured_dirs"),
+                "count": 0,
+                "items": [],
+                "skipped_multi": 0,
+                "reconciled": 0,
+            }
+        repo = VideoRepository(db_path)
+        result = scan_missing_samples(repo, dir_uris, config=load_config())
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error": _safe_client_error(result.get("error") or "no_configured_dirs"),
+                "count": 0,
+                "items": [],
+                "skipped_multi": 0,
+                "reconciled": 0,
+            }
+        return result
+    except Exception:
+        logger.exception("missing_samples_endpoint failed")
+        return {
+            "success": False,
+            "error": "檢查缺少劇照失敗",
+            "count": 0,
+            "items": [],
+            "skipped_multi": 0,
+            "reconciled": 0,
+        }
+
+
+def _process_one_batch_sample(
+    path: str,
+    number: str,
+    proxy_url: str,
+    db_path,
+    *,
+    config: Optional[dict] = None,
+) -> Dict[str, Any]:
+    """Process a single video for batch sample fetch (runs in executor).
+
+    Always opens the same ``db_path`` validated at the endpoint (never the
+    ambient default DB). Re-reads the row at execution time; if the record is
+    gone or number/path is invalid, fail-closed (no network). Re-checks multi
+    via :func:`check_multi_video_folder` (DB + disk, fail-closed). Never
+    overwrites existing stills. Only writes extrafanart/ + sample_images.
+    """
+    try:
+        fs_path = uri_to_fs_path(path)
+    except Exception:
+        fs_path = path
+
+    if not os.path.isfile(fs_path):
+        return {
+            "status": "failed",
+            "number": number,
+            "path": path,
+            "images_written": 0,
+            "error": "file_missing",
+        }
+
+    if db_path is None:
+        return {
+            "status": "failed",
+            "number": number,
+            "path": path,
+            "images_written": 0,
+            "error": "missing_db_path",
+        }
+
+    repo = VideoRepository(db_path)
+    folder_uri_prefix = to_file_uri(os.path.dirname(fs_path)) + "/"
+    is_multi, _count, multi_err = check_multi_video_folder(
+        repo, folder_uri_prefix, config=config
+    )
+    if is_multi:
+        return {
+            "status": "skipped_multi",
+            "number": number,
+            "path": path,
+            "images_written": 0,
+            "error": multi_err or "multi_video_folder",
+        }
+
+    # Re-read from the same DB at execution time (TOCTOU / row may be gone).
+    video = repo.get_by_path(path)
+    if video is None:
+        return {
+            "status": "failed",
+            "number": number,
+            "path": path,
+            "images_written": 0,
+            "error": "not_in_db",
+        }
+
+    db_number = (video.number or "").strip()
+    if not db_number:
+        return {
+            "status": "failed",
+            "number": number,
+            "path": path,
+            "images_written": 0,
+            "error": "missing_number",
+        }
+
+    sample_db = video.sample_images or []
+    if has_valid_local_samples(fs_path, sample_db):
+        return {
+            "status": "skipped_complete",
+            "number": db_number,
+            "path": path,
+            "images_written": 0,
+            "error": None,
+        }
+
+    # Authoritative number from DB only — never fall back to accepted/client number.
+    result = fetch_samples_only(
+        file_path=path,
+        number=db_number,
+        proxy_url=proxy_url,
+        db_path=db_path,
+    )
+    if result.success:
+        return {
+            "status": "success",
+            "number": db_number,
+            "path": path,
+            "images_written": int(result.extrafanart_written or 0),
+            "error": None,
+            "source_used": result.source_used or "",
+        }
+    err = result.error or "failed"
+    if err == "no_samples":
+        status = "no_samples"
+    elif err == "download_failed":
+        status = "failed"
+    else:
+        status = "failed"
+    return {
+        "status": status,
+        "number": db_number,
+        "path": path,
+        "images_written": 0,
+        "error": err,
+        "source_used": result.source_used or "",
+    }
+
+
+@router.post("/scraper/batch-fetch-samples")
+async def batch_fetch_samples_endpoint(request: Request, body: BatchFetchSamplesRequest):
+    """批次補齊劇照 — SSE streaming。
+
+    - 明確接收 items 或 paths；去重；上限 MAX_BATCH_FETCH_SAMPLES
+    - 路徑必須在 configured gallery dirs；number 以 DB 為準
+    - 每項處理前重新檢查磁碟；已有劇照 → skipped_complete（不聯網）
+    - 同目錄多片 → skipped_multi（不聯網）
+    - 全域防重入 409；finally 釋放 busy；斷線儘量停止後續
+    """
+    global _batch_fetch_samples_busy
+
+    db_path = get_db_path()
+    if not db_path.exists():
+        return JSONResponse(
+            {"success": False, "error": "資料庫不存在，請先掃描"},
+            status_code=400,
+        )
+
+    config = load_config()
+    dir_uris = _configured_gallery_dir_uris(config)
+    repo = VideoRepository(db_path)
+
+    raw_items = body.items or []
+    item_dicts: List[Dict[str, Any]] = []
+    for it in raw_items:
+        if isinstance(it, BatchFetchSamplesItem):
+            item_dicts.append(it.model_dump() if hasattr(it, "model_dump") else it.dict())
+        elif isinstance(it, dict):
+            item_dicts.append(it)
+
+    accepted, err = resolve_batch_sample_targets(
+        repo=repo,
+        dir_uris=dir_uris,
+        items=item_dicts,
+        paths=body.paths,
+        max_items=MAX_BATCH_FETCH_SAMPLES,
+    )
+    if err:
+        return JSONResponse(
+            {"success": False, "error": _safe_client_error(err)},
+            status_code=400,
+        )
+
+    acquired = _batch_fetch_samples_lock.acquire(blocking=False)
+    if not acquired:
+        return JSONResponse(
+            {"success": False, "error": _safe_client_error("busy")},
+            status_code=409,
+        )
+    if _batch_fetch_samples_busy:
+        _batch_fetch_samples_lock.release()
+        return JSONResponse(
+            {"success": False, "error": _safe_client_error("busy")},
+            status_code=409,
+        )
+    _batch_fetch_samples_busy = True
+    _batch_fetch_samples_lock.release()
+
+    search_cfg = config.get("search", {}) or {}
+    proxy_url = search_cfg.get("proxy_url", "")
+    total = len(accepted)
+    # Capture the validated db path for the processor (do not re-open default DB).
+    process_db_path = db_path
+
+    async def event_generator():
+        global _batch_fetch_samples_busy
+        summary = {
+            "total": total,
+            "success": 0,
+            "images_downloaded": 0,
+            "no_samples": 0,
+            "skipped": 0,
+            "skipped_complete": 0,
+            "skipped_multi": 0,
+            "failed": 0,
+        }
+        try:
+            for idx, item in enumerate(accepted, start=1):
+                if await request.is_disconnected():
+                    logger.info("batch-fetch-samples: client disconnected at %s/%s", idx, total)
+                    break
+
+                number = item["number"]
+                path = item["path"]
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "type": "progress",
+                            "current": idx,
+                            "total": total,
+                            "number": number,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
+                )
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda p=path, n=number: _process_one_batch_sample(
+                            p, n, proxy_url, process_db_path, config=config
+                        ),
+                    )
+                except Exception:
+                    logger.exception("batch-fetch-samples item failed")
+                    result = {
+                        "status": "failed",
+                        "number": number,
+                        "path": path,
+                        "images_written": 0,
+                        "error": "processing_error",
+                    }
+
+                status = result.get("status") or "failed"
+                images_written = int(result.get("images_written") or 0)
+                if status == "success":
+                    summary["success"] += 1
+                    summary["images_downloaded"] += images_written
+                elif status == "no_samples":
+                    summary["no_samples"] += 1
+                elif status == "skipped_complete":
+                    summary["skipped_complete"] += 1
+                    summary["skipped"] += 1
+                elif status == "skipped_multi":
+                    summary["skipped_multi"] += 1
+                    summary["skipped"] += 1
+                else:
+                    summary["failed"] += 1
+
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "type": "item",
+                            "current": idx,
+                            "total": total,
+                            "number": number,
+                            "path": path,
+                            "status": status,
+                            "images_written": images_written,
+                            "error": result.get("error"),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
+                )
+
+            yield (
+                "data: "
+                + json.dumps({"type": "done", "summary": summary}, ensure_ascii=False)
+                + "\n\n"
+            )
+        except Exception:
+            logger.exception("batch-fetch-samples stream failed")
+            yield (
+                "data: "
+                + json.dumps(
+                    {"type": "error", "message": "批次補齊劇照中斷，請查閱日誌"},
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+            )
+        finally:
+            # Always release busy flag so a crashed run cannot stick forever.
+            with _batch_fetch_samples_lock:
+                _batch_fetch_samples_busy = False
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post("/batch-enrich")

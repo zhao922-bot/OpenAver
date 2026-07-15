@@ -67,6 +67,60 @@ class DiagnosticPackTests(unittest.TestCase):
         # key=value style still works
         self.assertNotIn("sk-x", _redact_log_text("api_key=sk-x"))
 
+    def test_redact_authorization_quoted_json_dict_forms(self) -> None:
+        """Quoted Basic/JSON/dict/Bearer Authorization values must not leak."""
+        cases = [
+            (
+                'before Authorization = "Basic SECRETBASE64" after',
+                "SECRETBASE64",
+                "before",
+            ),
+            (
+                'log {"Authorization": "Basic SECRETJSON"} trail',
+                "SECRETJSON",
+                "log",
+            ),
+            (
+                "note {'Authorization': 'Bearer SECRETDICT'} end",
+                "SECRETDICT",
+                "note",
+            ),
+            (
+                'mixed "Authorization": "Bearer SECRETBEARER" ok',
+                "SECRETBEARER",
+                "mixed",
+            ),
+            (
+                "Authorization: Basic dXNlcjpwYXNz plain-basic",
+                "dXNlcjpwYXNz",
+                "plain-basic",
+            ),
+            (
+                "Authorization: Negotiate ARBITRARYSCHEME",
+                "ARBITRARYSCHEME",
+                None,
+            ),
+        ]
+        for raw, secret, preserve in cases:
+            with self.subTest(raw=raw):
+                cleaned = _redact_log_text(raw)
+                self.assertNotIn(secret, cleaned, f"secret leaked from: {raw!r}")
+                self.assertIn("REDACTED", cleaned)
+                if preserve:
+                    self.assertIn(preserve, cleaned)
+
+        # Existing api key / token / signed URL redaction still works
+        mixed = (
+            'Authorization = "Basic LEAKME" '
+            "api_key=sk-still-redacted "
+            "https://cdn.example.com/x.m3u8?sig=xyz&exp=1"
+        )
+        cleaned = _redact_log_text(mixed)
+        self.assertNotIn("LEAKME", cleaned)
+        self.assertNotIn("sk-still-redacted", cleaned)
+        self.assertNotIn("sig=xyz", cleaned)
+        self.assertIn("cdn.example.com", cleaned)
+
     def test_create_pack_zip(self) -> None:
         with mock.patch("core.diagnostic_pack.diagnose_sources", create=True):
             pack = create_diagnostic_pack(log_tail_lines=50)

@@ -392,11 +392,255 @@ def rename_preview(payload: RenameBatchRequest) -> dict:
     }
 
 
+def _paths_equal(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return str(a) == str(b)
+
+
+def _uri_under_dir(uri: str | None, directory: Path) -> bool:
+    if not uri:
+        return True
+    try:
+        fs = Path(uri_to_fs_path(uri))
+        return fs == directory or directory in fs.parents or _paths_equal(fs.parent, directory)
+    except Exception:
+        return False
+
+
+def _nfo_matches_snapshot(old_path: Path, nfo_before: str | None) -> bool:
+    """True when no snapshot was taken, or on-disk NFO equals the snapshot."""
+    if nfo_before is None:
+        return True
+    nfo_path = old_path.with_suffix(".nfo")
+    if not nfo_path.is_file():
+        return False
+    try:
+        return nfo_path.read_text(encoding="utf-8") == nfo_before
+    except OSError:
+        return False
+
+
+def _db_restored_for_entry(entry: dict, repo: VideoRepository) -> bool:
+    """DB resolves old_uri (if set) and not new_uri; cover/samples under old location."""
+    old_uri = entry.get("old_uri")
+    new_uri = entry.get("new_uri")
+    old_path = Path(entry["old_path"])
+    old_dir = old_path.parent
+    folder_was_renamed = bool(entry.get("folder_renamed"))
+
+    if old_uri:
+        video = repo.get_by_path(old_uri)
+        if video is None:
+            return False
+    else:
+        video = None
+
+    if new_uri and new_uri != old_uri and repo.get_by_path(new_uri) is not None:
+        return False
+
+    if video is not None and folder_was_renamed:
+        if video.cover_path and not _uri_under_dir(video.cover_path, old_dir):
+            return False
+        for sample_uri in video.sample_images or []:
+            if not _uri_under_dir(sample_uri, old_dir):
+                return False
+    return True
+
+
+def _entry_fully_restored(entry: dict, repo: VideoRepository) -> bool:
+    """Filesystem + DB + NFO already match the pre-rename recovery plan."""
+    old_path = Path(entry["old_path"])
+    new_path = Path(entry["new_path"])
+    if not old_path.exists():
+        return False
+    if not _paths_equal(old_path, new_path) and new_path.exists():
+        return False
+    if not _db_restored_for_entry(entry, repo):
+        return False
+    if not _nfo_matches_snapshot(old_path, entry.get("nfo_before")):
+        return False
+    return True
+
+
+def _restore_nfo_snapshot(entry: dict, old_dir: Path) -> None:
+    """Restore NFO from snapshot. No-op if already equal. Raises on write failure."""
+    nfo_before = entry.get("nfo_before")
+    if nfo_before is None:
+        return
+    nfo_restore_path = Path(entry["old_path"]).with_suffix(".nfo")
+    if not nfo_restore_path.parent.exists():
+        nfo_restore_path = old_dir / nfo_restore_path.name
+    if nfo_restore_path.is_file():
+        try:
+            if nfo_restore_path.read_text(encoding="utf-8") == nfo_before:
+                return
+        except OSError:
+            pass
+    nfo_restore_path.write_text(nfo_before, encoding="utf-8")
+
+
+def _reverse_uri_via_file_moves(
+    uri: str | None,
+    moves: list,
+    *,
+    folder_was_renamed: bool,
+    old_dir: Path,
+    new_dir: Path,
+    path_mappings: dict,
+) -> str | None:
+    """Map a post-rename media URI back toward the pre-rename location using journal moves."""
+    from core.path_utils import to_file_uri
+    from web.routers.showcase import _replace_path_prefix
+
+    if not uri:
+        return uri
+    try:
+        fs = Path(uri_to_fs_path(uri))
+    except Exception:
+        return uri
+
+    # Reverse basename changes recorded in file_moves (cover/poster/etc.)
+    for move in moves:
+        to_name = Path(move["to"]).name
+        from_name = Path(move["from"]).name
+        if fs.name == to_name and to_name != from_name:
+            fs = fs.with_name(from_name)
+            break
+
+    uri2 = to_file_uri(str(fs), path_mappings)
+    if folder_was_renamed:
+        uri2 = _replace_path_prefix(uri2, new_dir, old_dir)
+        try:
+            fs2 = Path(uri_to_fs_path(uri2))
+            if not fs2.exists() and old_dir.exists():
+                cand = old_dir / fs2.name
+                if cand.exists():
+                    return to_file_uri(str(cand), path_mappings)
+                # samples/ subdirs etc.
+                for cand in old_dir.rglob(fs2.name):
+                    if cand.is_file():
+                        return to_file_uri(str(cand), path_mappings)
+        except Exception:
+            pass
+    else:
+        try:
+            fs2 = Path(uri_to_fs_path(uri2))
+            if not fs2.exists():
+                # File-only rename: prefer old_dir basename from move reverse
+                cand = old_dir / fs2.name
+                if cand.exists():
+                    return to_file_uri(str(cand), path_mappings)
+        except Exception:
+            pass
+    return uri2
+
+
+def _rollback_one_entry(entry: dict, repo: VideoRepository, path_mappings: dict) -> None:
+    """Apply FS + NFO + DB restore for one journal entry, or verify already restored.
+
+    Idempotent: if the entry is already fully restored, returns without error.
+    Raises on partial/unrecoverable failure (including NFO write and DB path restore).
+    """
+    if _entry_fully_restored(entry, repo):
+        return
+
+    new_path = Path(entry["new_path"])
+    old_path = Path(entry["old_path"])
+    moves = entry.get("file_moves") or []
+    new_dir = new_path.parent
+    old_dir = old_path.parent
+    folder_was_renamed = bool(entry.get("folder_renamed"))
+
+    # Reverse sidecar/file renames (new names → old names) while still in new_dir
+    for move in reversed(moves):
+        src = Path(move["to"])
+        # If folder was renamed, move["to"] was planned under old_dir; actual file is under new_dir
+        if folder_was_renamed:
+            candidate = new_dir / Path(move["to"]).name
+            if candidate.exists():
+                src = candidate
+        dst_name = Path(move["from"]).name
+        dst = src.with_name(dst_name)
+        if src.exists() and src != dst:
+            if dst.exists():
+                # Already reversed for this file
+                if _paths_equal(src, dst):
+                    continue
+                raise FileExistsError(str(dst))
+            src.rename(dst)
+        # If src missing and dst already has old name, treat as already reversed
+
+    if folder_was_renamed and new_dir.exists() and not _paths_equal(new_dir, old_dir):
+        if old_dir.exists():
+            raise FileExistsError(str(old_dir))
+        new_dir.rename(old_dir)
+
+    # NFO snapshot restore — failure is an error (blocks rolled_back)
+    try:
+        _restore_nfo_snapshot(entry, old_dir)
+    except OSError as nfo_exc:
+        raise RuntimeError(f"nfo_restore_failed: {nfo_exc}") from nfo_exc
+
+    # DB path restore (video + cover + sample_images)
+    old_uri = entry.get("old_uri")
+    new_uri = entry.get("new_uri")
+    if new_uri and old_uri:
+        video = repo.get_by_path(new_uri)
+        if video:
+            restored_cover = _reverse_uri_via_file_moves(
+                video.cover_path,
+                moves,
+                folder_was_renamed=folder_was_renamed,
+                old_dir=old_dir,
+                new_dir=new_dir,
+                path_mappings=path_mappings,
+            )
+            samples = [
+                _reverse_uri_via_file_moves(
+                    uri,
+                    moves,
+                    folder_was_renamed=folder_was_renamed,
+                    old_dir=old_dir,
+                    new_dir=new_dir,
+                    path_mappings=path_mappings,
+                ) or uri
+                for uri in (video.sample_images or [])
+            ]
+
+            updated = repo.update_media_paths(
+                new_uri,
+                old_uri,
+                cover_path=restored_cover,
+                sample_images=samples,
+            )
+            if not updated:
+                # False is an error unless DB is already at old_uri and no row at new_uri
+                if not (
+                    repo.get_by_path(old_uri) is not None
+                    and repo.get_by_path(new_uri) is None
+                ):
+                    raise RuntimeError("update_media_paths_failed")
+            try:
+                thumbnail_cache.invalidate(new_uri)
+                thumbnail_cache.invalidate(old_uri)
+            except Exception:
+                pass
+        elif repo.get_by_path(old_uri) is None:
+            # Neither URI present — unrecoverable DB state
+            raise RuntimeError("db_row_missing_for_rollback")
+
+    # Final verification for this entry
+    if not _entry_fully_restored(entry, repo):
+        raise RuntimeError("rollback_verify_failed")
+
+
 @router.post("/rename-apply")
 def rename_apply(payload: RenameBatchRequest) -> dict:
     """Apply rename for selected paths and record journal for rollback."""
     from web.routers.showcase import _rename_video_assets, _get_configured_dirs
-    from core.path_utils import is_path_under_dir
+    from core.path_utils import is_path_under_dir, to_file_uri
 
     if payload.dry_run:
         return rename_preview(payload)
@@ -413,7 +657,7 @@ def rename_apply(payload: RenameBatchRequest) -> dict:
     truncated = requested > RENAME_BATCH_LIMIT
     paths = paths[:RENAME_BATCH_LIMIT]
 
-    # Pre-write pending journal plan so crash mid-batch is recoverable
+    # Pre-write pending journal shell so crash mid-batch is recoverable
     pending_event = rename_journal.append_event({
         "kind": "batch_rename",
         "status": "pending",
@@ -427,41 +671,98 @@ def rename_apply(payload: RenameBatchRequest) -> dict:
     })
     pending_id = pending_event.get("id")
 
-    batch_entries = []
-    results = []
+    batch_entries: list[dict] = []
+    results: list[dict] = []
     renamed = 0
     failed = 0
     skipped = 0
+    journal_error: str | None = None
 
-    def _persist_batch_progress() -> None:
-        """Write completed entries after each item so mid-batch crash is recoverable."""
+    def _persist_batch_progress() -> bool:
+        """Persist recovery plan/progress. False = journal write failure."""
         if not pending_id:
-            return
+            return False
         try:
-            rename_journal.update_pending_progress(pending_id, {
+            return bool(rename_journal.update_pending_progress(pending_id, {
                 "status": "pending",
                 "entries": list(batch_entries),
                 "renamed": renamed,
                 "failed": failed,
                 "skipped": skipped,
                 "processed": len(results),
-            })
+            }))
         except Exception as prog_exc:
             logger.warning("batch rename progress journal write failed: %s", prog_exc)
+            return False
 
+    stop_batch = False
     for path in paths:
+        if stop_batch:
+            break
         try:
             if configured_dir_uris and not any(is_path_under_dir(path, uri) for uri in configured_dir_uris):
                 results.append({"path": path, "success": False, "error": "not_in_library"})
                 failed += 1
-                _persist_batch_progress()
+                if not _persist_batch_progress():
+                    journal_error = "journal_progress_failed"
+                    stop_batch = True
                 continue
             video = repo.get_by_path(path)
             if not video:
                 results.append({"path": path, "success": False, "error": "not_found"})
                 failed += 1
-                _persist_batch_progress()
+                if not _persist_batch_progress():
+                    journal_error = "journal_progress_failed"
+                    stop_batch = True
                 continue
+
+            # Plan first (dry-run) — reuses rename rules without mutating
+            plan = _rename_video_assets(
+                video, path_mappings,
+                rename_folder=payload.rename_folder,
+                dry_run=True,
+            )
+            if not plan.get("renamed"):
+                skipped += 1
+                results.append({
+                    "path": path,
+                    "success": True,
+                    **{k: v for k, v in plan.items() if k != "nfo_before_text"},
+                })
+                if not _persist_batch_progress():
+                    journal_error = "journal_progress_failed"
+                    stop_batch = True
+                continue
+
+            # Complete pre-mutation recovery plan — persist BEFORE mutate
+            planned_new_uri = plan.get("new_uri") or to_file_uri(
+                str(plan["new_path"]), path_mappings
+            )
+            recovery_entry = {
+                "old_uri": plan.get("old_uri") or video.path,
+                "new_uri": planned_new_uri,
+                "old_path": plan.get("old_path"),
+                "new_path": plan.get("new_path"),
+                "folder_renamed": plan.get("folder_renamed"),
+                "file_moves": plan.get("file_moves") or [],
+                "number": video.number,
+                "nfo_before": plan.get("nfo_before_text"),
+                "status": "pending",
+            }
+            batch_entries.append(recovery_entry)
+            if not _persist_batch_progress():
+                batch_entries.pop()
+                failed += 1
+                journal_error = "pre_mutation_journal_failed"
+                results.append({
+                    "path": path,
+                    "success": False,
+                    "error": "pre_mutation_journal_failed",
+                })
+                stop_batch = True
+                continue
+
+            # Mutate only after the plan is durable
             result = _rename_video_assets(
                 video, path_mappings,
                 rename_folder=payload.rename_folder,
@@ -470,43 +771,63 @@ def rename_apply(payload: RenameBatchRequest) -> dict:
             )
             if result.get("renamed"):
                 renamed += 1
-                batch_entries.append({
-                    "old_uri": result.get("old_uri") or path,
-                    "new_uri": result.get("new_uri"),
-                    "old_path": result.get("old_path"),
-                    "new_path": result.get("new_path"),
+                recovery_entry.update({
+                    "old_uri": result.get("old_uri") or recovery_entry["old_uri"],
+                    "new_uri": result.get("new_uri") or recovery_entry["new_uri"],
+                    "old_path": result.get("old_path") or recovery_entry["old_path"],
+                    "new_path": result.get("new_path") or recovery_entry["new_path"],
                     "folder_renamed": result.get("folder_renamed"),
-                    "file_moves": result.get("file_moves") or [],
-                    "number": video.number,
-                    "nfo_before": result.get("nfo_before_text"),
+                    "file_moves": result.get("file_moves") or recovery_entry["file_moves"],
+                    "nfo_before": result.get("nfo_before_text", recovery_entry.get("nfo_before")),
                     "status": "completed",
                 })
             else:
+                # Planned rename but apply skipped — treat as already-restored pending plan
                 skipped += 1
-            results.append({"path": path, "success": True, **{k: v for k, v in result.items() if k != "nfo_before_text"}})
+                recovery_entry["status"] = "skipped"
+            results.append({
+                "path": path,
+                "success": True,
+                **{k: v for k, v in result.items() if k != "nfo_before_text"},
+            })
+            if not _persist_batch_progress():
+                journal_error = "post_mutation_progress_failed"
+                stop_batch = True
+                continue
         except Exception as exc:
             failed += 1
             logger.warning("rename-apply failed for %s: %s", path, exc)
             results.append({"path": path, "success": False, "error": str(exc)[:200]})
-        # Persist after every item (success or fail) so crash mid-batch keeps recovery info
-        _persist_batch_progress()
+            # Keep any pre-mutation plan for this path recoverable
+            if not _persist_batch_progress():
+                journal_error = journal_error or "journal_progress_failed"
+                stop_batch = True
 
+    finalize_ok = True
+    final_status = "completed" if failed == 0 and journal_error is None else "partial"
     if pending_id:
-        rename_journal.finalize_event(pending_id, {
-            "kind": "batch_rename",
-            "status": "completed" if failed == 0 else "partial",
-            "entries": batch_entries,
-            "requested": requested,
-            "processed": len(results),
-            "truncated": truncated,
-            "limit": RENAME_BATCH_LIMIT,
-            "renamed": renamed,
-            "failed": failed,
-            "skipped": skipped,
-        })
+        try:
+            finalize_ok = bool(rename_journal.finalize_event(pending_id, {
+                "kind": "batch_rename",
+                "status": final_status,
+                "entries": batch_entries,
+                "requested": requested,
+                "processed": len(results),
+                "truncated": truncated,
+                "limit": RENAME_BATCH_LIMIT,
+                "renamed": renamed,
+                "failed": failed,
+                "skipped": skipped,
+            }))
+        except Exception as fin_exc:
+            logger.warning("batch rename finalize failed: %s", fin_exc)
+            finalize_ok = False
+        if not finalize_ok:
+            journal_error = journal_error or "journal_finalize_failed"
 
-    return {
-        "success": failed == 0,
+    clean_success = failed == 0 and journal_error is None and finalize_ok
+    response = {
+        "success": clean_success,
         "renamed": renamed,
         "failed": failed,
         "skipped": skipped,
@@ -515,8 +836,13 @@ def rename_apply(payload: RenameBatchRequest) -> dict:
         "truncated": truncated,
         "limit": RENAME_BATCH_LIMIT,
         "journal_id": pending_id,
+        "journal_status": "completed" if finalize_ok else "pending",
         "results": results,
     }
+    if journal_error:
+        response["error"] = journal_error
+        response["journal_warning"] = journal_error
+    return response
 
 
 @router.get("/rename-history")
@@ -530,15 +856,18 @@ class RenameRollbackRequest(BaseModel):
 
 @router.post("/rename-rollback")
 def rename_rollback(payload: RenameRollbackRequest) -> dict:
-    """Reverse a journaled batch rename (files + DB paths + sample_images)."""
-    from core.database import VideoRepository
-    from core.path_utils import to_file_uri
-    from web.routers.showcase import _get_configured_dirs, _replace_path_prefix
+    """Reverse a journaled rename (files + DB paths + sample_images + NFO).
+
+    Idempotent: already-restored entries (including never-mutated pending plans)
+    verify and count as restored. Marks rolled_back only when every entry verifies
+    and mark_rolled_back succeeds.
+    """
+    from web.routers.showcase import _get_configured_dirs
 
     event = rename_journal.get_event(payload.event_id)
     if not event:
         raise HTTPException(status_code=404, detail="journal event not found")
-    if event.get("rolled_back"):
+    if event.get("rolled_back") or event.get("status") == "rolled_back":
         raise HTTPException(status_code=409, detail="already rolled back")
 
     entries = event.get("entries") or []
@@ -550,109 +879,36 @@ def rename_rollback(payload: RenameRollbackRequest) -> dict:
     _dirs, path_mappings = _get_configured_dirs(config)
     repo = VideoRepository()
     restored = 0
-    errors = []
+    errors: list[str] = []
 
-    # Reverse order for safety
     for entry in reversed(entries):
         try:
-            new_path = Path(entry["new_path"])
-            old_path = Path(entry["old_path"])
-            moves = entry.get("file_moves") or []
-            # Reverse file moves: to → from, under possibly renamed folder
-            # After rename: files live under new_dir with new names.
-            # We need to rename files back then rename folder if needed.
-            new_dir = new_path.parent
-            old_dir = old_path.parent
-            folder_was_renamed = bool(entry.get("folder_renamed"))
-
-            # Reverse sidecar/file renames (new names → old names) while still in new_dir
-            for move in reversed(moves):
-                src = Path(move["to"])
-                # If folder was renamed, move["to"] was planned under old_dir; actual file is under new_dir
-                if folder_was_renamed:
-                    candidate = new_dir / Path(move["to"]).name
-                    if candidate.exists():
-                        src = candidate
-                dst_name = Path(move["from"]).name
-                dst = src.with_name(dst_name)
-                if src.exists() and src != dst:
-                    if dst.exists():
-                        raise FileExistsError(str(dst))
-                    src.rename(dst)
-
-            if folder_was_renamed and new_dir.exists() and new_dir != old_dir:
-                if old_dir.exists():
-                    raise FileExistsError(str(old_dir))
-                new_dir.rename(old_dir)
-
-            # Restore NFO content snapshot if we captured it before rename
-            nfo_before = entry.get("nfo_before")
-            if nfo_before is not None:
-                try:
-                    nfo_restore_path = Path(entry["old_path"]).with_suffix(".nfo")
-                    # After folder reverse, old_path parent should exist
-                    if not nfo_restore_path.parent.exists():
-                        nfo_restore_path = old_dir / nfo_restore_path.name
-                    nfo_restore_path.write_text(nfo_before, encoding="utf-8")
-                except OSError as nfo_exc:
-                    logger.warning("NFO content restore failed: %s", nfo_exc)
-
-            # DB path restore (video + cover + sample_images)
-            old_uri = entry.get("old_uri")
-            new_uri = entry.get("new_uri")
-            if new_uri and old_uri:
-                video = repo.get_by_path(new_uri)
-                if video:
-                    restored_cover = video.cover_path
-                    if restored_cover and folder_was_renamed:
-                        # Reverse folder prefix first (handles samples/ subdirs too)
-                        restored_cover = _replace_path_prefix(
-                            restored_cover, new_dir, old_dir
-                        )
-                    if restored_cover:
-                        try:
-                            cfs = Path(uri_to_fs_path(restored_cover))
-                            if not cfs.exists() and old_dir.exists():
-                                cand = old_dir / cfs.name
-                                if cand.exists():
-                                    restored_cover = to_file_uri(str(cand), path_mappings)
-                        except Exception:
-                            pass
-
-                    samples = list(video.sample_images or [])
-                    if samples and folder_was_renamed:
-                        samples = [
-                            _replace_path_prefix(uri, new_dir, old_dir)
-                            for uri in samples
-                        ]
-                    elif samples:
-                        # File-only rename: map cover-like basename changes if needed
-                        # Sample files are usually under a fixed samples/ folder and
-                        # keep their names; leave as-is unless folder moved.
-                        pass
-
-                    repo.update_media_paths(
-                        new_uri,
-                        old_uri,
-                        cover_path=restored_cover,
-                        sample_images=samples,
-                    )
-                    try:
-                        thumbnail_cache.invalidate(new_uri)
-                        thumbnail_cache.invalidate(old_uri)
-                    except Exception:
-                        pass
+            _rollback_one_entry(entry, repo, path_mappings)
+            # Count only after full restore/verify
+            if not _entry_fully_restored(entry, repo):
+                raise RuntimeError("rollback_verify_failed")
             restored += 1
         except Exception as exc:
             logger.warning("rename rollback entry failed: %s", exc)
             errors.append(str(exc)[:200])
 
-    if restored and not errors:
-        rename_journal.mark_rolled_back(payload.event_id)
+    mark_ok = False
+    if restored == len(entries) and not errors:
+        try:
+            mark_ok = bool(rename_journal.mark_rolled_back(payload.event_id))
+        except Exception as mark_exc:
+            logger.warning("mark_rolled_back failed: %s", mark_exc)
+            mark_ok = False
+        if not mark_ok:
+            errors.append("mark_rolled_back_failed")
 
-    return {
-        "success": len(errors) == 0 and restored > 0,
+    success = len(errors) == 0 and restored == len(entries) and mark_ok
+    response = {
+        "success": success,
         "restored": restored,
         "errors": errors,
         "event_id": payload.event_id,
     }
+    if not success and errors:
+        response["error"] = errors[0]
+    return response

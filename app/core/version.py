@@ -5,7 +5,7 @@ OpenAver 版本資訊
 __version__ = "0.10.11"
 VERSION = __version__
 UPSTREAM_BASE_VERSION = __version__
-CUSTOM_BUILD = "openaver-cn-local-20260714-ops7"
+CUSTOM_BUILD = "openaver-cn-local-20260715-ops10"
 DISPLAY_VERSION = f"{__version__}+{CUSTOM_BUILD}"
 
 # 版本資訊
