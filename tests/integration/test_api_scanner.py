@@ -1586,6 +1586,32 @@ class TestMissingCheckAPI:
         assert data['data']['total_missing'] == 0
         assert data['data']['items'] == []
 
+    def test_tried_partial_row_with_nfo_and_missing_cover_remains_retryable(
+        self, client, tmp_path, monkeypatch
+    ):
+        """A failed cover download must not permanently disappear from the retry list."""
+        from unittest.mock import patch
+        from core.database import Video
+        from core.path_utils import to_file_uri
+
+        videos = [
+            Video(
+                path=to_file_uri(str(tmp_path / "a.mp4")),
+                number="AAA-001",
+                cover_path="",
+                nfo_mtime=1234567890.0,
+                scrape_attempted_at=1234567890.0,
+            ),
+        ]
+        db_path = self._make_db(tmp_path, videos)
+        with patch('web.routers.scanner.get_db_path', return_value=db_path):
+            resp = client.get('/api/gallery/missing-check')
+
+        data = resp.json()['data']
+        assert data['missing_cover'] == 1
+        assert data['total_missing'] == 1
+        assert data['items'][0]['number'] == 'AAA-001'
+
     def test_produced_tried_quadrants_only_untried_unproduced_bucketed(self, client, tmp_path, monkeypatch):
         """produced x tried 2x2 矩陣：僅 (False,False) 進桶，其餘三象限早退（TASK-89b-T4）"""
         from unittest.mock import patch
@@ -3392,4 +3418,3 @@ class TestVideoPlayerMultipart:
         assert 'id="oa-player"' not in html
         assert "/static/js/pages/player.js" not in html
         assert "test.mp4" in html
-

@@ -466,6 +466,24 @@ class TestFastScanDirectorySkipCallback:
         assert results == []
 
 
+class TestFastScanDirectoryCoverPresence:
+    """快速扫描必须把封面出现/消失作为增量扫描信号。"""
+
+    def test_same_stem_cover_changes_presence_signal(self, tmp_path):
+        from core.gallery_scanner import fast_scan_directory
+
+        video_path = tmp_path / "ABC-001.mp4"
+        video_path.write_bytes(b"video")
+
+        first = fast_scan_directory(str(tmp_path), {'.mp4'}, 0)
+        assert first[0]['has_cover_candidate'] is False
+
+        video_path.with_suffix('.jpg').write_bytes(b"image")
+
+        second = fast_scan_directory(str(tmp_path), {'.mp4'}, 0)
+        assert second[0]['has_cover_candidate'] is True
+
+
 class TestCollectLongPaths:
     """spec-48a §a5 契約 1+2 — _collect_long_paths helper 行為"""
 

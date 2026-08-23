@@ -104,6 +104,29 @@ class TestScanToSqlite:
         assert result2['deleted'] == 0
         assert result2['total'] == 1
 
+    def test_scan_incremental_detects_new_cover_without_mtime_change(
+        self, temp_db, temp_video_dir
+    ):
+        """新增同名封面时，即使视频和 NFO 未变也必须刷新数据库。"""
+        video_path = create_video_file(temp_video_dir, "ABC-001.mp4")
+        create_nfo_file(video_path, title="测试影片", num="ABC-001")
+
+        scanner = VideoScanner()
+        first = scanner.scan_to_sqlite(str(temp_video_dir), temp_db)
+        assert first['inserted'] == 1
+
+        repo = VideoRepository(temp_db)
+        video_uri = to_file_uri(str(video_path))
+        assert repo.get_by_path(video_uri).cover_path == ""
+
+        cover_path = video_path.with_suffix('.jpg')
+        cover_path.write_bytes(b"image")
+
+        second = scanner.scan_to_sqlite(str(temp_video_dir), temp_db)
+        assert second['inserted'] == 0
+        assert second['updated'] == 1
+        assert repo.get_by_path(video_uri).cover_path == to_file_uri(str(cover_path))
+
     def test_scan_incremental_new_file(self, temp_db, temp_video_dir):
         """測試增量掃描（新增檔案）"""
         video1 = create_video_file(temp_video_dir, "video1.mp4")

@@ -2608,6 +2608,33 @@ class TestDownloadImageFallback:
         assert mock_get.call_count == 2
 
     @patch("core.organizer.requests.get")
+    def test_download_image_ssl_error_uses_system_curl(self, mock_get, tmp_path, monkeypatch):
+        """Bundled OpenSSL failure can recover through the Windows system curl."""
+        import core.organizer as org
+
+        mock_get.side_effect = requests.exceptions.SSLError("unexpected eof")
+        save_path = tmp_path / "cover.jpg"
+
+        def curl_ok(url, destination, referer="", *, short_connect=False):
+            Path(destination).write_bytes(b"c" * 1001)
+            return True
+
+        monkeypatch.setattr(org, "_attempt_curl_image_download", curl_ok)
+
+        assert download_image("https://pics.example/cover.jpg", str(save_path)) is True
+        assert save_path.read_bytes() == b"c" * 1001
+        with org._failed_hosts_lock:
+            assert ("https", "pics.example", 443) not in org._failed_hosts
+
+    @patch("core.organizer.subprocess.run")
+    def test_curl_fallback_rejects_non_http_url(self, mock_run, tmp_path):
+        """The subprocess fallback must never fetch file or other local schemes."""
+        from core.organizer import _attempt_curl_image_download
+
+        assert _attempt_curl_image_download("file:///secret.jpg", str(tmp_path / "x.jpg")) is False
+        mock_run.assert_not_called()
+
+    @patch("core.organizer.requests.get")
     def test_download_image_fallback_connect_timeout_is_recorded(self, mock_get, tmp_path):
         """邊界 14：fallback 也 ConnectTimeout → fallback host 進記憶。"""
         import core.organizer as org

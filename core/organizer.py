@@ -7,6 +7,8 @@ import os
 import re
 import sys
 import shutil
+import subprocess
+import tempfile
 import threading
 import time
 import requests
@@ -700,6 +702,73 @@ def _build_download_headers(url: str, referer: str = "") -> dict:
     return headers
 
 
+def _attempt_curl_image_download(
+    url: str, save_path: str, referer: str = "", *, short_connect: bool = False
+) -> bool:
+    """Use the system TLS stack when bundled Python cannot handshake with an image CDN."""
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+
+    curl = shutil.which("curl.exe" if sys.platform == "win32" else "curl")
+    if not curl:
+        return False
+
+    destination = Path(save_path)
+    temp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{destination.name}.", suffix=".part", dir=destination.parent, delete=False
+        ) as temp_file:
+            temp_path = temp_file.name
+
+        command = [
+            curl,
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--proto",
+            "=http,https",
+            "--proto-redir",
+            "=http,https",
+            "--connect-timeout",
+            str(CONNECT_TIMEOUT if short_connect else REQUEST_TIMEOUT),
+            "--max-time",
+            str(REQUEST_TIMEOUT),
+            "--user-agent",
+            HEADERS["User-Agent"],
+        ]
+        effective_referer = _build_download_headers(url, referer).get("Referer")
+        if effective_referer:
+            command.extend(["--referer", effective_referer])
+        command.extend(["--output", temp_path, url])
+
+        completed = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=REQUEST_TIMEOUT + 5,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+        if completed.returncode != 0 or os.path.getsize(temp_path) <= 1000:
+            return False
+        os.replace(temp_path, save_path)
+        temp_path = ""
+        logger.info("system curl recovered image download for host %s", parsed.hostname or "unknown")
+        return True
+    except (OSError, subprocess.SubprocessError):
+        logger.warning("system curl image fallback failed for host %s", parsed.hostname or "unknown")
+        return False
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
 def _attempt_download_image(
     url: str, save_path: str, referer: str = "", *, short_connect: bool = False
 ) -> bool:
@@ -720,6 +789,13 @@ def _attempt_download_image(
             with open(save_path, "wb") as f:
                 f.write(resp.content)
             return True
+    except requests.exceptions.SSLError as e:
+        if _attempt_curl_image_download(
+            url, save_path, referer, short_connect=short_connect
+        ):
+            return True
+        _record_host_failure(_host_key(url))
+        logger.warning(f"[!] 下載圖片失敗: {e}")
     except requests.exceptions.ConnectionError as e:
         # ConnectTimeout is a ConnectionError subclass; ReadTimeout is not.
         _record_host_failure(_host_key(url))

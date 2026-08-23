@@ -837,7 +837,7 @@ class VideoRepository:
             conn.close()
 
     def get_mtime_index(self) -> dict:
-        """取得 {path: (mtime, nfo_mtime, sample_count)} 索引，用於增量比對。
+        """取得 {path: (mtime, nfo_mtime, sample_count, has_cover)} 索引，用於增量比對。
 
         sample_count（TASK-118b-T9）：合法 JSON list → 實際張數。空字串／NULL／
         損毀 JSON／非 list 的合法 JSON 這四種壞值一律回傳哨兵值
@@ -850,10 +850,10 @@ class VideoRepository:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("SELECT path, mtime, nfo_mtime, sample_images FROM videos")
+            cursor.execute("SELECT path, mtime, nfo_mtime, sample_images, cover_path FROM videos")
             rows = cursor.fetchall()
             result = {}
-            for path, mtime, nfo_mtime, sample_images_raw in rows:
+            for path, mtime, nfo_mtime, sample_images_raw, cover_path in rows:
                 sample_count = _SAMPLE_COUNT_UNKNOWN
                 if sample_images_raw:
                     try:
@@ -862,7 +862,7 @@ class VideoRepository:
                             sample_count = len(parsed)
                     except (json.JSONDecodeError, TypeError):
                         pass
-                result[path] = (mtime, nfo_mtime, sample_count)
+                result[path] = (mtime, nfo_mtime, sample_count, bool(cover_path))
             return result
         finally:
             conn.close()

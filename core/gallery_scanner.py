@@ -171,6 +171,7 @@ def fast_scan_directory(
             with os.scandir(path) as entries:
                 dir_files = []
                 dir_nfos = {}
+                dir_images = set()
 
                 for entry in entries:
                     try:
@@ -198,6 +199,8 @@ def fast_scan_directory(
                                         'size': stat.st_size,
                                         'stem': stem
                                     })
+                            elif ext in IMAGE_EXTENSIONS:
+                                dir_images.add(entry.name.lower())
                     except (OSError, PermissionError) as e:
                         # entry.path 是 os.DirEntry 的純拼接屬性，通常不會拋
                         _safe_on_skip(entry.path, e)
@@ -210,7 +213,24 @@ def fast_scan_directory(
 
                 # 將 NFO mtime 加入對應的影片資訊
                 for f in dir_files:
+                    stem_lower = f['stem'].lower()
+                    named_candidates = {
+                        f'{stem_lower}{ext}' for ext in IMAGE_EXTENSIONS
+                    }
+                    named_candidates.update(
+                        f'{stem_lower}{suffix}{ext}'
+                        for suffix in ('-fanart', '-poster')
+                        for ext in IMAGE_EXTENSIONS
+                    )
+                    named_candidates.update(
+                        f'{name}{ext}'
+                        for name in ('fanart', 'poster', 'cover', 'folder')
+                        for ext in IMAGE_EXTENSIONS
+                    )
+                    has_named_cover = bool(named_candidates & dir_images)
+                    has_safe_fallback = len(dir_files) == 1 and 0 < len(dir_images) <= 2
                     f['nfo_mtime'] = dir_nfos.get(f['stem'], 0)
+                    f['has_cover_candidate'] = has_named_cover or has_safe_fallback
                     # 同目錄下所有影片本來就共用同一個 extrafanart/（scan_file()
                     # 也是用 video_path.parent / 'extrafanart' 算路徑，既有行為）
                     # ——均等掛給本層每部片，不是只掛給其中一部（TASK-118b-T9）。
@@ -710,7 +730,7 @@ class VideoScanner:
 
         # 步驟 2: 從 SQLite 取得現有 mtime 索引
         # 注意：資料庫中的 path 是 file:/// 格式
-        db_index = repo.get_mtime_index()  # {path: (mtime, nfo_mtime, sample_count)}
+        db_index = repo.get_mtime_index()  # {path: (mtime, nfo_mtime, sample_count, has_cover)}
 
         # 建立 file:/// 路徑到原始路徑的映射，以及原始路徑到 mtime 的映射
         # scan_file 會產生 file:/// 格式的路徑（使用 core.path_utils.to_file_uri）
@@ -735,8 +755,9 @@ class VideoScanner:
                 # db_entry[2] 可能是 get_mtime_index() 的哨兵值（壞資料，見該函式
                 # docstring）——此時恆不等於任何真實張數，同樣會落入這個分支。
                 or db_entry[2] != file_info.get('sample_image_count', 0)
+                or db_entry[3] != file_info.get('has_cover_candidate', False)
             ):
-                # mtime、nfo_mtime 或劇照張數變更
+                # mtime、nfo_mtime、劇照張數或封面存在狀態變更
                 needs_scan.append(file_info)
 
         # 步驟 4: 清理已刪除的檔案（比對 file:/// 格式的路徑）
@@ -853,7 +874,9 @@ class VideoScanner:
             cached = cache.get(path_key) if use_cache else None
             cache_valid = (cached and
                            cached.get('mtime') == file_mtime and
-                           cached.get('nfo_mtime', 0) == nfo_mtime)
+                           cached.get('nfo_mtime', 0) == nfo_mtime and
+                           bool(cached.get('info', {}).get('img')) ==
+                           file_info.get('has_cover_candidate', False))
 
             video_name = os.path.basename(path_key)
 

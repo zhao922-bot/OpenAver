@@ -463,8 +463,11 @@ def generate_avlist(should_abort: Optional[Callable[[], bool]] = None) -> Genera
                     if db_entry is None:
                         # 新檔案
                         needs_scan.append(file_info)
-                    elif db_entry[0] != file_info['mtime'] or db_entry[1] != file_info.get('nfo_mtime', 0) or db_entry[2] != file_info.get('sample_image_count', 0):
-                        # mtime、nfo_mtime 或劇照張數變更（TASK-118b-T9：db_entry[2] 為 get_mtime_index() 哨兵值時代表壞資料，恆不等於真實張數 → 同樣觸發重掃，fail-safe）
+                    elif (db_entry[0] != file_info['mtime']
+                          or db_entry[1] != file_info.get('nfo_mtime', 0)
+                          or db_entry[2] != file_info.get('sample_image_count', 0)
+                          or db_entry[3] != file_info.get('has_cover_candidate', False)):
+                        # mtime、NFO、劇照張數或封面存在狀態變更；任一命中就重掃。
                         needs_scan.append(file_info)
 
                 # 清理已刪除的檔案（限定在此目錄下）
@@ -1011,7 +1014,12 @@ def check_missing():
             has_cover = bool(v.cover_path)
             produced = bool(v.output_dir)
             tried = (v.scrape_attempted_at or 0) > 0
-            if produced or tried:
+            if produced:
+                continue
+            # A previous total miss stays suppressed, but a partial result remains
+            # manually retryable. This keeps complete NFO rows from being rewritten
+            # while allowing a failed cover download to recover later.
+            if tried and not has_nfo and not has_cover:
                 continue
             if has_nfo and has_cover:
                 continue

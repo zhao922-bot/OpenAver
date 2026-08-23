@@ -163,11 +163,14 @@ class TestVideoRepository:
         assert result[1].path == to_file_uri("/video2.mp4")
 
     def test_get_mtime_index(self, temp_db):
-        """測試 get_mtime_index（TASK-118b-T9：3-tuple，第三欄是劇照張數）"""
+        """測試 get_mtime_index（第四欄是 DB 封面存在狀態）"""
         repo = VideoRepository(temp_db)
 
         videos = [
-            Video(path=to_file_uri("/video1.mp4"), mtime=100.5, nfo_mtime=100.0),
+            Video(
+                path=to_file_uri("/video1.mp4"), mtime=100.5, nfo_mtime=100.0,
+                cover_path=to_file_uri("/video1.jpg"),
+            ),
             Video(path=to_file_uri("/video2.mp4"), mtime=200.5, nfo_mtime=200.0),
         ]
         repo.upsert_batch(videos)
@@ -177,8 +180,8 @@ class TestVideoRepository:
         assert len(index) == 2
         # 兩筆 Video(...) 都沒帶 sample_images → dataclass 預設 [] → 序列化 '[]'
         # → 解析張數 0（不是壞資料，走正常路徑）。
-        assert index[to_file_uri("/video1.mp4")] == (100.5, 100.0, 0)
-        assert index[to_file_uri("/video2.mp4")] == (200.5, 200.0, 0)
+        assert index[to_file_uri("/video1.mp4")] == (100.5, 100.0, 0, True)
+        assert index[to_file_uri("/video2.mp4")] == (200.5, 200.0, 0, False)
 
     def test_get_mtime_index_sample_count(self, temp_db):
         """get_mtime_index 的第三欄反映實際劇照張數（TASK-118b-T9）"""
@@ -192,7 +195,7 @@ class TestVideoRepository:
 
         index = repo.get_mtime_index()
 
-        assert index[to_file_uri("/video1.mp4")] == (100.5, 100.0, 3)
+        assert index[to_file_uri("/video1.mp4")] == (100.5, 100.0, 3, False)
 
     def test_get_mtime_index_bad_sample_images_fallback_unknown(self, temp_db):
         """sample_images 壞資料（空字串／NULL／損毀 JSON／非 list 合法 JSON）→
