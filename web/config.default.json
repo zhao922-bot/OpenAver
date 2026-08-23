@@ -54,6 +54,12 @@
       "model": "gemini-flash-lite-latest"
     }
   },
+  "download": {
+    "max_concurrent_downloads": 4,
+    "fragment_threads": 16,
+    "retry_count": 5,
+    "request_timeout_seconds": 30
+  },
   "gallery": {
     "directories": [],
     "output_dir": "output",

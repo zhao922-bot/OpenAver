@@ -6,6 +6,7 @@ Showcase API 路由 - 影片展示資料端點
 - GET /api/showcase/video?path=   — 取得單筆影片資料（供 T3 enrich 後刷新卡片）
 """
 
+import asyncio
 import os
 from urllib.parse import quote
 
@@ -14,6 +15,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.database import VideoRepository, get_db_path, init_db
+from core.actress_names import (
+    build_actress_display_map,
+    load_actress_alias_groups,
+    normalize_actress_names,
+    protect_actress_names,
+    restore_actress_names,
+)
 from core.path_utils import (
     is_path_under_dir,
     uri_to_local_fs_path,
@@ -24,6 +32,14 @@ from core.config import load_config, get_gallery_source_paths
 from core.focal import detect_focal, format_focal, parse_focal
 from core import thumbnail_cache
 from core.multipart_group import group_rows, resolve_group
+from core.scrapers.utils import has_japanese
+from core.title_translation import (
+    apply_translation,
+    rollback_translation as restore_title_translation,
+    sync_nfo_title,
+    translation_history_keys,
+)
+from web.routers.translate import get_translate_service
 
 logger = get_logger(__name__)
 
@@ -45,7 +61,22 @@ class ManualFocalRequest(BaseModel):
     expected_cover_path: str
 
 
-def _serialize_video(v, path_mappings: dict, enabled: bool = False) -> dict:
+class TranslateVideoRequest(BaseModel):
+    path: str
+    force: bool = False
+
+
+class RollbackTranslationRequest(BaseModel):
+    path: str
+
+
+def _serialize_video(
+    v,
+    path_mappings: dict,
+    enabled: bool = False,
+    actress_display_map: dict[str, str] | None = None,
+    has_translation_history: bool = False,
+) -> dict:
     """將 Video ORM 物件序列化為前端 JSON dict（列表端點與單筆端點共用）。
 
     feature/71 T4：thumbnail_cache_enabled 開關決定 cover_url 走 thumb / image 分支。
@@ -68,11 +99,19 @@ def _serialize_video(v, path_mappings: dict, enabled: bool = False) -> dict:
         local_path = uri_to_local_fs_path(img_uri, path_mappings)
         sample_urls.append(f"/api/gallery/image?path={quote(local_path, safe='')}")
 
-    return {
+    display_map = actress_display_map
+    if display_map is None:
+        display_map = build_actress_display_map()
+    actresses = [
+        display_map.get(name) or display_map.get((name or "").casefold()) or name
+        for name in (v.actresses or [])
+    ]
+
+    data = {
         "path": v.path,                                          # file:/// URI（開啟影片用）
-        "title": v.title,
+        "title": normalize_actress_names(v.title, display_map),
         "original_title": v.original_title,
-        "actresses": ','.join(v.actresses) if v.actresses else '',  # 逗號分隔字串
+        "actresses": ','.join(actresses) if actresses else '',  # 逗號分隔字串
         "number": v.number or '',
         "maker": v.maker,
         "release_date": v.release_date,
@@ -93,9 +132,18 @@ def _serialize_video(v, path_mappings: dict, enabled: bool = False) -> dict:
         "auto_focal": v.auto_focal,                  # canonical "x,y" 4dp 字串或 ''（98b：前端 focalObjectPosition 消費）
         "crop_mode": v.crop_mode,                    # 'auto' | 'default'（98b：default 退 baseline 右裁）
     }
+    if has_translation_history:
+        data["has_translation_history"] = True
+    return data
 
 
-def _serialize_group(group, path_mappings: dict, enabled: bool = False) -> dict:
+def _serialize_group(
+    group,
+    path_mappings: dict,
+    enabled: bool = False,
+    actress_display_map: dict[str, str] | None = None,
+    has_translation_history: bool = False,
+) -> dict:
     """將 VideoGroup 序列化為前端 JSON dict（feature/122，CD-122-4）。
 
     以 `group.members[0]`（part-1，group_rows 已依 part_number 升冪排序）的
@@ -105,7 +153,13 @@ def _serialize_group(group, path_mappings: dict, enabled: bool = False) -> dict:
     單檔片：members==[v]、part_tokens==[]，輸出與今天 `_serialize_video(v, ...)`
     逐鍵逐值相同，只多 `part_tokens: []` 一個新鍵（AC-4）。
     """
-    base = _serialize_video(group.members[0], path_mappings, enabled)
+    base = _serialize_video(
+        group.members[0],
+        path_mappings,
+        enabled,
+        actress_display_map,
+        has_translation_history,
+    )
     # 單檔片不碰 size：`_serialize_video()` 原樣傳 `v.size_bytes`（DB NULL → None），
     # 套 `or 0` 會把 None 變 0，違反 AC-4「單檔片逐位元組不變」的字面契約。
     # 只有真的多段時才加總，`or 0` 的 NULL 防禦留在那條路上（T2 review P3）。
@@ -163,8 +217,22 @@ def get_videos():
         groups = group_rows(all_videos, fs_path_of=lambda v: uri_to_local_fs_path(v.path, path_mappings))
 
         thumb_enabled = config.get('thumbnail_cache_enabled', False)
-        videos_json = [_serialize_group(g, path_mappings, thumb_enabled)
-                       for g in groups]
+        actress_display_map = build_actress_display_map()
+        history_paths, history_numbers = translation_history_keys(db_path)
+        videos_json = [
+            _serialize_group(
+                group,
+                path_mappings,
+                thumb_enabled,
+                actress_display_map,
+                any(
+                    member.path in history_paths
+                    or ((member.number or "") in history_numbers)
+                    for member in group.members
+                ),
+            )
+            for group in groups
+        ]
 
         return JSONResponse({
             "success": True,
@@ -211,15 +279,269 @@ def get_video(path: str = Query(..., description="file:/// URI")):
         # 不 500（CD-122-6）。
         group = resolve_group(repo, path, path_mappings, folder_source_uri=v.path)
         if group is None:
-            return JSONResponse({"success": True,
-                                 "video": _serialize_video(v, path_mappings, thumb_enabled)})
+            history_paths, history_numbers = translation_history_keys(db_path)
+            has_history = v.path in history_paths or ((v.number or "") in history_numbers)
+            return JSONResponse({
+                "success": True,
+                "video": _serialize_video(
+                    v,
+                    path_mappings,
+                    thumb_enabled,
+                    build_actress_display_map(),
+                    has_history,
+                ),
+            })
 
-        return JSONResponse({"success": True,
-                             "video": _serialize_group(group, path_mappings, thumb_enabled)})
+        history_paths, history_numbers = translation_history_keys(db_path)
+        has_history = any(
+            member.path in history_paths or ((member.number or "") in history_numbers)
+            for member in group.members
+        )
+        return JSONResponse({
+            "success": True,
+            "video": _serialize_group(
+                group,
+                path_mappings,
+                thumb_enabled,
+                build_actress_display_map(),
+                has_history,
+            ),
+        })
 
     except Exception as e:
         logger.error("取得單筆影片失敗: %s", e)
         return JSONResponse({"success": False, "error": "取得影片資料失敗"}, status_code=500)
+
+
+def _translation_source(video) -> str:
+    original_title = (video.original_title or "").strip()
+    if original_title and has_japanese(original_title):
+        return original_title
+    return (video.title or "").strip()
+
+
+def _has_translation_history(db_path, video) -> bool:
+    history_paths, history_numbers = translation_history_keys(db_path)
+    return video.path in history_paths or ((video.number or "") in history_numbers)
+
+
+def _load_translation_context(config: dict, path: str) -> dict:
+    db_path = get_db_path()
+    if not db_path.exists():
+        return {"error": "video_not_found"}
+    init_db(db_path)
+    configured_dir_uris, path_mappings = _get_configured_dirs(config)
+    if not any(is_path_under_dir(path, uri) for uri in configured_dir_uris):
+        return {"error": "video_not_found"}
+    video = VideoRepository(db_path).get_by_path(path)
+    if video is None:
+        return {"error": "video_not_found"}
+    groups = load_actress_alias_groups()
+    return {
+        "db_path": db_path,
+        "path_mappings": path_mappings,
+        "video": video,
+        "groups": groups,
+        "has_history": _has_translation_history(db_path, video),
+    }
+
+
+def _finalize_translation(
+    db_path,
+    video,
+    translated_title: str,
+    original_title: str,
+    path_mappings: dict,
+) -> tuple[float | None, object, bool]:
+    nfo_mtime = sync_nfo_title(
+        video.path,
+        translated_title,
+        original_title,
+        path_mappings,
+    )
+    repo = VideoRepository(db_path)
+    if nfo_mtime is not None:
+        repo.update_nfo_mtime(video.path, nfo_mtime)
+    updated = repo.get_by_path(video.path)
+    return nfo_mtime, updated, _has_translation_history(db_path, updated)
+
+
+@router.post("/translate-video")
+async def translate_video(request: TranslateVideoRequest):
+    """Translate one configured local video and preserve an atomic rollback snapshot."""
+
+    try:
+        config = await asyncio.to_thread(load_config)
+        if not config.get("translate", {}).get("enabled", False):
+            return JSONResponse(
+                {"success": False, "error": "translate_disabled"},
+                status_code=409,
+            )
+        context = await asyncio.to_thread(_load_translation_context, config, request.path)
+        if context.get("error"):
+            return JSONResponse({"success": False, "error": "video_not_found"}, status_code=404)
+        db_path = context["db_path"]
+        path_mappings = context["path_mappings"]
+        video = context["video"]
+        groups = context["groups"]
+        display_map = build_actress_display_map(groups)
+
+        source_title = _translation_source(video)
+        already_translated = bool(
+            video.original_title
+            and has_japanese(video.original_title)
+            and video.title
+            and not has_japanese(video.title)
+            and video.title != video.original_title
+        )
+        if already_translated and not request.force:
+            return JSONResponse({
+                "success": True,
+                "skipped": True,
+                "reason": "already_translated",
+                "video": _serialize_video(
+                    video,
+                    path_mappings,
+                    config.get("thumbnail_cache_enabled", False),
+                    display_map,
+                    context["has_history"],
+                ),
+            })
+        if not source_title or not has_japanese(source_title):
+            return JSONResponse({
+                "success": True,
+                "skipped": True,
+                "reason": "no_japanese",
+                "video": _serialize_video(
+                    video,
+                    path_mappings,
+                    config.get("thumbnail_cache_enabled", False),
+                    display_map,
+                    context["has_history"],
+                ),
+            })
+
+        translate_service = await asyncio.to_thread(get_translate_service)
+        protected_title, replacements = protect_actress_names(
+            source_title,
+            video.actresses or [],
+            groups=groups,
+        )
+        translated_title = restore_actress_names(
+            await translate_service.translate_single(
+                protected_title,
+                {"actors": video.actresses or [], "number": video.number or ""},
+            ) or "",
+            replacements,
+        ).strip()
+        if not translated_title:
+            return JSONResponse({"success": False, "error": "empty_translation"}, status_code=502)
+
+        original_title = (video.original_title or "").strip() or source_title
+        state = await asyncio.to_thread(
+            apply_translation,
+            db_path,
+            path=video.path,
+            number=video.number or "",
+            expected_title=video.title or "",
+            expected_original_title=video.original_title or "",
+            title=translated_title,
+            original_title=original_title,
+            source="showcase_translate",
+        )
+        if state == "conflict":
+            return JSONResponse({"success": False, "error": "title_conflict"}, status_code=409)
+        if state == "not_found":
+            return JSONResponse({"success": False, "error": "video_not_found"}, status_code=404)
+
+        nfo_mtime, updated, has_history = await asyncio.to_thread(
+            _finalize_translation,
+            db_path,
+            video,
+            translated_title,
+            original_title,
+            path_mappings,
+        )
+        return JSONResponse({
+            "success": True,
+            "skipped": state == "unchanged",
+            "reason": "unchanged" if state == "unchanged" else "",
+            "nfo_updated": nfo_mtime is not None,
+            "video": _serialize_video(
+                updated,
+                path_mappings,
+                config.get("thumbnail_cache_enabled", False),
+                display_map,
+                has_history,
+            ),
+        })
+    except ValueError:
+        logger.exception("Showcase translation configuration is invalid")
+        return JSONResponse({"success": False, "error": "translate_config_error"}, status_code=400)
+    except Exception:
+        logger.exception("Showcase title translation failed")
+        return JSONResponse({"success": False, "error": "translate_failed"}, status_code=500)
+
+
+@router.post("/rollback-translation")
+def rollback_video_translation(request: RollbackTranslationRequest):
+    """Restore the latest translated title snapshot for one configured local video."""
+
+    try:
+        config = load_config()
+        db_path = get_db_path()
+        if not db_path.exists():
+            return JSONResponse({"success": False, "error": "video_not_found"}, status_code=404)
+        init_db(db_path)
+        repo = VideoRepository(db_path)
+        configured_dir_uris, path_mappings = _get_configured_dirs(config)
+        if not any(is_path_under_dir(request.path, uri) for uri in configured_dir_uris):
+            return JSONResponse({"success": False, "error": "video_not_found"}, status_code=404)
+        video = repo.get_by_path(request.path)
+        if video is None:
+            return JSONResponse({"success": False, "error": "video_not_found"}, status_code=404)
+
+        history = restore_title_translation(
+            db_path,
+            path=video.path,
+            number=video.number or "",
+        )
+        if history is None:
+            return JSONResponse({
+                "success": True,
+                "restored": False,
+                "reason": "no_history",
+                "video": _serialize_video(
+                    video,
+                    path_mappings,
+                    config.get("thumbnail_cache_enabled", False),
+                    build_actress_display_map(),
+                    False,
+                ),
+            })
+
+        title = history.get("old_title") or ""
+        original_title = history.get("old_original_title") or ""
+        nfo_mtime = sync_nfo_title(video.path, title, original_title, path_mappings)
+        if nfo_mtime is not None:
+            repo.update_nfo_mtime(video.path, nfo_mtime)
+        updated = repo.get_by_path(video.path)
+        history_paths, history_numbers = translation_history_keys(db_path)
+        return JSONResponse({
+            "success": True,
+            "restored": True,
+            "nfo_updated": nfo_mtime is not None,
+            "video": _serialize_video(
+                updated,
+                path_mappings,
+                config.get("thumbnail_cache_enabled", False),
+                build_actress_display_map(),
+                updated.path in history_paths or ((updated.number or "") in history_numbers),
+            ),
+        })
+    except Exception:
+        logger.exception("Showcase title rollback failed")
+        return JSONResponse({"success": False, "error": "rollback_failed"}, status_code=500)
 
 
 @router.delete("/video")

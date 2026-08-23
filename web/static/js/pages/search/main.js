@@ -7,6 +7,7 @@ import { searchStateResultCard }  from '@/search/state/result-card.js';
 import { searchStateFileList }    from '@/search/state/file-list.js';
 import { searchStateGridMode }    from '@/search/state/grid-mode.js';
 import { searchStateAdvancedPicker } from '@/search/state/advanced-picker.js';
+import { searchStateDownloads }    from '@/search/state/downloads.js';
 import { rescrapeState }           from '@/shared/state-rescrape.js';
 import { mergeState }              from '@/shared/merge-state.js';
 
@@ -21,6 +22,7 @@ function searchPage() {
         searchStateFileList(),
         searchStateGridMode(),
         searchStateAdvancedPicker(),
+        searchStateDownloads(),
         rescrapeState(),
         {
             // ===== 頁面組裝層 lifecycle（從 state/index.js 搬移）=====
@@ -90,6 +92,7 @@ function searchPage() {
                         },
                         cleanup: () => {
                             this.cleanupForNavigation();  // 關 SSE + abort fallback + requestId++
+                            this.cleanupDownloadState();
                             this._lightboxGeneration++;   // B19: invalidate pending $nextTick lightbox callbacks
                             if (this.lightboxCloseTimer) {
                                 clearTimeout(this.lightboxCloseTimer);

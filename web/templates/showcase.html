@@ -387,6 +387,27 @@
                             title="{{ t('showcase.action.toggle_info') }}">
                         <i class="bi bi-eye"></i>
                     </button>
+                    <button class="btn-icon"
+                            :class="{ 'active': _translatingAll }"
+                            :disabled="_translatingAll"
+                            @click="requestTranslateFilteredVideos()"
+                            title="{{ t('showcase.translation.batch_action') }}">
+                        <i class="bi" :class="_translatingAll ? 'bi-arrow-clockwise spin' : 'bi-translate'"></i>
+                    </button>
+                    <button class="btn-icon"
+                            :class="{ 'active': renameModalOpen }"
+                            :disabled="renameLoading || renameApplying"
+                            @click="requestRenameFilteredVideos()"
+                            title="{{ t('showcase.rename.batch_action') }}">
+                        <i class="bi" :class="renameLoading || renameApplying ? 'bi-arrow-clockwise spin' : 'bi-pencil-square'"></i>
+                    </button>
+                    <button class="btn-icon"
+                            :class="{ 'active': samplesBatchModalOpen }"
+                            :disabled="samplesBatchScanning || samplesBatchRunning"
+                            @click="requestFillMissingSamples()"
+                            title="{{ t('showcase.samples.batch_action') }}">
+                        <i class="bi" :class="samplesBatchScanning || samplesBatchRunning ? 'bi-arrow-clockwise spin' : 'bi-images'"></i>
+                    </button>
                 </div>
             </div>
 
@@ -552,6 +573,20 @@
                                     @click.stop="openLocal(video.path)"
                                     title="{{ t('search.action.open_folder') }}">
                                 <i class="bi bi-folder2-open"></i>
+                            </button>
+                            <button class="btn-glass-circle"
+                                    x-show="canTranslateVideo(video)"
+                                    :disabled="_translatingPath === video.path || _translatingAll"
+                                    @click.stop="translateVideo(video)"
+                                    title="{{ t('showcase.translation.action') }}">
+                                <i class="bi" :class="_translatingPath === video.path ? 'bi-arrow-clockwise spin' : 'bi-translate'"></i>
+                            </button>
+                            <button class="btn-glass-circle"
+                                    x-show="canRollbackTranslation(video)"
+                                    :disabled="_rollbackingPath === video.path || _translatingAll"
+                                    @click.stop="rollbackTranslation(video)"
+                                    title="{{ t('showcase.translation.rollback_action') }}">
+                                <i class="bi" :class="_rollbackingPath === video.path ? 'bi-arrow-clockwise spin' : 'bi-arrow-counterclockwise'"></i>
                             </button>
                             <!-- 74b US4: tap=enrichVideo（自動補缺）；長壓已移除（進階重刮收斂到燈箱齒輪 ⚙）。 -->
                             <button class="btn-glass-circle enrich-btn"
@@ -1122,6 +1157,30 @@
                                         :data-tooltip="t('showcase.lightbox.mask_cancel')"
                                         :aria-label="t('showcase.lightbox.mask_cancel')">
                                     <i class="bi bi-x-lg"></i>
+                                </button>
+                                <button class="lb-action-btn"
+                                        x-show="canTranslateVideo(currentLightboxVideo) && !_maskVisible"
+                                        :disabled="_translatingPath === currentLightboxVideo?.path || _translatingAll"
+                                        @click.stop="translateVideo(currentLightboxVideo)"
+                                        data-tooltip="{{ t('showcase.translation.action') }}"
+                                        aria-label="{{ t('showcase.translation.action') }}">
+                                    <i class="bi" :class="_translatingPath === currentLightboxVideo?.path ? 'bi-arrow-clockwise spin' : 'bi-translate'"></i>
+                                </button>
+                                <button class="lb-action-btn"
+                                        x-show="canRollbackTranslation(currentLightboxVideo) && !_maskVisible"
+                                        :disabled="_rollbackingPath === currentLightboxVideo?.path || _translatingAll"
+                                        @click.stop="rollbackTranslation(currentLightboxVideo)"
+                                        data-tooltip="{{ t('showcase.translation.rollback_action') }}"
+                                        aria-label="{{ t('showcase.translation.rollback_action') }}">
+                                    <i class="bi" :class="_rollbackingPath === currentLightboxVideo?.path ? 'bi-arrow-clockwise spin' : 'bi-arrow-counterclockwise'"></i>
+                                </button>
+                                <button class="lb-action-btn"
+                                        x-show="!_maskVisible"
+                                        :disabled="renameLoading || renameApplying"
+                                        @click.stop="requestRenameFilteredVideos(currentLightboxVideo)"
+                                        data-tooltip="{{ t('showcase.rename.action') }}"
+                                        aria-label="{{ t('showcase.rename.action') }}">
+                                    <i class="bi" :class="renameLoading || renameApplying ? 'bi-arrow-clockwise spin' : 'bi-pencil-square'"></i>
                                 </button>
                             </div>
                         </div>
@@ -1731,6 +1790,227 @@
                     <span x-show="_removeActressLoading" class="loading loading-spinner loading-xs"></span>
                     <span x-show="!_removeActressLoading"><i class="bi bi-trash3"></i></span>
                     {{ t('showcase.actress.remove_modal.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': translationBatchModalOpen }"
+            @click.self="closeTranslationBatchModal()"
+            @keydown.escape.window="translationBatchModalOpen && closeTranslationBatchModal()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-translate"></i>
+                {{ t('showcase.translation.batch_title') }}
+            </h3>
+            <p class="fluent-modal-body"
+               x-text="t('showcase.translation.batch_confirm', { count: translationBatchCount })"></p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="closeTranslationBatchModal()">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button type="button" class="btn btn-primary" @click="confirmTranslateFilteredVideos()">
+                    <i class="bi bi-translate"></i>
+                    {{ t('common.action.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': renameModalOpen }"
+            @click.self="closeRenameModal()"
+            @keydown.escape.window="renameModalOpen && closeRenameModal()">
+        <div class="modal-box fluent-modal-box rename-modal-box">
+            <div class="rename-modal-header">
+                <h3 class="fluent-modal-title">
+                    <i class="bi bi-pencil-square"></i>
+                    {{ t('showcase.rename.title') }}
+                </h3>
+                <div class="join rename-mode-tabs" role="tablist">
+                    <button type="button" class="btn btn-sm join-item"
+                            :class="{ 'btn-active': renameMode === 'preview' }"
+                            @click="renameMode = 'preview'">
+                        {{ t('showcase.rename.preview') }}
+                    </button>
+                    <button type="button" class="btn btn-sm join-item"
+                            :class="{ 'btn-active': renameMode === 'history' }"
+                            @click="openRenameHistory()">
+                        {{ t('showcase.rename.history') }}
+                    </button>
+                </div>
+            </div>
+
+            <div x-show="renameMode === 'preview'" class="rename-modal-content">
+                <label class="rename-folder-toggle">
+                    <span>{{ t('showcase.rename.rename_folder') }}</span>
+                    <input type="checkbox" class="toggle toggle-sm"
+                           x-model="renameFolder"
+                           @change="refreshRenamePreview()"
+                           :disabled="renameLoading || renameApplying">
+                </label>
+                <div class="rename-loading" x-show="renameLoading">
+                    <span class="loading loading-spinner loading-sm"></span>
+                    <span>{{ t('showcase.rename.loading') }}</span>
+                </div>
+                <div class="rename-empty" x-show="!renameLoading && !renamePreviewItems.length && !renamePreviewFailures.length">
+                    {{ t('showcase.rename.none') }}
+                </div>
+                <div class="rename-list" x-show="!renameLoading">
+                    <template x-for="item in renamePreviewItems" :key="item.path">
+                        <div class="rename-row">
+                            <div class="rename-number" x-text="item.number || ''"></div>
+                            <div class="rename-path rename-path-old" x-text="item.old_path"></div>
+                            <i class="bi bi-arrow-down rename-arrow" aria-hidden="true"></i>
+                            <div class="rename-path rename-path-new" x-text="item.new_path"></div>
+                        </div>
+                    </template>
+                    <template x-for="item in renamePreviewFailures" :key="item.path">
+                        <div class="rename-row rename-row-error">
+                            <div class="rename-path" x-text="item.path"></div>
+                            <div class="rename-error" x-text="_renameMessage(item.error)"></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div x-show="renameMode === 'history'" class="rename-modal-content">
+                <div class="rename-history-actions">
+                    <button type="button" class="btn btn-sm"
+                            x-show="renameHistory.some(item => ['pending', 'recovery_required'].includes(item.status))"
+                            @click="requestRecoverPendingRenames()"
+                            :disabled="renameApplying">
+                        <i class="bi bi-life-preserver"></i>
+                        {{ t('showcase.rename.recover') }}
+                    </button>
+                </div>
+                <div class="rename-loading" x-show="renameLoading">
+                    <span class="loading loading-spinner loading-sm"></span>
+                </div>
+                <div class="rename-empty" x-show="!renameLoading && !renameHistory.length">
+                    {{ t('showcase.rename.no_history') }}
+                </div>
+                <div class="rename-list" x-show="!renameLoading">
+                    <template x-for="event in renameHistory" :key="event.id">
+                        <div class="rename-row rename-history-row">
+                            <div class="rename-history-meta">
+                                <span x-text="event.created_at || ''"></span>
+                                <span class="badge badge-sm" x-text="t('showcase.rename.status.' + (event.status || 'pending'))"></span>
+                            </div>
+                            <template x-if="event.entries?.[0]">
+                                <div>
+                                    <div class="rename-path rename-path-old" x-text="event.entries[0].old_path"></div>
+                                    <div class="rename-path rename-path-new" x-text="event.entries[0].new_path"></div>
+                                </div>
+                            </template>
+                            <button type="button" class="btn btn-square btn-sm rename-rollback-btn"
+                                    x-show="event.status !== 'rolled_back'"
+                                    @click="requestRenameRollback(event)"
+                                    :disabled="renameApplying"
+                                    :title="t('showcase.rename.rollback')">
+                                <i class="bi bi-arrow-counterclockwise"></i>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="modal-action fluent-modal-actions" x-show="renameMode === 'preview'">
+                <button type="button" class="btn btn-ghost" @click="closeRenameModal()">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button type="button" class="btn btn-primary"
+                        @click="confirmRenamePreview()"
+                        :disabled="renameApplying || renameLoading || !renamePreviewItems.length">
+                    <span x-show="renameApplying" class="loading loading-spinner loading-xs"></span>
+                    <i x-show="!renameApplying" class="bi bi-pencil-square"></i>
+                    {{ t('showcase.rename.apply') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': renameRollbackConfirmOpen }"
+            @click.self="cancelRenameRollback()"
+            @keydown.escape.window="renameRollbackConfirmOpen && cancelRenameRollback()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title"><i class="bi bi-arrow-counterclockwise"></i> {{ t('showcase.rename.rollback_title') }}</h3>
+            <p class="fluent-modal-body">{{ t('showcase.rename.rollback_confirm') }}</p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="cancelRenameRollback()">{{ t('common.action.cancel') }}</button>
+                <button type="button" class="btn btn-primary" @click="confirmRenameRollback()" :disabled="renameApplying">
+                    <span x-show="renameApplying" class="loading loading-spinner loading-xs"></span>
+                    {{ t('common.action.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': renameRecoverConfirmOpen }"
+            @click.self="cancelRecoverPendingRenames()"
+            @keydown.escape.window="renameRecoverConfirmOpen && cancelRecoverPendingRenames()">
+        <div class="modal-box fluent-modal-box">
+            <h3 class="fluent-modal-title"><i class="bi bi-life-preserver"></i> {{ t('showcase.rename.recover_title') }}</h3>
+            <p class="fluent-modal-body">{{ t('showcase.rename.recover_confirm') }}</p>
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost" @click="cancelRecoverPendingRenames()">{{ t('common.action.cancel') }}</button>
+                <button type="button" class="btn btn-primary" @click="confirmRecoverPendingRenames()" :disabled="renameApplying">
+                    <span x-show="renameApplying" class="loading loading-spinner loading-xs"></span>
+                    {{ t('common.action.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': samplesBatchModalOpen }"
+            @click.self="closeSamplesBatchModal()"
+            @keydown.escape.window="samplesBatchModalOpen && closeSamplesBatchModal()">
+        <div class="modal-box fluent-modal-box samples-batch-box">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-images"></i>
+                {{ t('showcase.samples.batch_title') }}
+            </h3>
+
+            <div x-show="samplesBatchStage === 'confirm'">
+                <p class="fluent-modal-body"
+                   x-text="t('showcase.samples.batch_confirm', { count: samplesBatchItems.length })"></p>
+            </div>
+
+            <div x-show="samplesBatchStage === 'running'" class="samples-batch-progress">
+                <div class="samples-batch-counts">
+                    <span x-text="t('showcase.samples.batch_progress', { current: samplesBatchProcessed, total: samplesBatchItems.length })"></span>
+                    <strong x-text="samplesBatchProgress + '%' "></strong>
+                </div>
+                <progress class="progress progress-primary" :value="samplesBatchProcessed" :max="samplesBatchItems.length"></progress>
+            </div>
+
+            <div x-show="samplesBatchStage === 'result'" class="samples-batch-results">
+                <div><strong x-text="samplesBatchSucceeded"></strong><span>{{ t('showcase.samples.batch_succeeded') }}</span></div>
+                <div><strong x-text="samplesBatchUnavailable"></strong><span>{{ t('showcase.samples.batch_unavailable') }}</span></div>
+                <div><strong x-text="samplesBatchFailed"></strong><span>{{ t('showcase.samples.batch_failed') }}</span></div>
+            </div>
+
+            <div class="modal-action fluent-modal-actions">
+                <button type="button" class="btn btn-ghost"
+                        x-show="samplesBatchStage !== 'running'"
+                        @click="closeSamplesBatchModal()">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button type="button" class="btn btn-primary"
+                        x-show="samplesBatchStage === 'confirm'"
+                        @click="confirmFillMissingSamples()">
+                    <i class="bi bi-images"></i>
+                    {{ t('common.action.confirm') }}
+                </button>
+                <button type="button" class="btn btn-primary"
+                        x-show="samplesBatchStage === 'result' && samplesBatchFailedItems.length"
+                        @click="confirmFillMissingSamples(true)">
+                    <i class="bi bi-arrow-clockwise"></i>
+                    {{ t('showcase.samples.batch_retry') }}
                 </button>
             </div>
         </div>

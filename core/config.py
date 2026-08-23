@@ -140,6 +140,15 @@ class TranslateConfig(BaseModel):
     ollama_model: Optional[str] = None
 
 
+class DownloadConfig(BaseModel):
+    """Authorized direct-media queue settings."""
+
+    max_concurrent_downloads: int = Field(default=4, ge=1, le=8)
+    fragment_threads: int = Field(default=16, ge=1, le=64)
+    retry_count: int = Field(default=5, ge=0, le=20)
+    request_timeout_seconds: int = Field(default=30, ge=5, le=120)
+
+
 class DirectoryConfig(BaseModel):
     """Scanner 來源目錄設定（feature/88）。
 
@@ -212,6 +221,7 @@ class AppConfig(BaseModel):
     search: SearchConfig = SearchConfig()
     source_links: SourceLinksConfig = SourceLinksConfig()
     translate: TranslateConfig = TranslateConfig()
+    download: DownloadConfig = DownloadConfig()
     gallery: GalleryConfig = GalleryConfig()
     showcase: ShowcaseConfig = ShowcaseConfig()
     general: GeneralConfig = GeneralConfig()

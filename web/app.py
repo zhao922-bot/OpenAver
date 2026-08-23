@@ -34,6 +34,7 @@ setup_logging()
 logger = get_logger(__name__)
 
 from core.config import load_config
+from core.actress_names import seed_curated_actress_names
 from core.database import init_db
 from core.database import backfill_readonly_nfo_mtime
 from core.metatube.state import metatube_state as _mt_startup_state
@@ -77,6 +78,7 @@ async def lifespan(app: FastAPI):
     # 移除 legacy clip_embedding / clip_model_id），確保 Video.from_row cls(**data)
     # 不會因 legacy schema 欄位收到未知 keyword 而 500。CD-57b-8 contract。
     init_db()
+    await asyncio.to_thread(seed_curated_actress_names)
 
     # TASK-114a-T2: 認證閘門的 schema 就緒動作，與 init_db() 同一段落一起跑
     # （CD-114a-3：兩者刻意不合併成同一支函式，但啟動時機一致）。idempotent
@@ -171,6 +173,9 @@ from web.routers import settings_metatube as settings_metatube_router
 from web.routers import cf as cf_router
 from web.routers import diagnostics as diagnostics_router
 from web.routers import access as access_router
+from web.routers import downloads as downloads_router
+from web.routers import renames as renames_router
+from web.routers import sample_batches as sample_batches_router
 # Module-level imports for startup_reconnect / _fire_probe so that
 # patch("web.app.startup_reconnect") / patch("web.app._fire_probe") target the
 # correct use-site binding (TASK-63e-1; function-local import would defeat patch).
@@ -202,6 +207,9 @@ app.include_router(settings_metatube_router.router)
 app.include_router(cf_router.router)
 app.include_router(diagnostics_router.router)
 app.include_router(access_router.router)
+app.include_router(downloads_router.router)
+app.include_router(renames_router.router)
+app.include_router(sample_batches_router.router)
 
 
 @app.exception_handler(RequestValidationError)

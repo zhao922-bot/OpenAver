@@ -83,3 +83,8 @@ def atomic_write(
         except OSError:
             pass
         raise
+
+
+def atomic_replace_file(source: Union[Path, str], dest: Union[Path, str]) -> None:
+    """Atomically move an already-complete file onto its final same-volume path."""
+    os.replace(Path(source), Path(dest))

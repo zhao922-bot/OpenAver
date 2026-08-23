@@ -14,6 +14,8 @@ import { stateActress }  from '@/showcase/state-actress.js';
 import { stateLightbox } from '@/showcase/state-lightbox.js';
 import { stateSimilar }  from '@/showcase/state-similar.js';
 import { stateDelete }   from '@/showcase/state-delete.js';
+import { stateRenames }  from '@/showcase/state-renames.js';
+import { stateSamples }  from '@/showcase/state-samples.js';
 import { rescrapeState } from '@/shared/state-rescrape.js';
 import { mergeState } from '@/shared/merge-state.js';
 
@@ -25,6 +27,8 @@ window.showcaseState = function() {
         stateLightbox.call(this),
         stateSimilar.call(this),
         stateDelete.call(this),
+        stateRenames.call(this),
+        stateSamples.call(this),
         rescrapeState.call(this),
     );
 };

@@ -492,6 +492,11 @@
                             title="{{ t('search.action.open_source_url') }}">
                         <i class="bi bi-box-arrow-up-right"></i>
                     </button>
+                    <button class="info-icon-btn"
+                            @click="openDownloadModal()"
+                            title="{{ t('search.download.open') }}">
+                        <i class="bi bi-cloud-arrow-down"></i>
+                    </button>
                 </div>
                 <div class="av-card-full-title">
                     <div class="av-card-full-footer-content">
@@ -1002,6 +1007,195 @@
             <span x-text="_toast.message"></span>
         </div>
     </div>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': downloadModalOpen }"
+            @click.self="closeDownloadModal()">
+        <div class="modal-box fluent-modal-box download-modal-box">
+            <div class="download-modal-header">
+                <h3 class="fluent-modal-title">
+                    <i class="bi bi-cloud-arrow-down"></i>
+                    {{ t('search.download.title') }}
+                </h3>
+                <button class="info-icon-btn" @click="closeDownloadModal()"
+                        title="{{ t('search.download.close') }}">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="download-fields">
+                <label class="download-field">
+                    <span>{{ t('search.download.number') }}</span>
+                    <input class="input input-bordered" x-model="downloadForm.number" readonly>
+                </label>
+                <label class="download-field">
+                    <span>{{ t('search.download.japanese_title') }}</span>
+                    <textarea class="textarea textarea-bordered" rows="2"
+                              x-model="downloadForm.title"></textarea>
+                </label>
+                <label class="download-field">
+                    <span>{{ t('search.download.media_url') }}</span>
+                    <input class="input input-bordered" type="url"
+                           placeholder="https://.../playlist.m3u8" x-model="downloadForm.mediaUrl">
+                </label>
+                <label class="download-field">
+                    <span>{{ t('search.download.destination') }}</span>
+                    <select class="select select-bordered" x-model="downloadForm.destination">
+                        <template x-for="path in downloadDestinations" :key="path">
+                            <option :value="path" x-text="path"></option>
+                        </template>
+                    </select>
+                </label>
+            </div>
+
+            <div class="download-tuning">
+                <label class="download-tuning-field">
+                    <span>{{ t('search.download.concurrent_downloads') }}</span>
+                    <input type="number" min="1" max="8" class="input input-bordered input-sm"
+                           x-model.number="downloadSettings.maxConcurrentDownloads"
+                           @change="saveDownloadSettings()" :disabled="downloadSettingsSaving">
+                </label>
+                <label class="download-tuning-field">
+                    <span>{{ t('search.download.fragment_threads') }}</span>
+                    <input type="number" min="1" max="64" class="input input-bordered input-sm"
+                           x-model.number="downloadSettings.fragmentThreads"
+                           @change="saveDownloadSettings()" :disabled="downloadSettingsSaving">
+                </label>
+            </div>
+
+            <div class="alert alert-warning download-engine-alert"
+                 x-show="!downloadSettings.engineAvailable" x-cloak>
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>{{ t('search.download.engine_unavailable') }}</span>
+            </div>
+
+            <label class="download-rights-confirm">
+                <input type="checkbox" class="checkbox checkbox-sm"
+                       x-model="downloadForm.rightsConfirmed">
+                <span>{{ t('search.download.rights_confirm') }}</span>
+            </label>
+
+            <div class="download-start-row">
+                <button class="btn btn-primary" @click="startAuthorizedDownload()"
+                        :disabled="downloadStarting || !downloadCanStart()">
+                    <span x-show="downloadStarting" class="loading loading-spinner loading-xs"></span>
+                    <i x-show="!downloadStarting" class="bi bi-download"></i>
+                    {{ t('search.download.start') }}
+                </button>
+            </div>
+
+            <div class="download-task-list" x-show="downloadTasks.length" x-cloak>
+                <div class="download-history-toolbar">
+                    <button class="btn btn-sm btn-ghost" @click="requestClearDownloadHistory(false)">
+                        <i class="bi bi-trash3"></i>
+                        {{ t('search.download.clear_history') }}
+                    </button>
+                    <button class="btn btn-sm btn-ghost" @click="requestClearDownloadHistory(true)">
+                        {{ t('search.download.clear_failed') }}
+                    </button>
+                </div>
+                <template x-for="task in downloadTasks" :key="task.id">
+                    <div class="download-task-row">
+                        <div class="download-task-main">
+                            <div class="download-task-heading">
+                                <strong x-text="task.payload?.number || '-'">-</strong>
+                                <span x-text="downloadStatusText(task.status)"></span>
+                                <span x-text="`${Number(task.progress || 0).toFixed(1)}%`"></span>
+                            </div>
+                            <div class="download-progress-track">
+                                <div class="download-progress-fill"
+                                     :style="`width: ${Math.max(0, Math.min(100, task.progress || 0))}%`"></div>
+                            </div>
+                            <div class="download-task-meta">
+                                <span x-text="downloadProgressText(task)"></span>
+                                <span class="download-task-message" x-text="downloadTaskMessage(task)"
+                                      :title="task.detail_message || downloadTaskMessage(task)"></span>
+                            </div>
+                        </div>
+                        <div class="download-task-actions">
+                            <button class="info-icon-btn" x-show="['queued','probing','running'].includes(task.status)"
+                                    @click="controlDownload(task, 'pause')"
+                                    title="{{ t('search.download.pause') }}">
+                                <i class="bi bi-pause-fill"></i>
+                            </button>
+                            <button class="info-icon-btn" x-show="task.status === 'paused'"
+                                    @click="controlDownload(task, 'resume')"
+                                    title="{{ t('search.download.resume') }}">
+                                <i class="bi bi-play-fill"></i>
+                            </button>
+                            <button class="info-icon-btn" x-show="!['completed','cancelled','failed'].includes(task.status)"
+                                    @click="controlDownload(task, 'cancel')"
+                                    title="{{ t('search.download.cancel') }}">
+                                <i class="bi bi-stop-fill"></i>
+                            </button>
+                            <button class="info-icon-btn" x-show="task.status === 'failed'"
+                                    @click="controlDownload(task, 'retry')"
+                                    title="{{ t('search.download.retry') }}">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <button class="info-icon-btn" x-show="task.status === 'failed'"
+                                    @click="openDownloadRetryUrlModal(task)"
+                                    title="{{ t('search.download.retry_with_url') }}">
+                                <i class="bi bi-link-45deg"></i>
+                            </button>
+                            <button class="info-icon-btn" x-show="['completed','cancelled','failed'].includes(task.status)"
+                                    @click="removeDownload(task)"
+                                    title="{{ t('search.download.remove') }}">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': downloadRetryUrlModalOpen }"
+            @click.self="closeDownloadRetryUrlModal()">
+        <div class="modal-box fluent-modal-box download-confirm-modal">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-link-45deg"></i>
+                {{ t('search.download.retry_with_url') }}
+            </h3>
+            <label class="download-field mt-4">
+                <span>{{ t('search.download.media_url') }}</span>
+                <input class="input input-bordered" type="url"
+                       x-model="downloadRetryUrl"
+                       :placeholder="t('search.download.retry_url_prompt')">
+            </label>
+            <div class="modal-action">
+                <button class="btn" @click="closeDownloadRetryUrlModal()">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button class="btn btn-primary" @click="confirmDownloadRetryUrl()"
+                        :disabled="!downloadRetryUrl.trim()">
+                    {{ t('common.action.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog class="modal fluent-modal"
+            :class="{ 'modal-open': downloadClearModalOpen }"
+            @click.self="downloadClearModalOpen = false">
+        <div class="modal-box fluent-modal-box download-confirm-modal">
+            <h3 class="fluent-modal-title">
+                <i class="bi bi-trash3"></i>
+                {{ t('search.download.clear_history') }}
+            </h3>
+            <p class="py-3"
+               x-text="t(downloadClearOnlyFailed ? 'search.download.clear_failed_confirm' : 'search.download.clear_history_confirm')"></p>
+            <div class="modal-action">
+                <button class="btn" @click="downloadClearModalOpen = false">
+                    {{ t('common.action.cancel') }}
+                </button>
+                <button class="btn btn-error" @click="confirmClearDownloadHistory()">
+                    {{ t('common.action.confirm') }}
+                </button>
+            </div>
+        </div>
+    </dialog>
 
     <!-- Fix-1: 覆蓋警告 Modal (Alpine state-driven) -->
     <dialog class="modal fluent-modal"

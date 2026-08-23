@@ -13,7 +13,33 @@ from unittest.mock import patch
 
 import pytest
 
-from core.atomic_write import atomic_write
+from core.atomic_write import atomic_replace_file, atomic_write
+
+
+class TestAtomicReplaceFile:
+    def test_replaces_destination_with_completed_source(self, tmp_path):
+        source = tmp_path / "download.part"
+        destination = tmp_path / "video.mp4"
+        source.write_bytes(b"complete-video")
+        destination.write_bytes(b"old-video")
+
+        atomic_replace_file(source, destination)
+
+        assert not source.exists()
+        assert destination.read_bytes() == b"complete-video"
+
+    def test_replace_failure_preserves_source_and_destination(self, tmp_path):
+        source = tmp_path / "download.part"
+        destination = tmp_path / "video.mp4"
+        source.write_bytes(b"complete-video")
+        destination.write_bytes(b"old-video")
+
+        with patch("core.atomic_write.os.replace", side_effect=PermissionError("denied")):
+            with pytest.raises(PermissionError, match="denied"):
+                atomic_replace_file(source, destination)
+
+        assert source.read_bytes() == b"complete-video"
+        assert destination.read_bytes() == b"old-video"
 
 
 class TestAtomicWritePrimitive:

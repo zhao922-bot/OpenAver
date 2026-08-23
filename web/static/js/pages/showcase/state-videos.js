@@ -31,6 +31,14 @@ function _releaseFieldValue(rawText, isBad) {
 
 export function stateVideos() {
     return {
+        _translatingPath: null,
+        _rollbackingPath: null,
+        _translatingAll: false,
+        _translateProcessed: 0,
+        _translateTotal: 0,
+        translationBatchModalOpen: false,
+        translationBatchCount: 0,
+        _translationBatchItems: [],
 
         // --- 99a-T2: 揭露 applyCellFocal 供 F1 grid template @load / $watch 呼叫（load-gated，
         // aspect-aware object-position；取代舊 focalStyle 的 reactive :style binding，見 98b-T6 姊妹
@@ -678,6 +686,184 @@ export function stateVideos() {
                 try { selectEl.showPicker(); return; } catch (e) { /* fall through */ }
             }
             selectEl.click();
+        },
+
+        _titleHasJapanese(value) {
+            return /[\u3040-\u30ff]/u.test(value || '');
+        },
+
+        _translationSourceTitle(video) {
+            if (video?.original_title && this._titleHasJapanese(video.original_title)) {
+                return video.original_title;
+            }
+            return video?.title || '';
+        },
+
+        isVideoTranslated(video) {
+            return Boolean(
+                video?.original_title &&
+                video?.title &&
+                video.original_title !== video.title &&
+                this._titleHasJapanese(video.original_title) &&
+                !this._titleHasJapanese(video.title)
+            );
+        },
+
+        canTranslateVideo(video) {
+            if (!video?.path || video.path.startsWith('actress:')) return false;
+            if (this.isVideoTranslated(video)) return false;
+            return this._titleHasJapanese(this._translationSourceTitle(video));
+        },
+
+        canRollbackTranslation(video) {
+            return Boolean(video?.path && video.has_translation_history);
+        },
+
+        _mergeTranslatedVideo(updatedVideo) {
+            if (!updatedVideo?.path) return;
+            let mergedVideo = null;
+            const replaceIn = (items) => {
+                if (!items) return;
+                const index = items.findIndex(item => item?.path === updatedVideo.path);
+                if (index < 0) return;
+                const merged = Object.assign({}, items[index], updatedVideo);
+                items.splice(index, 1, merged);
+                if (!mergedVideo) mergedVideo = merged;
+            };
+            replaceIn(_videos);
+            replaceIn(_filteredVideos);
+            replaceIn(this.paginatedVideos);
+            if (this.currentLightboxVideo?.path === updatedVideo.path) {
+                this.currentLightboxVideo = Object.assign(
+                    {},
+                    mergedVideo || this.currentLightboxVideo,
+                    updatedVideo,
+                );
+            }
+        },
+
+        _translationMessage(reason) {
+            const known = new Set(['already_translated', 'no_japanese', 'unchanged']);
+            return window.t(`showcase.translation.${known.has(reason) ? reason : 'skipped'}`);
+        },
+
+        async translateVideo(video, force = false) {
+            if (!video?.path || this._translatingPath) return null;
+            if (!force && !this.canTranslateVideo(video)) return null;
+
+            this._translatingPath = video.path;
+            try {
+                const response = await fetch('/api/showcase/translate-video', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: video.path, force: Boolean(force) }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'translate_failed');
+                }
+                if (data.video) this._mergeTranslatedVideo(data.video);
+                if (!this._translatingAll) {
+                    this.showToast(
+                        data.skipped
+                            ? this._translationMessage(data.reason)
+                            : window.t('showcase.translation.success'),
+                        'success',
+                    );
+                }
+                return data;
+            } catch (error) {
+                if (!this._translatingAll) {
+                    this.showToast(window.t('showcase.translation.failed'), 'error');
+                }
+                throw error;
+            } finally {
+                this._translatingPath = null;
+            }
+        },
+
+        requestTranslateFilteredVideos() {
+            const candidates = _filteredVideos.filter(video => this.canTranslateVideo(video));
+            if (!candidates.length) {
+                this.showToast(window.t('showcase.translation.none'), 'success');
+                return;
+            }
+            this._translationBatchItems = candidates.slice();
+            this.translationBatchCount = candidates.length;
+            this.translationBatchModalOpen = true;
+        },
+
+        closeTranslationBatchModal() {
+            if (this._translatingAll) return;
+            this.translationBatchModalOpen = false;
+            this.translationBatchCount = 0;
+            this._translationBatchItems = [];
+        },
+
+        async confirmTranslateFilteredVideos() {
+            if (this._translatingAll || !this._translationBatchItems.length) return;
+            const candidates = this._translationBatchItems.slice();
+            this.translationBatchModalOpen = false;
+            this._translatingAll = true;
+            this._translateProcessed = 0;
+            this._translateTotal = candidates.length;
+            let failed = 0;
+            try {
+                for (const video of candidates) {
+                    try {
+                        await this.translateVideo(video);
+                    } catch (_) {
+                        failed += 1;
+                    } finally {
+                        this._translateProcessed += 1;
+                        this.showToast(window.t('showcase.translation.progress', {
+                            current: this._translateProcessed,
+                            total: this._translateTotal,
+                        }), 'success');
+                    }
+                }
+                this.showToast(
+                    failed
+                        ? window.t('showcase.translation.batch_failed', { count: failed })
+                        : window.t('showcase.translation.batch_success'),
+                    failed ? 'error' : 'success',
+                );
+            } finally {
+                this._translatingAll = false;
+                this._translateProcessed = 0;
+                this._translateTotal = 0;
+                this.translationBatchCount = 0;
+                this._translationBatchItems = [];
+            }
+        },
+
+        async rollbackTranslation(video) {
+            if (!video?.path || this._rollbackingPath) return null;
+            this._rollbackingPath = video.path;
+            try {
+                const response = await fetch('/api/showcase/rollback-translation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: video.path }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'rollback_failed');
+                }
+                if (data.video) this._mergeTranslatedVideo(data.video);
+                this.showToast(
+                    window.t(data.restored
+                        ? 'showcase.translation.rollback_success'
+                        : 'showcase.translation.no_history'),
+                    data.restored ? 'success' : 'info',
+                );
+                return data;
+            } catch (error) {
+                this.showToast(window.t('showcase.translation.rollback_failed'), 'error');
+                throw error;
+            } finally {
+                this._rollbackingPath = null;
+            }
         },
 
         // --- 資料處理 ---

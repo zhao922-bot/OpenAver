@@ -17,6 +17,7 @@ dmm_prefix_hints.json
 
 # Archives (舊檔案備份)
 archives/
+backups/
 
 # Feature (功能開發文件)
 feature/

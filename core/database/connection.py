@@ -139,6 +139,28 @@ def init_db(db_path: Path = None) -> None:
         CREATE INDEX IF NOT EXISTS idx_videos_cover_path ON videos(cover_path)
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS title_translation_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL,
+            number TEXT DEFAULT '',
+            old_title TEXT DEFAULT '',
+            old_original_title TEXT DEFAULT '',
+            new_title TEXT DEFAULT '',
+            new_original_title TEXT DEFAULT '',
+            source TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_title_translation_history_path
+        ON title_translation_history(path, id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_title_translation_history_number
+        ON title_translation_history(number, id)
+    """)
+
     # 女優別名表 — 偵測舊 schema (old_name 欄位) 並執行跟鏈遷移
     existing_alias_cols = {
         row[1] for row in cursor.execute("PRAGMA table_info(actress_aliases)").fetchall()

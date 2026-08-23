@@ -14,6 +14,11 @@ import threading
 import httpx
 
 from core.config import load_config
+from core.actress_names import (
+    load_actress_alias_groups,
+    protect_actress_names,
+    restore_actress_names,
+)
 from core.translate_service import create_translate_service
 from core.scrapers.utils import has_japanese
 from core.logger import get_logger
@@ -108,7 +113,14 @@ async def translate_title(request: TranslateRequest) -> dict:
                 "actors": request.actors or [],
                 "number": request.number or ""
             }
-            result = await translate_service.translate_single(request.text, context)
+            alias_groups = await asyncio.to_thread(load_actress_alias_groups)
+            protected_text, replacements = protect_actress_names(
+                request.text,
+                request.actors,
+                groups=alias_groups,
+            )
+            result = await translate_service.translate_single(protected_text, context)
+            result = restore_actress_names(result, replacements)
 
             if not result:
                 return {"success": False, "error": "翻譯結果為空"}
@@ -242,10 +254,17 @@ async def translate_batch(request: BatchTranslateRequest):
         # 過濾出包含日文的標題
         japanese_indices = []
         japanese_titles = []
+        actress_replacements = []
+        alias_groups = await asyncio.to_thread(load_actress_alias_groups)
         for i, title in enumerate(request.titles):
             if has_japanese(title):
                 japanese_indices.append(i)
-                japanese_titles.append(title)
+                protected_title, replacements = protect_actress_names(
+                    title,
+                    groups=alias_groups,
+                )
+                japanese_titles.append(protected_title)
+                actress_replacements.append(replacements)
 
         # 初始化結果列表（預設為原文）
         results = list(request.titles)
@@ -260,7 +279,11 @@ async def translate_batch(request: BatchTranslateRequest):
                 translations.extend(batch_results)
 
             # 將翻譯結果放回對應位置，同時追蹤成功的
-            for idx, trans in zip(japanese_indices, translations, strict=False):  # lengths may differ if translate_batch returns fewer items than input
+            restored_translations = [
+                restore_actress_names(trans, replacements)
+                for trans, replacements in zip(translations, actress_replacements, strict=False)
+            ]
+            for idx, trans in zip(japanese_indices, restored_translations, strict=False):  # lengths may differ if translate_batch returns fewer items than input
                 if trans:  # trans 非空表示翻譯成功
                     results[idx] = trans
                     success_indices.append(idx)  # 記錄成功的索引
@@ -288,4 +311,3 @@ async def translate_batch(request: BatchTranslateRequest):
             "errors": list(range(len(request.titles))),
             "error_message": "批次翻譯失敗"
         }
-

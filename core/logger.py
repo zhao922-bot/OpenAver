@@ -8,6 +8,7 @@ OpenAver 統一日誌模組
     logger.debug("除錯訊息")
 """
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -15,6 +16,14 @@ from pathlib import Path
 # 全域設定
 _initialized = False
 _log_dir = None
+
+
+def get_default_log_dir() -> Path:
+    """Return the configured log directory while preserving the legacy default."""
+    override = os.environ.get("OPENAVER_LOG_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / "OpenAver" / "logs"
 
 
 def setup_logging(log_dir: Path = None, console_level: int = logging.INFO):
@@ -32,7 +41,7 @@ def setup_logging(log_dir: Path = None, console_level: int = logging.INFO):
 
     # 日誌目錄
     if log_dir is None:
-        log_dir = Path.home() / "OpenAver" / "logs"
+        log_dir = get_default_log_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     _log_dir = log_dir
 
