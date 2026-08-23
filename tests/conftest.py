@@ -12,6 +12,17 @@ from core import config as core_config
 # 逼近，且不影響判別力（patch 整段替換函式，測試期間真偵測不可能被呼叫）。
 MOCK_FOCAL_XY = (0.3148, 0.2000)
 
+
+@pytest.fixture(autouse=True)
+def _isolate_default_database(tmp_path, monkeypatch):
+    """Keep every test that uses the default repository away from user data."""
+    db_path = tmp_path / "db" / "openaver-test.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("OPENAVER_DB_PATH", str(db_path))
+
+    from core.database import init_db
+    init_db(db_path)
+
 # ── LAN access gate（feature/80）測試相容 ──────────────────────────────
 # web.app 的 lan_access_gate middleware 用 request.client.host 判 loopback。
 # Starlette TestClient 預設 client host = "testclient"（非 loopback）→ 單機模式
@@ -126,5 +137,3 @@ def seed_crop_mode():
         finally:
             conn.close()
     return _seed
-
-

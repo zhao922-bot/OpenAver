@@ -4,6 +4,7 @@ get_db_path / get_connection / init_db / _migrate_old_aliases 同住於此。
 """
 import sqlite3
 import json
+import os
 import time
 from pathlib import Path
 
@@ -14,6 +15,12 @@ logger = get_logger(__name__)
 
 def get_db_path() -> Path:
     """獲取資料庫路徑 (output/openaver.db)"""
+    override = os.environ.get("OPENAVER_DB_PATH", "").strip()
+    if override:
+        db_path = Path(override).expanduser().resolve()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return db_path
+
     # 使用專案根目錄下的 output 資料夾
     # __file__ = core/database/connection.py → 上溯三層才是 repo 根（87a 拆檔後
     # 本檔比原 core/database.py 深一層；三 .parent 還原 repo-root/output 預設位置）

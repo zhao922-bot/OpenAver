@@ -19,14 +19,24 @@ from core.gallery_scanner import VideoInfo
 from core.path_utils import to_file_uri
 
 
-def test_get_db_path():
+def test_get_db_path(monkeypatch):
     """測試資料庫路徑正確"""
+    monkeypatch.delenv("OPENAVER_DB_PATH", raising=False)
     db_path = get_db_path()
     assert isinstance(db_path, Path)
     assert db_path.name == "openaver.db"
     assert db_path.parent.name == "output"
     # 確保路徑是絕對路徑
     assert db_path.is_absolute()
+
+
+def test_get_db_path_honors_environment_override(tmp_path, monkeypatch):
+    """Tests and maintenance tools can isolate the default database safely."""
+    expected = tmp_path / "isolated" / "openaver-test.db"
+    monkeypatch.setenv("OPENAVER_DB_PATH", str(expected))
+
+    assert get_db_path() == expected.resolve()
+    assert expected.parent.is_dir()
 
 
 def test_init_db_creates_table(tmp_path):
