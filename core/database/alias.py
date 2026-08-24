@@ -53,6 +53,97 @@ class AliasRepository(_AliasRepositoryBase[AliasRecord]):
     _sql_alias = "aa"
     _record_cls = AliasRecord
 
+    def promote_singleton_primary(
+        self,
+        old_primary: str,
+        new_primary: str,
+        source: str = "curated_common_zh",
+    ) -> bool:
+        """Promote or merge an empty one-name group atomically.
+
+        A group with aliases is user-maintained and must not be rewritten.  The
+        old primary becomes an alias so existing NFO names keep resolving.  A
+        pre-existing target is supported to repair partially completed seeds.
+        """
+        old_primary = old_primary.strip()
+        new_primary = new_primary.strip()
+        if not old_primary or not new_primary or old_primary == new_primary:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("BEGIN EXCLUSIVE")
+            cursor.execute(
+                "SELECT aliases FROM actress_aliases WHERE primary_name = ?",
+                (old_primary,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                conn.rollback()
+                return False
+            try:
+                existing_aliases = json.loads(row[0] or "[]")
+            except json.JSONDecodeError:
+                conn.rollback()
+                return False
+            if existing_aliases:
+                conn.rollback()
+                return False
+
+            cursor.execute(
+                "SELECT aliases FROM actress_aliases WHERE primary_name = ?",
+                (new_primary,),
+            )
+            target_row = cursor.fetchone()
+            if target_row is not None:
+                try:
+                    target_aliases = json.loads(target_row[0] or "[]")
+                except json.JSONDecodeError:
+                    conn.rollback()
+                    return False
+                cursor.execute(
+                    "DELETE FROM actress_aliases WHERE primary_name = ?",
+                    (old_primary,),
+                )
+                if old_primary not in target_aliases:
+                    target_aliases.append(old_primary)
+                cursor.execute(
+                    """UPDATE actress_aliases
+                       SET aliases = ?, updated_at = CURRENT_TIMESTAMP
+                       WHERE primary_name = ?""",
+                    (json.dumps(target_aliases, ensure_ascii=False), new_primary),
+                )
+                conn.commit()
+                return True
+
+            available, _ = self._check_global_uniqueness_cursor(
+                cursor, new_primary, exclude_primary=old_primary
+            )
+            if not available:
+                conn.rollback()
+                return False
+
+            cursor.execute(
+                """UPDATE actress_aliases
+                   SET primary_name = ?, aliases = ?, source = ?,
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE primary_name = ?""",
+                (
+                    new_primary,
+                    json.dumps([old_primary], ensure_ascii=False),
+                    source,
+                    old_primary,
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def sync_from_favorite(
         self, name: str, aliases: List[str], source: str = "auto"
     ) -> dict:
@@ -100,6 +191,10 @@ class AliasRepository(_AliasRepositoryBase[AliasRecord]):
                     skipped.append(alias)
                 else:
                     merged_aliases.append(alias)
+
+            if target_record is None and not merged_aliases:
+                conn.rollback()
+                return {"primary_name": target_primary, "skipped_aliases": skipped}
 
             aliases_json = json.dumps(merged_aliases, ensure_ascii=False)
             if target_record is None:

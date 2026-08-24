@@ -459,6 +459,16 @@ class TestSyncFromFavorite:
         assert record is not None
         assert "alias1" in record.aliases
 
+    def test_sync_from_favorite_all_conflicts_does_not_insert_empty_group(self, repo):
+        repo.add("ExistingActress", ["taken_alias"])
+
+        result = repo.sync_from_favorite(
+            "NewActress", ["ExistingActress", "taken_alias"]
+        )
+
+        assert set(result["skipped_aliases"]) == {"ExistingActress", "taken_alias"}
+        assert repo.get_by_primary("NewActress") is None
+
     def test_sync_from_favorite_existing_record_merge_unaffected(self, repo):
         """§46 guard 不觸發：有既有記錄 + 空 aliases → UPDATE 路徑正常執行"""
         repo.add("ExistingActress", ["old_alias"])

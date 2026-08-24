@@ -16,7 +16,7 @@ CURATED_NAMES_PATH = Path(__file__).resolve().parents[1] / "data" / "actress_nam
 
 
 def seed_curated_actress_names(db_path: Path | None = None) -> dict[str, int]:
-    """Merge bundled common Chinese names without replacing user primaries."""
+    """Merge common Chinese names without replacing maintained user groups."""
 
     try:
         records = json.loads(CURATED_NAMES_PATH.read_text(encoding="utf-8"))
@@ -34,19 +34,38 @@ def seed_curated_actress_names(db_path: Path | None = None) -> dict[str, int]:
             for alias in record.get("aliases", [])
             if str(alias).strip() and str(alias).strip() != primary
         ))
-        if not primary or not aliases:
+        if not primary:
             skipped += 1
             continue
+        if not aliases:
+            existing_singleton = (
+                repository.get_by_primary(primary)
+                or repository.find_by_alias(primary)
+            )
+            if existing_singleton is None:
+                repository.add(primary, [], source="curated_common_zh")
+                updated += 1
+            continue
         existing = repository.get_by_primary(primary)
+        record_updated = False
+        for alias in aliases:
+            alias_primary = repository.get_by_primary(alias)
+            if alias_primary is None or alias_primary.aliases:
+                continue
+            if repository.promote_singleton_primary(alias, primary):
+                existing = repository.get_by_primary(primary)
+                record_updated = True
         missing = aliases if existing is None else [
             alias for alias in aliases if alias not in existing.aliases
         ]
-        if not missing:
-            continue
-        source = existing.source if existing is not None else "curated_common_zh"
-        result = repository.sync_from_favorite(primary, missing, source=source)
-        updated += 1
-        skipped += len(result.get("skipped_aliases", []))
+        if missing:
+            source = existing.source if existing is not None else "curated_common_zh"
+            result = repository.sync_from_favorite(primary, missing, source=source)
+            skipped_aliases = result.get("skipped_aliases", [])
+            record_updated = record_updated or len(skipped_aliases) < len(missing)
+            skipped += len(skipped_aliases)
+        if record_updated:
+            updated += 1
     return {"updated": updated, "skipped": skipped}
 
 

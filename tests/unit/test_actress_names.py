@@ -58,6 +58,8 @@ def test_curated_names_seed_is_idempotent_and_keeps_existing_source(tmp_path):
     repository = actress_names.AliasRepository(db_path)
     record = repository.get_by_primary("梓光莉")
     seto = repository.get_by_primary("濑户环奈")
+    anno = repository.get_by_primary("杏乃柚子")
+    mori = repository.get_by_primary("森日向子")
 
     assert first["updated"] > 0
     assert second["updated"] == 0
@@ -67,3 +69,40 @@ def test_curated_names_seed_is_idempotent_and_keeps_existing_source(tmp_path):
     assert record.source == "curated_common_zh"
     assert seto is not None
     assert {"瀬戸環奈", "瀨戶環奈"}.issubset(seto.aliases)
+    assert anno is not None
+    assert anno.aliases == ["杏乃ゆずこ"]
+    assert mori is not None
+    assert mori.aliases == []
+    assert mori.source == "curated_common_zh"
+
+
+def test_curated_seed_promotes_an_empty_alias_primary(tmp_path):
+    db_path = tmp_path / "singleton.db"
+    init_db(db_path)
+    repository = actress_names.AliasRepository(db_path)
+    repository.add("杏乃ゆずこ", [])
+
+    result = actress_names.seed_curated_actress_names(db_path)
+    promoted = repository.get_by_primary("杏乃柚子")
+
+    assert result["updated"] > 0
+    assert repository.get_by_primary("杏乃ゆずこ") is None
+    assert promoted is not None
+    assert promoted.aliases == ["杏乃ゆずこ"]
+    assert promoted.source == "curated_common_zh"
+
+
+def test_curated_seed_merges_partial_target_and_alias_groups(tmp_path):
+    db_path = tmp_path / "partial-seed.db"
+    init_db(db_path)
+    repository = actress_names.AliasRepository(db_path)
+    repository.add("杏乃柚子", [], source="curated_common_zh")
+    repository.add("杏乃ゆずこ", [])
+
+    actress_names.seed_curated_actress_names(db_path)
+    merged = repository.get_by_primary("杏乃柚子")
+
+    assert repository.get_by_primary("杏乃ゆずこ") is None
+    assert merged is not None
+    assert merged.aliases == ["杏乃ゆずこ"]
+    assert merged.source == "curated_common_zh"
