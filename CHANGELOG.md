@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - 删除下载窗口中无实际用途的“中文标题”字段；番号、日文原标题、媒体直链和扫描文件夹在桌面端改为 2x2 布局，窄屏改为单列。
+- 扩充片库常用中文女优名与旧艺名映射；没有可靠中文社区共识的姓名保留日文原名，且不再收录已废弃的“梓光”简称。
 - 可通过 `OPENAVER_LOG_DIR` 隔离日志，避免官方版与整合版同时运行时写入同一日志目录。
 
 ### Security and reliability

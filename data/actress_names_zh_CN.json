@@ -2,7 +2,9 @@
   {"primary_name": "一条美绪", "aliases": ["一条みお"]},
   {"primary_name": "三上悠亚", "aliases": ["三上悠亜"]},
   {"primary_name": "三澄宁宁", "aliases": ["三澄寧々"]},
+  {"primary_name": "夏目响", "aliases": ["夏目響"]},
   {"primary_name": "大槻响", "aliases": ["大槻ひびき"]},
+  {"primary_name": "天宫花南", "aliases": ["天宮花南", "那珂川もこ"]},
   {"primary_name": "天马唯", "aliases": ["天馬ゆい"]},
   {"primary_name": "小宵虎南", "aliases": ["小宵こなん"]},
   {"primary_name": "岬梓", "aliases": ["岬あずさ"]},
@@ -11,8 +13,9 @@
   {"primary_name": "明里紬", "aliases": ["明里つむぎ"]},
   {"primary_name": "月乃露娜", "aliases": ["月乃ルナ"]},
   {"primary_name": "桃乃木香奈", "aliases": ["桃乃木かな", "松嶋真麻"]},
-  {"primary_name": "梓光莉", "aliases": ["梓ヒカリ", "梓光"]},
+  {"primary_name": "梓光莉", "aliases": ["梓ヒカリ"]},
   {"primary_name": "森泽佳奈", "aliases": ["森沢かな（飯岡かなこ）", "森沢かな", "飯岡かなこ", "饭冈佳奈子"]},
+  {"primary_name": "河北彩花", "aliases": ["河北彩伽"]},
   {"primary_name": "樱空桃", "aliases": ["桜空もも"]},
   {"primary_name": "樱若菜", "aliases": ["さくらわかな", "さくら若菜"]},
   {"primary_name": "纱仓真菜", "aliases": ["紗倉まな", "紗倉真菜"]},
@@ -20,5 +23,9 @@
   {"primary_name": "翼舞", "aliases": ["つばさ舞"]},
   {"primary_name": "花泽日葵", "aliases": ["花沢ひまり", "花澤日葵", "木下日葵", "木下ひまり"]},
   {"primary_name": "莉莉遥香", "aliases": ["莉々はるか"]},
-  {"primary_name": "铃村爱里", "aliases": ["鈴村あいり", "鈴村愛里"]}
+  {"primary_name": "渡部穗乃", "aliases": ["渡部ほの", "渡部穂乃"]},
+  {"primary_name": "濑户环奈", "aliases": ["瀬戸環奈", "瀨戶環奈"]},
+  {"primary_name": "由良佳奈", "aliases": ["由良かな"]},
+  {"primary_name": "铃村爱里", "aliases": ["鈴村あいり", "鈴村愛里"]},
+  {"primary_name": "鹫尾芽衣", "aliases": ["鷲尾めい", "鷲尾芽衣", "筧ジュン", "筧純", "笕纯"]}
 ]
